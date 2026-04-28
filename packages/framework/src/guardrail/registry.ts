@@ -2,7 +2,7 @@ import { GUARDRAIL_CATALOG } from "./catalog";
 import {
   GuardrailRule,
   GuardrailRuleSchema,
-  LayerId,
+  GuardrailLayerId,
   Trigger,
   Origin,
   Evaluation,
@@ -36,7 +36,7 @@ export function getGuardrailOrThrow(ruleId: string): GuardrailRule {
   return rule;
 }
 
-export function guardrailsByLayer(layer: LayerId): GuardrailRule[] {
+export function guardrailsByLayer(layer: GuardrailLayerId): GuardrailRule[] {
   return GUARDRAIL_CATALOG.filter((r) => r.layer === layer);
 }
 
@@ -63,7 +63,7 @@ export function guardrailsBySeverity(severity: Severity): GuardrailRule[] {
 }
 
 export interface GuardrailQuery {
-  layer?: LayerId;
+  layer?: GuardrailLayerId;
   objectType?: string;
   trigger?: Trigger;
   origin?: Origin;
