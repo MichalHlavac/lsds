@@ -5,6 +5,7 @@ build/
 *.tsbuildinfo
 .next/
 out/
+next-env.d.ts
 
 # Env
 .env
