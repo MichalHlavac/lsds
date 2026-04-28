@@ -3,3 +3,4 @@
 
 export * from "./traversal";
 export * from "./types";
+export * from "./guardrail";
