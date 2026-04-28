@@ -1,8 +1,12 @@
 import { z } from "zod";
+import { LAYER_IDS as BASE_LAYER_IDS } from "../layer/index.js";
 
-export const LAYER_IDS = ["L1", "L2", "L3", "L4", "L5", "L6", "XL"] as const;
-export const LayerIdSchema = z.enum(LAYER_IDS);
-export type LayerId = z.infer<typeof LayerIdSchema>;
+// Guardrails operate over the six framework layers PLUS an "XL" pseudo-layer
+// for cross-layer rules (kap. 5). The framework's `LayerId` type covers
+// L1–L6 only; guardrails widen it to include XL via `GuardrailLayerId`.
+export const GUARDRAIL_LAYER_IDS = [...BASE_LAYER_IDS, "XL"] as const;
+export const GuardrailLayerIdSchema = z.enum(GUARDRAIL_LAYER_IDS);
+export type GuardrailLayerId = z.infer<typeof GuardrailLayerIdSchema>;
 
 export const ORIGINS = ["STRUCTURAL", "SEMANTIC"] as const;
 export const OriginSchema = z.enum(ORIGINS);
@@ -43,7 +47,7 @@ export const GuardrailRuleSchema = z
   .object({
     rule_id: RuleIdSchema,
     name: z.string().min(1).max(120),
-    layer: LayerIdSchema,
+    layer: GuardrailLayerIdSchema,
     origin: OriginSchema,
     evaluation: EvaluationSchema,
     severity: SeveritySchema,
