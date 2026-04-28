@@ -1,7 +1,8 @@
 import { Hono } from "hono";
+import { validateRelationshipEdge } from "@lsds/framework";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
-import type { EdgeRow } from "../db/types.js";
+import type { EdgeRow, NodeRow } from "../db/types.js";
 import { CreateEdgeSchema, UpdateEdgeSchema } from "./schemas.js";
 import { getTenantId } from "./util.js";
 
@@ -31,6 +32,26 @@ export function edgesRouter(sql: Sql, cache: LsdsCache): Hono {
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateEdgeSchema.parse(await c.req.json());
+
+    const [sourceNode] = await sql<NodeRow[]>`
+      SELECT id, layer FROM nodes WHERE id = ${body.sourceId} AND tenant_id = ${tenantId}
+    `;
+    if (!sourceNode) return c.json({ error: "source node not found" }, 404);
+
+    const [targetNode] = await sql<NodeRow[]>`
+      SELECT id, layer FROM nodes WHERE id = ${body.targetId} AND tenant_id = ${tenantId}
+    `;
+    if (!targetNode) return c.json({ error: "target node not found" }, 404);
+
+    const validationIssues = validateRelationshipEdge({
+      type: body.type,
+      sourceLayer: sourceNode.layer,
+      targetLayer: targetNode.layer,
+    });
+    if (validationIssues.length > 0) {
+      return c.json({ error: "invalid edge", issues: validationIssues }, 422);
+    }
+
     const [row] = await sql<EdgeRow[]>`
       INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
       VALUES (

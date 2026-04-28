@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { serve } from "@hono/node-server";
 import { ZodError } from "zod";
 import { sql } from "./db/client.js";
@@ -38,9 +39,8 @@ app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, adapter, guardrails, lifecycle));
 
 app.onError((err, c) => {
-  if (err instanceof ZodError) {
-    return c.json({ error: "validation error", issues: err.issues }, 400);
-  }
+  if (err instanceof HTTPException) return err.getResponse();
+  if (err instanceof ZodError) return c.json({ error: "validation error", issues: err.issues }, 400);
   console.error(err);
   return c.json({ error: "internal server error" }, 500);
 });
