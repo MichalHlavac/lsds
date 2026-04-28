@@ -21,5 +21,6 @@ export const BusinessGoalSchema = TknBaseSchema.extend({
   successMetrics: z.array(z.string().min(1)).min(1, "BusinessGoal.successMetrics must contain at least one metric"),
   status: BusinessGoalStatusSchema,
   priority: BusinessGoalPrioritySchema.optional(),
+  isLeaf: z.boolean().default(false),
 });
 export type BusinessGoal = z.infer<typeof BusinessGoalSchema>;

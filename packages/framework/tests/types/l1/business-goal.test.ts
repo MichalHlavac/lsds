@@ -49,4 +49,12 @@ describe("BusinessGoal (kap. 4 § L1)", () => {
   it("rejects layer other than L1", () => {
     expectIssue(BusinessGoalSchema.safeParse({ ...baseGoal, layer: "L2" }), /Invalid literal value/);
   });
+
+  it("accepts explicit isLeaf=true (kap. 4 § L1, GR-L1-BG-001)", () => {
+    expect(BusinessGoalSchema.parse({ ...baseGoal, isLeaf: true }).isLeaf).toBe(true);
+  });
+
+  it("defaults isLeaf to false when omitted (kap. 4 § L1)", () => {
+    expect(BusinessGoalSchema.parse(baseGoal).isLeaf).toBe(false);
+  });
 });
