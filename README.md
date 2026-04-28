@@ -4,7 +4,7 @@ A typed knowledge graph SSOT for software knowledge across six layers (L1 Busine
 
 ## Status
 
-Pre-product. v1 design locked in [`LSDS-research/`](https://github.com/MichalHlavac/LSDS-research). 60-day demo target.
+Pre-product. v1 design locked in LSDS-research. 60-day demo target.
 
 ## Architecture
 
