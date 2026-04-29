@@ -20,7 +20,8 @@ describe("GUARDRAIL_CATALOG completeness", () => {
            "GR-L5-006", "GR-L5-007"],
       L6: ["GR-L6-001", "GR-L6-002", "GR-L6-003", "GR-L6-004", "GR-L6-005"],
       XL: ["GR-XL-001", "GR-XL-002", "GR-XL-003", "GR-XL-004", "GR-XL-005",
-           "GR-XL-006", "GR-XL-007", "GR-XL-008"],
+           "GR-XL-006", "GR-XL-007", "GR-XL-008", "GR-XL-009", "GR-XL-010",
+           "GR-XL-011"],
     };
 
     const actualByLayer: Record<string, string[]> = {};

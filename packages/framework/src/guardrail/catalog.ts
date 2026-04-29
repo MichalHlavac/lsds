@@ -1015,6 +1015,64 @@ const XL_RULES: GuardrailRule[] = [
       "Decompose: split the object, group fan-out relationships behind an aggregating intermediary, or model the cluster as a separate sub-graph.",
     propagation: "LATERAL",
   },
+  {
+    rule_id: "GR-XL-009",
+    name: "DEPRECATED object still has active depends-on relationships",
+    layer: "XL",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "WARNING",
+    scope: {
+      object_type: "*",
+      triggers: ["UPDATE", "PERIODIC"],
+      relationship_type: "depends-on",
+    },
+    condition:
+      "object.lifecycle != 'DEPRECATED' || object.incoming('depends-on').every(r => r.from.lifecycle != 'ACTIVE')",
+    rationale:
+      "Once an object is marked DEPRECATED its callers should be migrated; lingering ACTIVE callers signal that deprecation has stalled and the planned removal will break consumers.",
+    remediation:
+      "Either migrate the remaining ACTIVE consumers off this object, or revert the lifecycle to ACTIVE if deprecation was premature.",
+    propagation: "UPWARD",
+  },
+  {
+    rule_id: "GR-XL-010",
+    name: "ARCHIVED object has non-archived contains children",
+    layer: "XL",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "*",
+      triggers: ["UPDATE", "ARCHIVE", "PERIODIC"],
+      relationship_type: "contains",
+    },
+    condition:
+      "object.lifecycle != 'ARCHIVED' || object.outgoing('contains').every(r => r.to.lifecycle == 'ARCHIVED' || r.to.lifecycle == 'PURGE')",
+    rationale:
+      "Archiving a parent while its contained children remain ACTIVE/DEPRECATED leaves orphan-like state: the children show up in OPERATIONAL views but their container does not, breaking traceability.",
+    remediation:
+      "Archive (or migrate) every contained child before archiving the parent, or restore the parent to DEPRECATED until children are dealt with.",
+    propagation: "DOWNWARD",
+  },
+  {
+    rule_id: "GR-XL-011",
+    name: "Hard delete blocked while incoming relationships exist",
+    layer: "XL",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "*",
+      triggers: ["DELETE"],
+    },
+    condition: "object.incoming_relationships.length == 0",
+    rationale:
+      "Skipping the lifecycle (ACTIVE → DEPRECATED → ARCHIVED → PURGE) while incoming references exist silently breaks the graph; consumers and audit trails point at a nonexistent object.",
+    remediation:
+      "Move the object through DEPRECATED → ARCHIVED first so consumers can migrate; only the PURGE retention job is allowed to physically delete.",
+    propagation: "UPWARD",
+  },
 ];
 
 export const GUARDRAIL_CATALOG: ReadonlyArray<GuardrailRule> = Object.freeze([
