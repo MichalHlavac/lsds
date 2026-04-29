@@ -4,7 +4,7 @@ import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeRow, NodeRow } from "../db/types.js";
 import { CreateEdgeSchema, UpdateEdgeSchema } from "./schemas.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, jsonb } from "./util.js";
 
 export function edgesRouter(sql: Sql, cache: LsdsCache): Hono {
   const app = new Hono();
@@ -56,7 +56,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache): Hono {
       INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
       VALUES (
         ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
-        ${body.layer}, ${body.traversalWeight}, ${sql.json(body.attributes as any)}
+        ${body.layer}, ${body.traversalWeight}, ${jsonb(sql, body.attributes)}
       )
       RETURNING *
     `;
@@ -87,7 +87,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache): Hono {
       UPDATE edges SET
         ${body.type !== undefined ? sql`type = ${body.type},` : sql``}
         ${body.traversalWeight !== undefined ? sql`traversal_weight = ${body.traversalWeight},` : sql``}
-        ${body.attributes !== undefined ? sql`attributes = ${sql.json(body.attributes as any)},` : sql``}
+        ${body.attributes !== undefined ? sql`attributes = ${jsonb(sql, body.attributes)},` : sql``}
         updated_at = now()
       WHERE id = ${id} AND tenant_id = ${tenantId}
       RETURNING *

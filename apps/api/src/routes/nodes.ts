@@ -3,7 +3,7 @@ import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeRow } from "../db/types.js";
 import { CreateNodeSchema, UpdateNodeSchema } from "./schemas.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, jsonb } from "./util.js";
 
 export function nodesRouter(sql: Sql, cache: LsdsCache): Hono {
   const app = new Hono();
@@ -35,7 +35,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache): Hono {
       INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
       VALUES (
         ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
-        ${body.version}, ${body.lifecycleStatus}, ${sql.json(body.attributes as any)}
+        ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
       )
       RETURNING *
     `;
@@ -66,7 +66,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache): Hono {
         ${body.name !== undefined ? sql`name = ${body.name},` : sql``}
         ${body.version !== undefined ? sql`version = ${body.version},` : sql``}
         ${body.lifecycleStatus !== undefined ? sql`lifecycle_status = ${body.lifecycleStatus},` : sql``}
-        ${body.attributes !== undefined ? sql`attributes = ${sql.json(body.attributes as any)},` : sql``}
+        ${body.attributes !== undefined ? sql`attributes = ${jsonb(sql, body.attributes)},` : sql``}
         updated_at = now()
       WHERE id = ${id} AND tenant_id = ${tenantId}
       RETURNING *

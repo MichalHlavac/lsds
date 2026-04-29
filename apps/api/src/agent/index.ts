@@ -5,7 +5,7 @@ import type { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
 import type { NodeRow, EdgeRow, ViolationRow } from "../db/types.js";
-import { getTenantId } from "../routes/util.js";
+import { getTenantId, jsonb } from "../routes/util.js";
 
 // Agent API — machine-friendly surface for AI agent consumption.
 // Returns minimal, structured payloads; uses application/json throughout.
@@ -96,7 +96,7 @@ export function agentRouter(
         ${body.type ? sql`AND type = ${body.type}` : sql``}
         ${body.layer ? sql`AND layer = ${body.layer}` : sql``}
         ${body.lifecycleStatus ? sql`AND lifecycle_status = ${body.lifecycleStatus}` : sql``}
-        ${body.attributes ? sql`AND attributes @> ${sql.json(body.attributes as any)}` : sql``}
+        ${body.attributes ? sql`AND attributes @> ${jsonb(sql, body.attributes)}` : sql``}
         ${body.query ? sql`AND (name ILIKE ${"%" + body.query + "%"} OR type ILIKE ${"%" + body.query + "%"})` : sql``}
       ORDER BY updated_at DESC
       LIMIT ${limit}

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { ViolationRow } from "../db/types.js";
 import { CreateViolationSchema } from "./schemas.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, jsonb } from "./util.js";
 
 export function violationsRouter(sql: Sql): Hono {
   const app = new Hono();
@@ -39,7 +39,7 @@ export function violationsRouter(sql: Sql): Hono {
         ${body.ruleKey},
         ${body.severity},
         ${body.message},
-        ${sql.json(body.attributes as any)}
+        ${jsonb(sql, body.attributes)}
       )
       RETURNING *
     `;
