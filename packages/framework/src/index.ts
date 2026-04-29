@@ -6,6 +6,7 @@ export * from "./shared/refs";
 export * from "./shared/lifecycle";
 export * from "./shared/base";
 export * from "./types/l1/index";
+export * from "./types/l2/index";
 export * from "./relationship/index";
 export * from "./traversal";
 export * from "./guardrail";
