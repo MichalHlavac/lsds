@@ -14,13 +14,13 @@ export const MINOR_PROPAGATING_RELATIONSHIPS = [
 export type MinorPropagatingRelationship =
   (typeof MINOR_PROPAGATING_RELATIONSHIPS)[number];
 
-export interface PropagationPolicy {
+export interface ChangePropagationPolicy {
   staleSeverity: StaleSeverity;
   mode: PropagationMode;
   selectedRelationships: ReadonlyArray<string>;
 }
 
-const POLICY_BY_SEVERITY: Record<ChangeSeverity, PropagationPolicy> = {
+const POLICY_BY_SEVERITY: Record<ChangeSeverity, ChangePropagationPolicy> = {
   MAJOR: {
     staleSeverity: "ERROR",
     mode: "ALL_RELATIONSHIPS",
@@ -38,7 +38,7 @@ const POLICY_BY_SEVERITY: Record<ChangeSeverity, PropagationPolicy> = {
   },
 };
 
-export function propagationFor(severity: ChangeSeverity): PropagationPolicy {
+export function propagationFor(severity: ChangeSeverity): ChangePropagationPolicy {
   return POLICY_BY_SEVERITY[severity];
 }
 
