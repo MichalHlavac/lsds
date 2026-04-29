@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { PersonRefSchema, UuidSchema } from "../../shared/refs.js";
+import { ISO_DATE, PersonRefSchema, UuidSchema } from "../../shared/refs.js";
 
 // ADR has its own status state machine (kap. 4 § L3 / ADR), distinct from
 // TknBase.lifecycle. Lifecycle = node-level (ACTIVE/DEPRECATED/ARCHIVED/PURGE);
@@ -8,8 +8,6 @@ import { PersonRefSchema, UuidSchema } from "../../shared/refs.js";
 export const ADR_STATUSES = ["PROPOSED", "ACCEPTED", "DEPRECATED", "SUPERSEDED"] as const;
 export const AdrStatusSchema = z.enum(ADR_STATUSES);
 export type AdrStatus = z.infer<typeof AdrStatusSchema>;
-
-export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const AlternativeOptionSchema = z.object({
   name: z.string().min(1),

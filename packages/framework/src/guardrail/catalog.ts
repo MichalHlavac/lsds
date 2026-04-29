@@ -126,7 +126,7 @@ const L1_RULES: GuardrailRule[] = [
       triggers: ["PERIODIC"],
     },
     condition:
-      "object.lifecycle == 'ACTIVE' && (now - object.last_reviewed_at) > 180 days",
+      "object.lifecycle == 'ACTIVE' && (now - object.last_review_date) > 180 days",
     rationale:
       "Strategic goals decay; a goal not reviewed in over 6 months is likely stale, mis-aligned, or already met.",
     remediation:
@@ -145,9 +145,9 @@ const L1_RULES: GuardrailRule[] = [
       triggers: ["UPDATE", "PERIODIC"],
     },
     condition:
-      "object.status == 'IMPLEMENTED' && object.impacts.every(i => target_unchanged_since(i.target, requirement.created_at))",
+      "object.status == 'IMPLEMENTED' && object.impacts.every(i => target_unchanged_since(i.target, requirement.approved_at))",
     rationale:
-      "An IMPLEMENTED requirement whose declared impact targets were never touched suggests the implementation drifted from its declared scope or the impact list is wrong.",
+      "An IMPLEMENTED requirement whose declared impact targets were never touched suggests the implementation drifted from its declared scope or the impact list is wrong. Staleness is measured from approval, not creation, because impact targets are only frozen once the requirement reaches APPROVED.",
     remediation:
       "Reconcile: either correct the impact list, link the actual changed objects, or roll status back to IN_PROGRESS.",
     propagation: "NONE",
@@ -186,7 +186,7 @@ const L2_RULES: GuardrailRule[] = [
     },
     condition: "object.ubiquitous_language.length >= config.l2.min_terms_per_context",
     rationale:
-      "A bounded context without a shared vocabulary is not a context; the language is what makes the boundary real. The threshold N is a semantic configuration knob (default 3).",
+      "A bounded context without a shared vocabulary is not a context; the language is what makes the boundary real. The threshold N is a semantic configuration knob (default 3, configurable via config.l2.min_terms_per_context).",
     remediation:
       "Capture at least the configured minimum LanguageTerms. Even one canonical term beats none — start with the term that names the context itself.",
     propagation: "NONE",
@@ -462,11 +462,11 @@ const L3_RULES: GuardrailRule[] = [
     name: "ArchitectureSystem without QualityAttribute",
     layer: "L3",
     origin: "SEMANTIC",
-    evaluation: "PRESCRIPTIVE",
+    evaluation: "DESCRIPTIVE",
     severity: "WARNING",
     scope: {
       object_type: "ArchitectureSystem",
-      triggers: ["CREATE", "UPDATE"],
+      triggers: ["CREATE", "UPDATE", "PERIODIC"],
     },
     condition:
       "object.relationships.filter(type='satisfies', target_type='QualityAttribute').length >= 1",
@@ -487,11 +487,11 @@ const L3_RULES: GuardrailRule[] = [
       object_type: "ExternalSystem",
       triggers: ["PERIODIC"],
     },
-    condition: "(now - object.last_reviewed_at) > 180 days",
+    condition: "(now - object.last_review_date) > 180 days",
     rationale:
       "External vendors change pricing, SLA, and security posture; an unrefreshed review is operating on stale assumptions.",
     remediation:
-      "Run a vendor review: re-validate criticality, fallback, SLA, and security audit, then update last_reviewed_at.",
+      "Run a vendor review: re-validate criticality, fallback, SLA, and security audit, then update last_review_date.",
     propagation: "NONE",
   },
 ];
@@ -595,16 +595,16 @@ const L4_RULES: GuardrailRule[] = [
     name: "DEPRECATED APIEndpoint without sunset timeline",
     layer: "L4",
     origin: "SEMANTIC",
-    evaluation: "PRESCRIPTIVE",
+    evaluation: "DESCRIPTIVE",
     severity: "WARNING",
     scope: {
       object_type: "APIEndpoint",
-      triggers: ["UPDATE"],
+      triggers: ["UPDATE", "PERIODIC"],
     },
     condition:
-      "object.lifecycle == 'DEPRECATED' implies object.sunset_at != null",
+      "object.status == 'DEPRECATED' implies object.sunset_at != null",
     rationale:
-      "Deprecation without a sunset date is permanent deprecation; consumers have no signal to migrate and the deprecated surface stays forever.",
+      "Deprecation without a sunset date is permanent deprecation; consumers have no signal to migrate and the deprecated surface stays forever. APIEndpoint tracks deprecation via its per-object status field (kap. 4 § L4 / APIEndpoint), distinct from the universal lifecycle.",
     remediation:
       "Set sunset_at to the date the endpoint will be removed; communicate it through the deprecation channel for this API.",
     propagation: "NONE",
@@ -681,7 +681,7 @@ const L5_RULES: GuardrailRule[] = [
       relationship_type: "depends-on",
     },
     condition:
-      "!(object.classification == 'DOMAIN' && exists depends_on with target.classification == 'INFRASTRUCTURE')",
+      "!(object.module_type == 'DOMAIN' && exists depends_on with target.module_type == 'INFRASTRUCTURE')",
     rationale:
       "Domain modules that import infrastructure invert the dependency rule of clean/hexagonal architecture and contaminate the model with frameworks and IO.",
     remediation:
@@ -719,9 +719,9 @@ const L5_RULES: GuardrailRule[] = [
       triggers: ["PERIODIC"],
     },
     condition:
-      "!(object.interest == 'HIGH' && object.status == 'OPEN' && (now - object.opened_at) > 90 days)",
+      "!(object.interest_rate == 'HIGH' && object.status == 'OPEN' && (now - object.created_at) > 90 days)",
     rationale:
-      "High-interest debt compounds; left open beyond a quarter it almost always costs more than the original fix.",
+      "High-interest debt compounds; left open beyond a quarter it almost always costs more than the original fix. Age is measured from TknBase.created_at (the catalog's universal creation timestamp).",
     remediation:
       "Either schedule the debt for repayment in the next sprint, downgrade the interest classification with rationale, or accept it via an explicit suppression.",
     propagation: "NONE",
@@ -834,13 +834,14 @@ const L6_RULES: GuardrailRule[] = [
     scope: {
       object_type: "Service",
       triggers: ["UPDATE", "PERIODIC"],
+      relationship_type: "validates",
     },
     condition:
-      "!(object.environment == 'PRODUCTION' && object.relationships.filter(type='has-slo').length == 0)",
+      "!(any(object.outgoing_relationships(type='deploys-to', target_type='DeploymentUnit').target.environment == 'PRODUCTION') && incoming_relationships(type='validates', source_type='SLO').length == 0)",
     rationale:
-      "A production service with no SLO has no defensible expectation of availability or latency; ops can't size capacity, alerting, or on-call against nothing.",
+      "A production service with no SLO has no defensible expectation of availability or latency; ops can't size capacity, alerting, or on-call against nothing. Service has no direct environment attribute — production status is inferred via the canonical deploys-to → DeploymentUnit.environment edge (kap. 2.2). The SLO link is the canonical incoming `validates` edge from SLO (kap. 2.2), not a non-existent `has-slo` edge.",
     remediation:
-      "Define at least one SLO (availability or latency) attached to this service before keeping it in production.",
+      "Define at least one SLO (availability or latency) and link it to this service via SLO `validates` Service before keeping it in production.",
     propagation: "NONE",
   },
   {
