@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
-import type { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
+import type { TraversalEngine } from "../db/traversal-adapter.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
 import type { NodeRow, EdgeRow, ViolationRow } from "../db/types.js";
@@ -14,7 +14,7 @@ import { getTenantId } from "../routes/util.js";
 export function agentRouter(
   sql: Sql,
   cache: LsdsCache,
-  adapter: PostgresTraversalAdapter,
+  adapter: TraversalEngine,
   guardrails: GuardrailsRegistry,
   lifecycle: LifecycleService
 ): Hono {
