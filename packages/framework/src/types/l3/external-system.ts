@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { PersonRefSchema, TeamRefSchema } from "../../shared/refs.js";
-import { ISO_DATE } from "./adr.js";
+import { ISO_DATE, PersonRefSchema, TeamRefSchema } from "../../shared/refs.js";
 
 export const EXTERNAL_SYSTEM_CRITICALITIES = ["CRITICAL", "HIGH", "MEDIUM"] as const;
 export const ExternalSystemCriticalitySchema = z.enum(EXTERNAL_SYSTEM_CRITICALITIES);

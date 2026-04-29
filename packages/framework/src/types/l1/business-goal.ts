@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
+import { ISO_DATE, TeamRefSchema } from "../../shared/refs.js";
 
 export const TimeHorizonSchema = z.enum(["SHORT", "MEDIUM", "LONG"]);
 export type TimeHorizon = z.infer<typeof TimeHorizonSchema>;
@@ -22,5 +22,9 @@ export const BusinessGoalSchema = TknBaseSchema.extend({
   status: BusinessGoalStatusSchema,
   priority: BusinessGoalPrioritySchema.optional(),
   isLeaf: z.boolean().default(false),
+  lastReviewDate: z
+    .string()
+    .regex(ISO_DATE, "BusinessGoal.lastReviewDate must be ISO date (YYYY-MM-DD)")
+    .optional(),
 });
 export type BusinessGoal = z.infer<typeof BusinessGoalSchema>;

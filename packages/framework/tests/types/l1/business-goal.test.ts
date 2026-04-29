@@ -57,4 +57,17 @@ describe("BusinessGoal (kap. 4 § L1)", () => {
   it("defaults isLeaf to false when omitted (kap. 4 § L1)", () => {
     expect(BusinessGoalSchema.parse(baseGoal).isLeaf).toBe(false);
   });
+
+  it("accepts optional lastReviewDate as ISO date (kap. 4 § L1, GR-L1-007)", () => {
+    expect(
+      BusinessGoalSchema.parse({ ...baseGoal, lastReviewDate: "2026-04-01" }).lastReviewDate,
+    ).toBe("2026-04-01");
+  });
+
+  it("rejects lastReviewDate that is not ISO date (kap. 4 § L1)", () => {
+    expectIssue(
+      BusinessGoalSchema.safeParse({ ...baseGoal, lastReviewDate: "April 1, 2026" }),
+      /lastReviewDate must be ISO date/,
+    );
+  });
 });

@@ -8,6 +8,8 @@ export const SemverSchema = z
   .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/, "must be a SemVer string");
 export type Semver = z.infer<typeof SemverSchema>;
 
+export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 export const TeamRefSchema = z.object({
   kind: z.literal("team"),
   id: z.string().min(1),
