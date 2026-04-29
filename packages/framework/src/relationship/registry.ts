@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 // Relationship Registry — all 19 typed edges from kap. 2.2 of the LSDS research.
 //
 // Per kap. 2.2 every relationship has: type, semantic direction, cardinality,

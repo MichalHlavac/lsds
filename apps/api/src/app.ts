@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";

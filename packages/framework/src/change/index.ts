@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 export * from "./types";
 export { classifyChange, changeKindsBySeverity } from "./classifier";
 export { LAYER_POLICY, policyForLayer, layersByPolicy } from "./policy";

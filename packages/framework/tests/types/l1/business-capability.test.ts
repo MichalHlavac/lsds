@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 import { describe, expect, it } from "vitest";
 import { BusinessCapabilitySchema } from "../../../src/types/l1/business-capability.js";
 import { expectIssue, sampleTeam, tknBase } from "../../fixtures.js";

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 import type { LayerId } from "../layer/index.js";
 import type { EdgeValidationIssue, RelationshipEdge, RelationshipType } from "./types.js";
 import { checkOrdinalConstraint } from "./types.js";

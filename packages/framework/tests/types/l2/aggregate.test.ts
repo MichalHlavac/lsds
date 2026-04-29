@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 import { describe, expect, it } from "vitest";
 import { AggregateSchema } from "../../../src/types/l2/aggregate.js";
 import { expectIssue, tknBase } from "../../fixtures.js";

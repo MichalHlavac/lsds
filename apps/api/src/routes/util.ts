@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { Sql } from "../db/client.js";

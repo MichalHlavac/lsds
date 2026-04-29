@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 import { z } from "zod";
 
 export const LAYER_IDS = ["L1", "L2", "L3", "L4", "L5", "L6"] as const;

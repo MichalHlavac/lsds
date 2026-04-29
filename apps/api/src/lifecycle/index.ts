@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Michal Hlavac. All rights reserved.
+
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeRow } from "../db/types.js";
