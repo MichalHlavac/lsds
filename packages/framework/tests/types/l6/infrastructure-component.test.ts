@@ -89,6 +89,22 @@ describe("InfrastructureComponent (L6)", () => {
     );
   });
 
+  it("accepts iacReference when provided (GR-L6-001)", () => {
+    expect(
+      InfrastructureComponentSchema.parse({
+        ...baseInfra,
+        iacReference: "infra/aws/rds/api-postgres.tf",
+      }),
+    ).toMatchObject({ iacReference: "infra/aws/rds/api-postgres.tf" });
+  });
+
+  it("rejects empty iacReference", () => {
+    expectIssue(
+      InfrastructureComponentSchema.safeParse({ ...baseInfra, iacReference: "" }),
+      /String must contain at least 1 character/,
+    );
+  });
+
   it("declares LAZY traversal weight", () => {
     expect(INFRASTRUCTURE_COMPONENT_TRAVERSAL_WEIGHT).toBe("LAZY");
   });

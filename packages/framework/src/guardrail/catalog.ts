@@ -820,11 +820,11 @@ const L6_RULES: GuardrailRule[] = [
       triggers: ["PERIODIC"],
     },
     condition:
-      "!(object.priority == 'P1' && (now - object.last_tested_at) > 90 days)",
+      "!(object.severity == 'P1' && (now - object.last_tested) > 90 days)",
     rationale:
       "P1 runbooks rot quickly; one untested for over a quarter is statistically wrong, and you only find out during the incident.",
     remediation:
-      "Run a tabletop or game-day exercise of the runbook, fix the steps that fail, and update last_tested_at.",
+      "Run a tabletop or game-day exercise of the runbook, fix the steps that fail, and update last_tested.",
     propagation: "NONE",
   },
   {

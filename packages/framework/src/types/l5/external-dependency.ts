@@ -6,6 +6,10 @@ import { TknBaseSchema } from "../../shared/base.js";
 import { TknRefSchema } from "../../shared/refs.js";
 import { PackageManagerSchema } from "./package.js";
 
+export const DEPENDENCY_CRITICALITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+export const DependencyCriticalitySchema = z.enum(DEPENDENCY_CRITICALITIES);
+export type DependencyCriticality = z.infer<typeof DependencyCriticalitySchema>;
+
 export const ExternalDependencySchema = TknBaseSchema.extend({
   type: z.literal("ExternalDependency"),
   layer: z.literal("L5"),
@@ -17,6 +21,9 @@ export const ExternalDependencySchema = TknBaseSchema.extend({
   versionConstraint: z.string().min(1, "ExternalDependency.versionConstraint must be a non-empty SemVer constraint (e.g. '^3.2.1')"),
   isDirect: z.boolean(),
   hasKnownVulnerability: z.boolean(),
+  criticality: DependencyCriticalitySchema,
+  // ISO date of last security audit (license + CVE + provenance). Required by GR-L5-004 for CRITICAL deps.
+  securityAuditDate: z.string().date().optional(),
 }).superRefine((value, ctx) => {
   // When a vulnerability is flagged, externalSystemRef must be set so the
   // L3 owner is traceable for remediation escalation (ADR A8).

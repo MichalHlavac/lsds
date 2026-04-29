@@ -17,6 +17,7 @@ const baseDep = {
   versionConstraint: "^3.22.4",
   isDirect: true,
   hasKnownVulnerability: false,
+  criticality: "LOW" as const,
 };
 
 describe("ExternalDependency (L5 — ADR A8)", () => {
@@ -68,6 +69,39 @@ describe("ExternalDependency (L5 — ADR A8)", () => {
     expectIssue(
       ExternalDependencySchema.safeParse({ ...baseDep, layer: "L3" }),
       /Invalid literal value/,
+    );
+  });
+
+  it("accepts CRITICAL dep with securityAuditDate (GR-L5-004 satisfied)", () => {
+    expect(
+      ExternalDependencySchema.parse({
+        ...baseDep,
+        criticality: "CRITICAL",
+        securityAuditDate: "2026-03-01",
+      }),
+    ).toMatchObject({ criticality: "CRITICAL", securityAuditDate: "2026-03-01" });
+  });
+
+  it("accepts CRITICAL dep without securityAuditDate (guardrail fires, schema allows)", () => {
+    expect(
+      ExternalDependencySchema.parse({
+        ...baseDep,
+        criticality: "CRITICAL",
+      }),
+    ).toMatchObject({ criticality: "CRITICAL" });
+  });
+
+  it("rejects invalid criticality value", () => {
+    expectIssue(
+      ExternalDependencySchema.safeParse({ ...baseDep, criticality: "EXTREME" }),
+      /Invalid enum value/,
+    );
+  });
+
+  it("rejects invalid securityAuditDate format", () => {
+    expectIssue(
+      ExternalDependencySchema.safeParse({ ...baseDep, securityAuditDate: "not-a-date" }),
+      /Invalid date/,
     );
   });
 
