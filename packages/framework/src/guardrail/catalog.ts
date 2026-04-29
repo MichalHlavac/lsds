@@ -1020,7 +1020,7 @@ const XL_RULES: GuardrailRule[] = [
     name: "DEPRECATED object still has active depends-on relationships",
     layer: "XL",
     origin: "STRUCTURAL",
-    evaluation: "PRESCRIPTIVE",
+    evaluation: "DESCRIPTIVE",
     severity: "WARNING",
     scope: {
       object_type: "*",
