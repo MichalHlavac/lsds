@@ -45,7 +45,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache): Hono {
   app.get("/:id", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const cached = cache.nodes.get(cache.nodeKey(tenantId, id)) as NodeRow | undefined;
+    const cached = cache.nodes.get(cache.nodeKey(tenantId, id));
     if (cached) return c.json({ data: cached });
 
     const [row] = await sql<NodeRow[]>`

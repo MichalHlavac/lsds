@@ -67,7 +67,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache): Hono {
   app.get("/:id", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const cached = cache.edges.get(cache.edgeKey(tenantId, id)) as EdgeRow | undefined;
+    const cached = cache.edges.get(cache.edgeKey(tenantId, id));
     if (cached) return c.json({ data: cached });
 
     const [row] = await sql<EdgeRow[]>`
