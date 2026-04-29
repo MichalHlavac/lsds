@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TknBaseSchema } from "../../shared/base";
+import { TknBaseSchema } from "../../shared/base.js";
 
 export const InfluenceLevelSchema = z.enum(["HIGH", "MEDIUM", "LOW"]);
 export type InfluenceLevel = z.infer<typeof InfluenceLevelSchema>;

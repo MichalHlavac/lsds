@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { LayerIdSchema } from "../layer/index";
-import { LifecycleStatusSchema } from "./lifecycle";
-import { SemverSchema, UuidSchema } from "./refs";
+import { LayerIdSchema } from "../layer/index.js";
+import { LifecycleStatusSchema } from "./lifecycle.js";
+import { SemverSchema, UuidSchema } from "./refs.js";
 
 export const TknBaseSchema = z.object({
   id: UuidSchema,

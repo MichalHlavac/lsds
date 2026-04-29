@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { TknBaseSchema } from "../../shared/base";
-import { SloRefSchema, TeamRefSchema, TestRefSchema, TknRefSchema } from "../../shared/refs";
+import { TknBaseSchema } from "../../shared/base.js";
+import { SloRefSchema, TeamRefSchema, TestRefSchema, TknRefSchema } from "../../shared/refs.js";
 
 export const RequirementTypeSchema = z.enum(["FUNCTIONAL", "NON_FUNCTIONAL", "CONSTRAINT"]);
 export type RequirementType = z.infer<typeof RequirementTypeSchema>;

@@ -186,7 +186,7 @@ const L2_RULES: GuardrailRule[] = [
     },
     condition: "object.ubiquitous_language.length >= config.l2.min_terms_per_context",
     rationale:
-      "A bounded context without a shared vocabulary is not a context; the language is what makes the boundary real. The threshold N is a semantic configuration knob (default 1).",
+      "A bounded context without a shared vocabulary is not a context; the language is what makes the boundary real. The threshold N is a semantic configuration knob (default 3).",
     remediation:
       "Capture at least the configured minimum LanguageTerms. Even one canonical term beats none — start with the term that names the context itself.",
     propagation: "NONE",

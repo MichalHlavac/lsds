@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { TknBaseSchema } from "../../shared/base";
-import { TeamRefSchema } from "../../shared/refs";
+import { TknBaseSchema } from "../../shared/base.js";
+import { TeamRefSchema } from "../../shared/refs.js";
 
 export const TimeHorizonSchema = z.enum(["SHORT", "MEDIUM", "LONG"]);
 export type TimeHorizon = z.infer<typeof TimeHorizonSchema>;
