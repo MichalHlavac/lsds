@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
-import type { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
+import type { TraversalEngine } from "../db/traversal-adapter.js";
 import type { NodeRow } from "../db/types.js";
 import { TraverseSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
@@ -12,7 +12,7 @@ import { getTenantId, jsonb } from "./util.js";
 export function traversalRouter(
   sql: Sql,
   cache: LsdsCache,
-  adapter: PostgresTraversalAdapter
+  adapter: TraversalEngine
 ): Hono {
   const app = new Hono();
 

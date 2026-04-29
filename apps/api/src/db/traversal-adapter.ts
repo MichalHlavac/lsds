@@ -13,6 +13,12 @@ export interface TraversalResult {
 
 export interface TraversalEngine {
   traverse(rootId: string, depth: number): Promise<string[]>;
+  traverseWithDepth(
+    rootId: string,
+    maxDepth: number,
+    direction?: TraversalDirection,
+    edgeTypes?: string[]
+  ): Promise<TraversalResult[]>;
 }
 
 export class PostgresTraversalAdapter implements TraversalEngine {
