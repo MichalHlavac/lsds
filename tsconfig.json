@@ -5,7 +5,6 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true,
     "composite": true,
     "declaration": true,
     "declarationMap": true,
