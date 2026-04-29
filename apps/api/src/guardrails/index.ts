@@ -87,19 +87,17 @@ export class GuardrailsRegistry {
     violations: ViolationCandidate[]
   ): Promise<void> {
     if (violations.length === 0) return;
-    for (const v of violations) {
-      await this.sql`
-        INSERT INTO violations (tenant_id, node_id, edge_id, rule_key, severity, message)
-        VALUES (
-          ${tenantId},
-          ${v.nodeId ?? null},
-          ${v.edgeId ?? null},
-          ${v.ruleKey},
-          ${v.severity},
-          ${v.message}
-        )
-        ON CONFLICT DO NOTHING
-      `;
-    }
+    const rows = violations.map((v) => ({
+      tenantId,
+      nodeId: v.nodeId ?? null,
+      edgeId: v.edgeId ?? null,
+      ruleKey: v.ruleKey,
+      severity: v.severity,
+      message: v.message,
+    }));
+    await this.sql`
+      INSERT INTO violations ${this.sql(rows, "tenantId", "nodeId", "edgeId", "ruleKey", "severity", "message")}
+      ON CONFLICT DO NOTHING
+    `;
   }
 }
