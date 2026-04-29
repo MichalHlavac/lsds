@@ -6,7 +6,7 @@ import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { TraversalEngine } from "../db/traversal-adapter.js";
 import type { NodeRow } from "../db/types.js";
-import { TraverseSchema } from "./schemas.js";
+import { TraverseSchema, QueryNodesSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
 
 export function traversalRouter(
@@ -55,18 +55,8 @@ export function queryRouter(sql: Sql): Hono {
 
   app.post("/nodes", async (c) => {
     const tenantId = getTenantId(c);
-    const body = await c.req.json() as {
-      attributes?: Record<string, unknown>;
-      type?: string;
-      layer?: string;
-      lifecycleStatus?: string;
-      text?: string;
-      limit?: number;
-      offset?: number;
-    };
-
-    const limit = Math.min(body.limit ?? 50, 500);
-    const offset = body.offset ?? 0;
+    const body = QueryNodesSchema.parse(await c.req.json());
+    const { limit, offset } = body;
 
     const rows = await sql<NodeRow[]>`
       SELECT * FROM nodes
