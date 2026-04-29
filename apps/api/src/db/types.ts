@@ -1,0 +1,91 @@
+export type LifecycleStatus = "ACTIVE" | "DEPRECATED" | "ARCHIVED" | "PURGE";
+export type Layer = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
+export type Severity = "ERROR" | "WARN" | "INFO";
+export type UserRole = "admin" | "editor" | "viewer";
+
+export interface NodeRow {
+  id: string;
+  tenantId: string;
+  type: string;
+  layer: Layer;
+  name: string;
+  version: string;
+  lifecycleStatus: LifecycleStatus;
+  attributes: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+  deprecatedAt: Date | null;
+  archivedAt: Date | null;
+  purgeAfter: Date | null;
+}
+
+export interface EdgeRow {
+  id: string;
+  tenantId: string;
+  sourceId: string;
+  targetId: string;
+  type: string;
+  layer: Layer;
+  traversalWeight: number;
+  attributes: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ViolationRow {
+  id: string;
+  tenantId: string;
+  nodeId: string | null;
+  edgeId: string | null;
+  ruleKey: string;
+  severity: Severity;
+  message: string;
+  attributes: Record<string, unknown>;
+  resolved: boolean;
+  resolvedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SnapshotRow {
+  id: string;
+  tenantId: string;
+  label: string;
+  nodeCount: number;
+  edgeCount: number;
+  snapshotData: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface UserRow {
+  id: string;
+  tenantId: string;
+  externalId: string;
+  displayName: string;
+  email: string | null;
+  role: UserRole;
+  attributes: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TeamRow {
+  id: string;
+  tenantId: string;
+  name: string;
+  attributes: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GuardrailRow {
+  id: string;
+  tenantId: string;
+  ruleKey: string;
+  description: string;
+  severity: Severity;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
