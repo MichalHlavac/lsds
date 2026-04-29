@@ -82,5 +82,29 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.severity).toBe("WARNING");
     expect(rule.scope.triggers).toContain("PERIODIC");
   });
+
+  it("GR-L2-005 is DESCRIPTIVE+WARNING with PERIODIC trigger (CTO ratification, LSDS-102)", () => {
+    // Past-tense check on DomainEvent name is non-blocking style guidance, so
+    // PRESCRIPTIVE+WARNING was downgraded to DESCRIPTIVE+WARNING. PERIODIC
+    // ensures legacy/imported events get surfaced by background scans, not
+    // only on CREATE/UPDATE.
+    const rule = getGuardrailOrThrow("GR-L2-005");
+    expect(rule.evaluation).toBe("DESCRIPTIVE");
+    expect(rule.severity).toBe("WARNING");
+    expect(rule.scope.triggers).toContain("PERIODIC");
+    expect(rule.scope.triggers).toContain("CREATE");
+    expect(rule.scope.triggers).toContain("UPDATE");
+  });
+
+  it("no rule uses the invalid PRESCRIPTIVE+WARNING combination", async () => {
+    // PRESCRIPTIVE rules must block (severity=ERROR); WARNING/INFO must be
+    // DESCRIPTIVE. Ratified by CTO on LSDS-90; enforced here as a regression
+    // guard so the catalog cannot drift back into PRESCRIPTIVE+WARNING.
+    const { GUARDRAIL_CATALOG } = await import("../../src/guardrail/catalog");
+    const offenders = GUARDRAIL_CATALOG.filter(
+      (r) => r.evaluation === "PRESCRIPTIVE" && r.severity === "WARNING",
+    ).map((r) => r.rule_id);
+    expect(offenders).toEqual([]);
+  });
 });
 

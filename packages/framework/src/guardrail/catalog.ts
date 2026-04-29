@@ -252,15 +252,15 @@ const L2_RULES: GuardrailRule[] = [
     name: "DomainEvent name must be past tense",
     layer: "L2",
     origin: "SEMANTIC",
-    evaluation: "PRESCRIPTIVE",
+    evaluation: "DESCRIPTIVE",
     severity: "WARNING",
     scope: {
       object_type: "DomainEvent",
-      triggers: ["CREATE", "UPDATE"],
+      triggers: ["CREATE", "UPDATE", "PERIODIC"],
     },
     condition: "is_past_tense(object.name)",
     rationale:
-      "Past-tense event names ('OrderPlaced', not 'PlaceOrder') keep events distinct from commands and prevent action/event confusion in handlers and event-sourced replay.",
+      "Past-tense event names ('OrderPlaced', not 'PlaceOrder') keep events distinct from commands and prevent action/event confusion in handlers and event-sourced replay. Detected descriptively (not blocking) so legacy or imported events surface in scans without breaking authoring; PRESCRIPTIVE+WARNING is not a valid combination — prescriptive rules block and must be ERROR.",
     remediation:
       "Rename the event to past tense (e.g. 'OrderPlaced', 'InvoiceIssued', 'PaymentRefunded').",
     propagation: "NONE",
