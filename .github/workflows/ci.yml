@@ -38,5 +38,8 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Check licenses
+        run: node scripts/check-licenses.mjs
+
       - name: Build
         run: pnpm build
