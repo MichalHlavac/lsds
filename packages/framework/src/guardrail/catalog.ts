@@ -652,13 +652,13 @@ const L5_RULES: GuardrailRule[] = [
   },
   {
     rule_id: "GR-L5-002",
-    name: "CodeModule must declare repository_reference",
+    name: "Module must declare repository_reference",
     layer: "L5",
     origin: "STRUCTURAL",
     evaluation: "PRESCRIPTIVE",
     severity: "ERROR",
     scope: {
-      object_type: "CodeModule",
+      object_type: "Module",
       triggers: ["CREATE", "UPDATE"],
     },
     condition: "object.repository_reference != null",
@@ -670,13 +670,13 @@ const L5_RULES: GuardrailRule[] = [
   },
   {
     rule_id: "GR-L5-003",
-    name: "DOMAIN CodeModule depends on INFRASTRUCTURE module",
+    name: "DOMAIN Module depends on INFRASTRUCTURE module",
     layer: "L5",
     origin: "SEMANTIC",
     evaluation: "DESCRIPTIVE",
     severity: "ERROR",
     scope: {
-      object_type: "CodeModule",
+      object_type: "Module",
       triggers: ["UPDATE", "PERIODIC"],
       relationship_type: "depends-on",
     },
@@ -728,13 +728,13 @@ const L5_RULES: GuardrailRule[] = [
   },
   {
     rule_id: "GR-L5-006",
-    name: "CodeModule without validated-by Test",
+    name: "Module without validated-by Test",
     layer: "L5",
     origin: "SEMANTIC",
     evaluation: "DESCRIPTIVE",
     severity: "WARNING",
     scope: {
-      object_type: "CodeModule",
+      object_type: "Module",
       triggers: ["UPDATE", "PERIODIC"],
       relationship_type: "validated-by",
     },

@@ -44,11 +44,22 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.scope.triggers).toContain("UPDATE");
   });
 
-  it("GR-L5-003 distinguishes CodeModule layers via module_type (kap. 4 attribute)", () => {
+  it("GR-L5-003 distinguishes Module layers via module_type (kap. 4 attribute)", () => {
     const rule = getGuardrailOrThrow("GR-L5-003");
     expect(rule.condition).toContain("object.module_type");
     expect(rule.condition).toContain("target.module_type");
     expect(rule.condition).not.toContain("classification");
+  });
+
+  it("L5 Module rules target the Zod literal type 'Module' (LSDS-104)", () => {
+    // CTO ratification (LSDS-104): the catalog used object_type 'CodeModule'
+    // (kap. 4 terminology) but the schema declares the Zod literal 'Module',
+    // so all three rules silently matched zero objects. Pin them to 'Module'
+    // so future drift back to 'CodeModule' fails this test loudly.
+    for (const id of ["GR-L5-002", "GR-L5-003", "GR-L5-006"]) {
+      const rule = getGuardrailOrThrow(id);
+      expect(rule.scope.object_type).toBe("Module");
+    }
   });
 
   it("GR-L5-005 reads TechnicalDebt.interest_rate and ages from TknBase.created_at", () => {
