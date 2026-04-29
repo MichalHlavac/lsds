@@ -990,11 +990,11 @@ const XL_RULES: GuardrailRule[] = [
       triggers: ["PERIODIC"],
     },
     condition:
-      "(now - object.last_reviewed_at) <= config.governance.review_threshold_days",
+      "(now - object.last_review_date) <= config.governance.review_threshold_days",
     rationale:
       "Even objects that aren't broken decay; periodic review keeps owner, status, and rationale honest. Severity is INFO at first and escalates per layer policy.",
     remediation:
-      "Run a lightweight review of the object: confirm owner, lifecycle, and rationale; touch last_reviewed_at when done.",
+      "Run a lightweight review of the object: confirm owner, lifecycle, and rationale; touch last_review_date when done.",
     propagation: "NONE",
   },
   {

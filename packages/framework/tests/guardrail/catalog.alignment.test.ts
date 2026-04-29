@@ -23,6 +23,14 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.condition).not.toContain("last_reviewed_at");
   });
 
+  it("GR-XL-007 measures generic staleness from last_review_date (condition + remediation)", () => {
+    const rule = getGuardrailOrThrow("GR-XL-007");
+    expect(rule.condition).toContain("object.last_review_date");
+    expect(rule.condition).not.toContain("last_reviewed_at");
+    expect(rule.remediation).toContain("last_review_date");
+    expect(rule.remediation).not.toContain("last_reviewed_at");
+  });
+
   it("GR-L4-006 reads APIEndpoint deprecation from object.status (DESCRIPTIVE+WARNING with PERIODIC trigger)", () => {
     const rule = getGuardrailOrThrow("GR-L4-006");
     expect(rule.condition).toContain("object.status == 'DEPRECATED'");
