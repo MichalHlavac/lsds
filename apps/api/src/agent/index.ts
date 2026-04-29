@@ -6,6 +6,7 @@ import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
 import type { NodeRow, EdgeRow, ViolationRow } from "../db/types.js";
 import { getTenantId, jsonb } from "../routes/util.js";
+import { AgentSearchSchema, BatchIdsSchema } from "../routes/schemas.js";
 
 // Agent API — machine-friendly surface for AI agent consumption.
 // Returns minimal, structured payloads; uses application/json throughout.
@@ -68,8 +69,7 @@ export function agentRouter(
   // ── Bulk node lookup ────────────────────────────────────────────────────────
   app.post("/nodes/batch", async (c) => {
     const tenantId = getTenantId(c);
-    const { ids } = await c.req.json() as { ids: string[] };
-    if (!Array.isArray(ids) || ids.length === 0) return c.json({ data: [] });
+    const { ids } = BatchIdsSchema.parse(await c.req.json());
     const nodes = await sql<NodeRow[]>`
       SELECT * FROM nodes WHERE id = ANY(${ids}) AND tenant_id = ${tenantId}
     `;
@@ -79,16 +79,8 @@ export function agentRouter(
   // ── Search nodes by attributes + text ──────────────────────────────────────
   app.post("/search", async (c) => {
     const tenantId = getTenantId(c);
-    const body = await c.req.json() as {
-      query?: string;
-      attributes?: Record<string, unknown>;
-      type?: string;
-      layer?: string;
-      lifecycleStatus?: string;
-      limit?: number;
-    };
-
-    const limit = Math.min(body.limit ?? 20, 100);
+    const body = AgentSearchSchema.parse(await c.req.json());
+    const { limit } = body;
 
     const nodes = await sql<NodeRow[]>`
       SELECT * FROM nodes

@@ -67,6 +67,29 @@ export const UpdateGuardrailSchema = z.object({
   config: z.record(z.unknown()).optional(),
 });
 
+export const QueryNodesSchema = z.object({
+  attributes: z.record(z.unknown()).optional(),
+  type: z.string().min(1).optional(),
+  layer: LayerEnum.optional(),
+  lifecycleStatus: LifecycleEnum.optional(),
+  text: z.string().optional(),
+  limit: z.number().int().positive().max(500).optional().default(50),
+  offset: z.number().int().min(0).optional().default(0),
+});
+
+export const AgentSearchSchema = z.object({
+  query: z.string().optional(),
+  attributes: z.record(z.unknown()).optional(),
+  type: z.string().min(1).optional(),
+  layer: LayerEnum.optional(),
+  lifecycleStatus: LifecycleEnum.optional(),
+  limit: z.number().int().positive().max(100).optional().default(20),
+});
+
+export const BatchIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1),
+});
+
 export const CreateUserSchema = z.object({
   externalId: z.string().min(1),
   displayName: z.string().min(1),
