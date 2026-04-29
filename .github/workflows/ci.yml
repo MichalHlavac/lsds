@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build framework
+        run: pnpm --filter @lsds/framework build
+
       - name: Typecheck
         run: pnpm typecheck
 
