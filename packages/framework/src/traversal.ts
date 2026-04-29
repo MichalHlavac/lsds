@@ -12,7 +12,7 @@
 // the data is stored.
 
 import type { LayerId } from "./layer/index.js";
-import type { LifecycleStatus } from "./shared/lifecycle.js";
+import type { Lifecycle } from "./lifecycle.js";
 import type { TknBase } from "./shared/base.js";
 import type {
   RelationshipEdge,
@@ -34,7 +34,7 @@ export interface ProfileSpec {
   /** Edge weights visible under this profile. */
   edgeWeights: ReadonlyArray<TraversalWeight>;
   /** Lifecycle states visible under this profile. */
-  lifecycleStatuses: ReadonlyArray<LifecycleStatus>;
+  lifecycles: ReadonlyArray<Lifecycle>;
   /** Include inherited (propagated) violations. */
   includeInheritedViolations: boolean;
   /** Include analytical buckets: decisions / requirements / debt / glossary. */
@@ -46,21 +46,21 @@ export interface ProfileSpec {
 export const PROFILE_SPEC: Record<TraversalProfile, ProfileSpec> = {
   OPERATIONAL: {
     edgeWeights: ["EAGER"],
-    lifecycleStatuses: ["ACTIVE", "DEPRECATED"],
+    lifecycles: ["ACTIVE", "DEPRECATED"],
     includeInheritedViolations: false,
     includeAnalytical: false,
     includeHistory: false,
   },
   ANALYTICAL: {
     edgeWeights: ["EAGER", "LAZY"],
-    lifecycleStatuses: ["ACTIVE", "DEPRECATED", "ARCHIVED"],
+    lifecycles: ["ACTIVE", "DEPRECATED", "ARCHIVED"],
     includeInheritedViolations: false,
     includeAnalytical: true,
     includeHistory: false,
   },
   FULL: {
     edgeWeights: ["EAGER", "LAZY"],
-    lifecycleStatuses: ["ACTIVE", "DEPRECATED", "ARCHIVED"],
+    lifecycles: ["ACTIVE", "DEPRECATED", "ARCHIVED"],
     includeInheritedViolations: true,
     includeAnalytical: true,
     includeHistory: true,
@@ -83,7 +83,7 @@ export interface NodeCard {
   type: string;
   layer: LayerId;
   name: string;
-  lifecycle: LifecycleStatus;
+  lifecycle: Lifecycle;
   /** Hop distance from the root, sign indicates direction (+up / -down / 0 root or lateral). */
   distance: number;
   /** How this node was reached from the root. */
@@ -203,7 +203,7 @@ export class DefaultTraversalEngine implements TraversalEngine {
     if (!root) {
       throw new TraversalError(`Root node not found: ${rootId}`);
     }
-    if (!spec.lifecycleStatuses.includes(root.lifecycle)) {
+    if (!spec.lifecycles.includes(root.lifecycle)) {
       throw new TraversalError(
         `Root node ${rootId} has lifecycle ${root.lifecycle} which is not visible under ${profile}`,
       );
@@ -312,7 +312,7 @@ export class DefaultTraversalEngine implements TraversalEngine {
         if (visited.has(c.neighborId)) continue;
         const n = nodeMap.get(c.neighborId);
         if (!n) continue;
-        if (!spec.lifecycleStatuses.includes(n.lifecycle)) continue;
+        if (!spec.lifecycles.includes(n.lifecycle)) continue;
         visited.add(n.id);
         const distance =
           direction === "upward"
@@ -377,7 +377,7 @@ export class DefaultTraversalEngine implements TraversalEngine {
 
     const filterVisible = (nodes: TknBase[], fallbackVia: RelationshipType): NodeCard[] =>
       nodes
-        .filter((n) => spec.lifecycleStatuses.includes(n.lifecycle))
+        .filter((n) => spec.lifecycles.includes(n.lifecycle))
         .map((n) => {
           visited.add(n.id);
           return {

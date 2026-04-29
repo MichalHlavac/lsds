@@ -3,7 +3,6 @@
 
 export * from "./layer/index.js";
 export * from "./shared/refs.js";
-export * from "./shared/lifecycle.js";
 export * from "./shared/base.js";
 export * from "./types/l1/index.js";
 export * from "./types/l2/index.js";

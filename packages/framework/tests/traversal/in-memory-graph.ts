@@ -2,7 +2,7 @@
 // Lives next to the tests so it never leaks into production builds.
 
 import type { LayerId } from "../../src/layer/index.js";
-import type { LifecycleStatus } from "../../src/shared/lifecycle.js";
+import type { Lifecycle } from "../../src/lifecycle.js";
 import type { TknBase } from "../../src/shared/base.js";
 import type {
   RelationshipEdge,
@@ -62,7 +62,7 @@ export interface NodeOpts {
   type: string;
   layer: LayerId;
   name: string;
-  lifecycle?: LifecycleStatus;
+  lifecycle?: Lifecycle;
 }
 
 export function makeNode(opts: NodeOpts): TknBase {
