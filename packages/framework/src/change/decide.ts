@@ -1,6 +1,6 @@
 import { classifyChange } from "./classifier";
 import { policyForLayer } from "./policy";
-import { propagationFor, PropagationPolicy } from "./propagation";
+import { propagationFor, ChangePropagationPolicy } from "./propagation";
 import { ChangePolicy } from "../layer/index.js";
 import {
   ChangeConfirmation,
@@ -36,7 +36,7 @@ export type ChangeDecision =
       policy: ChangePolicy;
       proposedSeverity: ChangeSeverity;
       effectiveSeverity: ChangeSeverity;
-      propagation: PropagationPolicy;
+      propagation: ChangePropagationPolicy;
       override?: ChangeOverride;
       confirmation?: ChangeConfirmation;
     };

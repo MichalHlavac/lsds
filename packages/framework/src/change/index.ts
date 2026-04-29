@@ -6,6 +6,6 @@ export {
   propagationFor,
   propagatesOver,
 } from "./propagation";
-export type { MinorPropagatingRelationship, PropagationPolicy } from "./propagation";
+export type { MinorPropagatingRelationship, ChangePropagationPolicy } from "./propagation";
 export { decideChange } from "./decide";
 export type { ChangeDecision, ChangeDecisionInput } from "./decide";
