@@ -24,7 +24,13 @@ export const TRIGGERS = ["CREATE", "UPDATE", "DELETE", "ARCHIVE", "PERIODIC"] as
 export const TriggerSchema = z.enum(TRIGGERS);
 export type Trigger = z.infer<typeof TriggerSchema>;
 
-export const PROPAGATIONS = ["NONE", "UPWARD", "DOWNWARD", "LATERAL"] as const;
+export const PROPAGATIONS = [
+  "NONE",
+  "UPWARD",
+  "DOWNWARD",
+  "BOTH",
+  "LATERAL",
+] as const;
 export const PropagationSchema = z.enum(PROPAGATIONS);
 export type Propagation = z.infer<typeof PropagationSchema>;
 
