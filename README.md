@@ -25,6 +25,30 @@ Pre-product. v1 design locked in LSDS-research. 60-day demo target.
 └──────────────────────────────────────────┘
 ```
 
+## Running with Docker
+
+```bash
+cp .env.example .env          # adjust credentials if needed
+docker compose up --build
+```
+
+The API is available at `http://localhost:3000`. Postgres data is persisted in a named volume (`db_data`). Migrations run automatically before the API starts.
+
+To run migrations manually:
+
+```bash
+docker compose run --rm migrate
+```
+
+## Development (without Docker)
+
+```bash
+pnpm install
+# requires a local Postgres; set DATABASE_URL or use defaults: postgres://lsds:lsds@localhost:5432/lsds
+pnpm --filter @lsds/api run migrate
+pnpm dev
+```
+
 ## License
 
 Business Source License 1.1. Change date 2030-04-26 → Apache 2.0. See [`LICENSE`](./LICENSE).

@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lsds}
+      POSTGRES_USER: ${POSTGRES_USER:-lsds}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lsds}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lsds} -d ${POSTGRES_DB:-lsds}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    build:
+      context: .
+    command: node apps/api/dist/db/migrate.js
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-lsds}:${POSTGRES_PASSWORD:-lsds}@db:5432/${POSTGRES_DB:-lsds}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
+  api:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      DATABASE_URL: postgres://${POSTGRES_USER:-lsds}:${POSTGRES_PASSWORD:-lsds}@db:5432/${POSTGRES_DB:-lsds}
+    ports:
+      - "${API_HOST_PORT:-3000}:${PORT:-3000}"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db_data:
