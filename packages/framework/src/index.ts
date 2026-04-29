@@ -8,6 +8,8 @@ export * from "./types/l1/index.js";
 export * from "./types/l2/index.js";
 export * from "./types/l3/index.js";
 export * from "./types/l4/index.js";
+export * from "./types/l5/index.js";
+export * from "./types/l6/index.js";
 export * from "./relationship/index.js";
 export * from "./traversal.js";
 export * from "./lifecycle.js";

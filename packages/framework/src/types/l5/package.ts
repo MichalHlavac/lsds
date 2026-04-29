@@ -1,0 +1,31 @@
+import { z } from "zod";
+import { TknBaseSchema } from "../../shared/base.js";
+import { RepoRefSchema, TeamRefSchema } from "../../shared/refs.js";
+
+export const PACKAGE_MANAGERS = [
+  "NPM",
+  "PYPI",
+  "MAVEN",
+  "GRADLE",
+  "CARGO",
+  "GO_MOD",
+  "NUGET",
+  "OTHER",
+] as const;
+export const PackageManagerSchema = z.enum(PACKAGE_MANAGERS);
+export type PackageManager = z.infer<typeof PackageManagerSchema>;
+
+export const PackageSchema = TknBaseSchema.extend({
+  type: z.literal("Package"),
+  layer: z.literal("L5"),
+  description: z.string().min(1),
+  owner: TeamRefSchema,
+  packageManager: PackageManagerSchema,
+  packageName: z.string().min(1),
+  registryUrl: z.string().url("Package.registryUrl must be a valid URL").optional(),
+  repoRef: RepoRefSchema.optional(),
+  isPublic: z.boolean(),
+});
+export type Package = z.infer<typeof PackageSchema>;
+
+export const PACKAGE_TRAVERSAL_WEIGHT = "LAZY" as const;
