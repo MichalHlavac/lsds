@@ -51,8 +51,8 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.condition).not.toContain("classification");
   });
 
-  it("L5 Module rules target the Zod literal type 'Module' (LSDS-104)", () => {
-    // CTO ratification (LSDS-104): the catalog used object_type 'CodeModule'
+  it("L5 Module rules target the Zod literal type 'Module'", () => {
+    // CTO ratification: the catalog used object_type 'CodeModule'
     // (kap. 4 terminology) but the schema declares the Zod literal 'Module',
     // so all three rules silently matched zero objects. Pin them to 'Module'
     // so future drift back to 'CodeModule' fails this test loudly.
