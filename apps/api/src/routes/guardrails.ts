@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { GuardrailRow } from "../db/types.js";
 import { CreateGuardrailSchema, UpdateGuardrailSchema } from "./schemas.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, jsonb } from "./util.js";
 
 export function guardrailsRouter(sql: Sql): Hono {
   const app = new Hono();
@@ -26,7 +26,7 @@ export function guardrailsRouter(sql: Sql): Hono {
       INSERT INTO guardrails (tenant_id, rule_key, description, severity, enabled, config)
       VALUES (
         ${tenantId}, ${body.ruleKey}, ${body.description},
-        ${body.severity}, ${body.enabled}, ${sql.json(body.config as any)}
+        ${body.severity}, ${body.enabled}, ${jsonb(sql, body.config)}
       )
       ON CONFLICT (tenant_id, rule_key) DO UPDATE SET
         description = EXCLUDED.description,
@@ -58,7 +58,7 @@ export function guardrailsRouter(sql: Sql): Hono {
         ${body.description !== undefined ? sql`description = ${body.description},` : sql``}
         ${body.severity !== undefined ? sql`severity = ${body.severity},` : sql``}
         ${body.enabled !== undefined ? sql`enabled = ${body.enabled},` : sql``}
-        ${body.config !== undefined ? sql`config = ${sql.json(body.config as any)},` : sql``}
+        ${body.config !== undefined ? sql`config = ${jsonb(sql, body.config)},` : sql``}
         updated_at = now()
       WHERE id = ${id} AND tenant_id = ${tenantId}
       RETURNING *

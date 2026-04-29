@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { UserRow, TeamRow } from "../db/types.js";
 import { CreateUserSchema, CreateTeamSchema } from "./schemas.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, jsonb } from "./util.js";
 
 export function usersRouter(sql: Sql): Hono {
   const app = new Hono();
@@ -22,7 +22,7 @@ export function usersRouter(sql: Sql): Hono {
       INSERT INTO users (tenant_id, external_id, display_name, email, role, attributes)
       VALUES (
         ${tenantId}, ${body.externalId}, ${body.displayName},
-        ${body.email ?? null}, ${body.role}, ${sql.json(body.attributes as any)}
+        ${body.email ?? null}, ${body.role}, ${jsonb(sql, body.attributes)}
       )
       ON CONFLICT (tenant_id, external_id) DO UPDATE SET
         display_name = EXCLUDED.display_name,
@@ -74,7 +74,7 @@ export function teamsRouter(sql: Sql): Hono {
     const body = CreateTeamSchema.parse(await c.req.json());
     const [row] = await sql<TeamRow[]>`
       INSERT INTO teams (tenant_id, name, attributes)
-      VALUES (${tenantId}, ${body.name}, ${sql.json(body.attributes as any)})
+      VALUES (${tenantId}, ${body.name}, ${jsonb(sql, body.attributes)})
       ON CONFLICT (tenant_id, name) DO UPDATE SET
         attributes = EXCLUDED.attributes,
         updated_at = now()

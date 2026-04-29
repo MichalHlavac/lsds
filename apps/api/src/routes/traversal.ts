@@ -4,7 +4,7 @@ import type { LsdsCache } from "../cache/index.js";
 import type { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
 import type { NodeRow } from "../db/types.js";
 import { TraverseSchema } from "./schemas.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, jsonb } from "./util.js";
 
 export function traversalRouter(
   sql: Sql,
@@ -71,7 +71,7 @@ export function queryRouter(sql: Sql): Hono {
         ${body.type ? sql`AND type = ${body.type}` : sql``}
         ${body.layer ? sql`AND layer = ${body.layer}` : sql``}
         ${body.lifecycleStatus ? sql`AND lifecycle_status = ${body.lifecycleStatus}` : sql``}
-        ${body.attributes ? sql`AND attributes @> ${sql.json(body.attributes as any)}` : sql``}
+        ${body.attributes ? sql`AND attributes @> ${jsonb(sql, body.attributes)}` : sql``}
         ${body.text ? sql`AND (name ILIKE ${"%" + body.text + "%"} OR type ILIKE ${"%" + body.text + "%"})` : sql``}
       ORDER BY updated_at DESC
       LIMIT ${limit} OFFSET ${offset}
