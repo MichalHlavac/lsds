@@ -1,3 +1,5 @@
+import type { NodeRow, EdgeRow } from "../db/types.js";
+
 export interface CacheEntry<T> {
   value: T;
   expiresAt: number;
@@ -64,8 +66,8 @@ export class TtlCache<T> {
 }
 
 export class LsdsCache {
-  readonly nodes: TtlCache<unknown>;
-  readonly edges: TtlCache<unknown>;
+  readonly nodes: TtlCache<NodeRow>;
+  readonly edges: TtlCache<EdgeRow>;
   readonly traversals: TtlCache<unknown>;
 
   constructor(ttlMs: number = 5 * 60 * 1000) {
