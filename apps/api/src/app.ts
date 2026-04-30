@@ -17,6 +17,7 @@ import { guardrailsRouter } from "./routes/guardrails.js";
 import { lifecycleRouter } from "./routes/lifecycle.js";
 import { usersRouter, teamsRouter } from "./routes/users.js";
 import { agentRouter } from "./agent/index.js";
+import { snapshotsRouter } from "./routes/snapshots.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
 const guardrails = new GuardrailsRegistry(sql);
@@ -36,6 +37,7 @@ v1.route("/lifecycle", lifecycleRouter(lifecycle));
 v1.route("/users", usersRouter(sql));
 v1.route("/teams", teamsRouter(sql));
 v1.route("/query", queryRouter(sql));
+v1.route("/snapshots", snapshotsRouter(sql));
 
 app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, adapter, guardrails, lifecycle));

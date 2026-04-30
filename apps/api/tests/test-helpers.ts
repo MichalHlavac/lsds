@@ -18,4 +18,5 @@ export async function cleanTenant(sql: Sql, tid: string): Promise<void> {
   await sql`DELETE FROM users WHERE tenant_id = ${tid}`;
   await sql`DELETE FROM teams WHERE tenant_id = ${tid}`;
   await sql`DELETE FROM guardrails WHERE tenant_id = ${tid}`;
+  await sql`DELETE FROM snapshots WHERE tenant_id = ${tid}`;
 }
