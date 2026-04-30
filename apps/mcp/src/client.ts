@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
+export class LifecycleTransitionApiError extends Error {
+  constructor(
+    public readonly currentStatus: string,
+    public readonly requestedTransition: string,
+    public readonly allowed: string[]
+  ) {
+    super(`transition '${requestedTransition}' not allowed from '${currentStatus}'`);
+  }
+}
+
 export interface LsdsClientConfig {
   baseUrl: string;
   tenantId: string;
@@ -11,6 +21,46 @@ export function getConfigFromEnv(): LsdsClientConfig {
     baseUrl: process.env["LSDS_API_URL"] ?? "http://localhost:3001",
     tenantId: process.env["LSDS_TENANT_ID"] ?? "default",
   };
+}
+
+async function lifecyclePatch<T>(
+  config: LsdsClientConfig,
+  path: string,
+  transition: string
+): Promise<T> {
+  const url = `${config.baseUrl}${path}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-tenant-id": config.tenantId },
+    body: JSON.stringify({ transition }),
+  });
+
+  if (res.status === 404) {
+    throw new Error("not found");
+  }
+  if (res.status === 422) {
+    const json = (await res.json()) as {
+      currentStatus: string;
+      requestedTransition: string;
+      allowed: string[];
+    };
+    throw new LifecycleTransitionApiError(
+      json.currentStatus,
+      json.requestedTransition,
+      json.allowed
+    );
+  }
+  if (!res.ok) {
+    let errorMsg = "unknown error";
+    try {
+      const json = (await res.json()) as { error?: string };
+      errorMsg = json.error ?? "unknown error";
+    } catch { /* non-JSON body */ }
+    throw new Error(`LSDS API PATCH ${path} → ${res.status}: ${errorMsg}`);
+  }
+
+  const json = (await res.json()) as { data?: T };
+  return json.data as T;
 }
 
 async function apiRequest<T>(
@@ -120,6 +170,12 @@ export function createLsdsClient(config: LsdsClientConfig) {
 
     archiveNode: (nodeId: string) =>
       req("POST", `/v1/lifecycle/nodes/${nodeId}/archive`),
+
+    transitionNodeLifecycle: (nodeId: string, transition: string) =>
+      lifecyclePatch(config, `/v1/nodes/${nodeId}/lifecycle`, transition),
+
+    transitionEdgeLifecycle: (edgeId: string, transition: string) =>
+      lifecyclePatch(config, `/v1/edges/${edgeId}/lifecycle`, transition),
   };
 }
 
