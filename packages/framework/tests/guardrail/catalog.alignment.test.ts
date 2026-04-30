@@ -107,6 +107,11 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.condition).toContain("object.iac_reference");
     expect(rule.evaluation).toBe("PRESCRIPTIVE");
     expect(rule.severity).toBe("ERROR");
+    // Negative: drift guard — must not use renamed IaC field names or non-canonical environment type names.
+    expect(rule.condition).not.toContain("object.iac_path");
+    expect(rule.condition).not.toContain("object.infra_ref");
+    expect(rule.condition).not.toContain("'PROD'");
+    expect(rule.condition).not.toContain("'DISASTER_RECOVERY'");
   });
 
   it("GR-L6-007 reads Environment.environment_type and Environment.promotion_gate", () => {
@@ -115,6 +120,12 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.condition).toContain("object.promotion_gate");
     expect(rule.evaluation).toBe("PRESCRIPTIVE");
     expect(rule.severity).toBe("ERROR");
+    // Negative: drift guard — must not use renamed promotion_gate variants or non-canonical environment type names.
+    expect(rule.condition).not.toContain("object.deploy_gate");
+    expect(rule.condition).not.toContain("object.release_gate");
+    expect(rule.condition).not.toContain("object.promotion_policy");
+    expect(rule.condition).not.toContain("'PROD'");
+    expect(rule.condition).not.toContain("'DISASTER_RECOVERY'");
   });
 
   it("GR-L6-008 walks OnCallPolicy `covers` edge and reads response_time_sla.p1", () => {
@@ -125,6 +136,11 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.scope.relationship_type).toBe("covers");
     expect(rule.evaluation).toBe("PRESCRIPTIVE");
     expect(rule.severity).toBe("ERROR");
+    // Negative: drift guard — must not use invented edge names or alternative SLA field names.
+    expect(rule.condition).not.toContain("type='has-oncall'");
+    expect(rule.condition).not.toContain("type='oncall-policy'");
+    expect(rule.condition).not.toContain("object.sla_p1");
+    expect(rule.condition).not.toContain("object.response_sla");
   });
 
   it("GR-L6-009 walks OnCallPolicy `covers` edge and infers PRODUCTION via deploys-to → DeploymentUnit.environment", () => {
