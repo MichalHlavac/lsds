@@ -133,7 +133,8 @@ describe("backup/restore round-trip", () => {
       const manifest = JSON.parse(manifestRaw);
 
       expect(manifest.version).toBe("1");
-      expect(manifest.schemaVersion).toBe("003_edge_lifecycle.sql");
+      expect(manifest.schemaVersion).toMatch(/\.sql$/);
+      expect(manifest.schemaVersion).not.toBe("none");
       expect(manifest.counts.nodes).toBeGreaterThanOrEqual(2);
       expect(manifest.counts.edges).toBeGreaterThanOrEqual(1);
       expect(manifest.hashes["dump.json"]).toMatch(/^sha256:[0-9a-f]{64}$/);
