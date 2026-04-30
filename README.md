@@ -49,6 +49,35 @@ pnpm --filter @lsds/api run migrate
 pnpm dev
 ```
 
+## Diagnostics bundle
+
+For support troubleshooting, generate a redacted diagnostics bundle:
+
+```bash
+# via pnpm (dev/local)
+pnpm --filter @lsds/cli run dev diagnostics bundle --out /tmp
+
+# via compiled binary
+lsds diagnostics bundle --out /tmp
+```
+
+Options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o, --out <dir>` | `.` | Output directory for the `.tar.gz` |
+| `-d, --days <n>` | `7` | Include log files modified within the last N days |
+| `--log-dir <dir>` | `/var/log/lsds` | Directory containing app `*.log` files |
+
+The bundle contains:
+
+- `system-info.json` — OS, Node.js version, CPU/memory
+- `config.json` — process environment with secrets **redacted** (`*_KEY`, `*_SECRET`, `*_TOKEN`, `PASSWORD`, `DSN`)
+- `db-version.txt` + `schema-snapshot.json` — PostgreSQL version and public schema (requires `DATABASE_URL`)
+- `logs/` — `*.log` files from `--log-dir` within the requested time window
+
+No credentials or secret values are included. You can verify this by inspecting `config.json` inside the bundle before sharing it.
+
 ## License
 
 Business Source License 1.1. Change date 2030-04-26 → Apache 2.0. See [`LICENSE`](./LICENSE).
