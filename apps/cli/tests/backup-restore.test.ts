@@ -167,6 +167,30 @@ describe("backup/restore round-trip", () => {
     expect(edges[0]!.id).toBe(edgeId);
   });
 
+  it("truncates existing data before restore (idempotent)", async () => {
+    // targetContainer has data from the previous restore.
+    // Seed an extra node under a different tenant to verify TRUNCATE removes it.
+    const OTHER_TENANT = randomUUID();
+    await targetSql`
+      INSERT INTO nodes (tenant_id, type, layer, name, lifecycle_status)
+      VALUES (${OTHER_TENANT}, 'Service', 'L4', 'extra-svc', 'ACTIVE')
+    `;
+
+    await runRestore({
+      bundlePath,
+      databaseUrl: targetContainer.getConnectionUri(),
+    });
+
+    // After restore, only the original backup data should be present.
+    const allNodes = await targetSql<{ id: string }[]>`SELECT id FROM nodes`;
+    expect(allNodes).toHaveLength(2);
+
+    const otherNodes = await targetSql<{ id: string }[]>`
+      SELECT id FROM nodes WHERE tenant_id = ${OTHER_TENANT}
+    `;
+    expect(otherNodes).toHaveLength(0);
+  });
+
   it("aborts restore on schema version mismatch", async () => {
     // Pretend the bundle was created on an older schema by tampering with the manifest.
     const { execSync } = await import("node:child_process");

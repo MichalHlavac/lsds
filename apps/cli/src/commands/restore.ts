@@ -77,6 +77,10 @@ export async function runRestore(opts: RestoreOptions): Promise<void> {
       const dump = JSON.parse(dumpRaw) as Record<string, Record<string, unknown>[]>;
 
       await sql.begin(async (tx) => {
+        // Truncate in reverse-FK order so restore is idempotent on a non-empty database.
+        for (const table of [...INSERT_ORDER].reverse()) {
+          await tx`TRUNCATE TABLE ${tx(table)} RESTART IDENTITY CASCADE`;
+        }
         for (const table of INSERT_ORDER) {
           const rows = dump[table] ?? [];
           if (rows.length === 0) continue;
