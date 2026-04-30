@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-// Relationship Registry — all 19 typed edges from kap. 2.2 of the LSDS research.
+// Relationship Registry — all 20 typed edges from kap. 2.2 of the LSDS research.
 //
 // Per kap. 2.2 every relationship has: type, semantic direction, cardinality,
 // traversal weight (EAGER/LAZY, kap. 2.10) and propagation policy (kap. 2.5).
@@ -382,6 +382,32 @@ const RAW_DEFINITIONS: ReadonlyArray<RelationshipDefinition> = [
     rationale:
       "Kap. 4 surfaces consumes both at L4 (Service.consumes → EventContract) and at L2 (DomainEvent.consumes → BoundedContextRef). " +
       "Same-layer edge in either tier; cross-tier flow is mediated through `realizes` between L2 DomainEvent and L4 EventContract.",
+  },
+  // ── Responsibility ─────────────────────────────────────────────────────────
+  {
+    type: "covers",
+    category: "RESPONSIBILITY",
+    direction: "lateral",
+    cardinality: "M:N",
+    traversalWeight: "EAGER",
+    propagationPolicy: "NONE",
+    layerRules: {
+      // Source is always an L6 OnCallPolicy. Targets span the L4 Service
+      // contract surface and the L6 DeploymentUnit runtime surface — kap. 4
+      // (OnCallPolicy.covers → Service|DeploymentUnit) and kap. 2.2 row 20.
+      allowedSourceLayers: ["L6"],
+      allowedTargetLayers: ["L4", "L6"],
+      layerOrdinalConstraint: "ANY",
+      targetIsExternal: false,
+    },
+    semantics:
+      "Source (OnCallPolicy) nese operační odpovědnost za Target (Service nebo DeploymentUnit).",
+    rationale:
+      "Kap. 2.2 row 20 + kap. 4 § L6 OnCallPolicy. The on-call policy is the operational counterpart of ownership: " +
+      "OnCallPolicy(L6) covers Service(L4) or DeploymentUnit(L6) and declares who is paged when something fails. " +
+      "EAGER because operational responsibility must be resolvable on every operational traversal — incident response " +
+      "depends on it. Propagation NONE at the structural level: structural changes to a covered Service do not cascade " +
+      "to the policy itself; semantic guardrails (GR-L6-009) handle stale-coverage detection.",
   },
 ];
 
