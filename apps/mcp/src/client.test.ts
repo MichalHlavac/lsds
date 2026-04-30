@@ -94,6 +94,20 @@ describe("createLsdsClient", () => {
     ).rejects.toThrow("404");
   });
 
+  it("throws with status code when error response body is not valid JSON", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: () => Promise.reject(new SyntaxError("Unexpected token '<'")),
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(
+      client.getContext("00000000-0000-0000-0000-000000000001")
+    ).rejects.toThrow("502");
+  });
+
   it("deprecateNode sends POST to lifecycle endpoint", async () => {
     const fetch = mockFetch({ data: { id: "abc", lifecycleStatus: "DEPRECATED" } });
     vi.stubGlobal("fetch", fetch);

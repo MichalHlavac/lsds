@@ -29,14 +29,18 @@ async function apiRequest<T>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 
-  const json = (await res.json()) as { data?: T; error?: string };
-
   if (!res.ok) {
-    throw new Error(
-      `LSDS API ${method} ${path} → ${res.status}: ${json.error ?? "unknown error"}`
-    );
+    let errorMsg = "unknown error";
+    try {
+      const json = (await res.json()) as { error?: string };
+      errorMsg = json.error ?? "unknown error";
+    } catch {
+      // Non-JSON body (e.g. 502 HTML from a gateway) — status code is sufficient
+    }
+    throw new Error(`LSDS API ${method} ${path} → ${res.status}: ${errorMsg}`);
   }
 
+  const json = (await res.json()) as { data?: T };
   return json.data as T;
 }
 
