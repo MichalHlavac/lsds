@@ -925,6 +925,26 @@ const L6_RULES: GuardrailRule[] = [
       "Attach at least one covers edge from this OnCallPolicy to the Service or DeploymentUnit it protects, set response_time_sla.p1 to a duration the team will actually meet, and number escalation_levels 1..N contiguously.",
     propagation: "LATERAL",
   },
+  {
+    rule_id: "GR-L6-009",
+    name: "Production Service without OnCallPolicy",
+    layer: "L6",
+    origin: "SEMANTIC",
+    evaluation: "DESCRIPTIVE",
+    severity: "WARNING",
+    scope: {
+      object_type: "Service",
+      triggers: ["UPDATE", "PERIODIC"],
+      relationship_type: "covers",
+    },
+    condition:
+      "!(any(object.outgoing_relationships(type='deploys-to', target_type='DeploymentUnit').target.environment == 'PRODUCTION') && incoming_relationships(type='covers', source_type='OnCallPolicy').length == 0)",
+    rationale:
+      "A production Service with no OnCallPolicy has no defined responder when it pages — incidents land in nobody's queue and resolution time degrades silently. Service has no direct environment attribute — production status is inferred via the canonical deploys-to → DeploymentUnit.environment edge (kap. 2.2), mirroring GR-L6-004; the policy link is the canonical incoming `covers` edge from OnCallPolicy. Surfaced as WARNING (not ERROR) so retired or sunsetting services can be flagged without blocking writes.",
+    remediation:
+      "Define or extend an OnCallPolicy and add a `covers` edge from it to this Service. If the service is intentionally unattended (lab, ephemeral), demote it out of PRODUCTION via deploys-to instead of suppressing the warning.",
+    propagation: "NONE",
+  },
 ];
 
 const XL_RULES: GuardrailRule[] = [
