@@ -58,41 +58,43 @@ export class PostgresTraversalAdapter implements TraversalEngine {
     maxDepth: number,
     edgeTypes?: string[]
   ): Promise<TraversalResult[]> {
-    type Row = { node_id: string; depth: number; path: string[] };
+    // Use a quoted alias "nodeId" so the column name is stable regardless of
+    // whether the postgres connection has the camelCase transform enabled.
+    type Row = { nodeId: string; depth: number; path: string[] };
     const hasFilter = edgeTypes && edgeTypes.length > 0;
     const rows: Row[] = hasFilter
       ? await this.sql.unsafe(`
           WITH RECURSIVE traversal AS (
-            SELECT n.id AS node_id, 0 AS depth, ARRAY[n.id::text] AS path
+            SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path
             FROM nodes n WHERE n.id = $1
             UNION ALL
             SELECT target.id, t.depth + 1, t.path || target.id::text
             FROM traversal t
-            JOIN edges e ON e.source_id = t.node_id::uuid AND e.type = ANY($3::text[])
+            JOIN edges e ON e.source_id = t."nodeId"::uuid AND e.type = ANY($3::text[])
             JOIN nodes target ON target.id = e.target_id
             WHERE t.depth < $2 AND NOT (target.id::text = ANY(t.path))
           )
-          SELECT node_id, depth, path FROM traversal ORDER BY depth, node_id
+          SELECT "nodeId", depth, path FROM traversal ORDER BY depth, "nodeId"
         `, [rootId, maxDepth, edgeTypes])
       : await this.sql.unsafe(`
           WITH RECURSIVE traversal AS (
-            SELECT n.id AS node_id, 0 AS depth, ARRAY[n.id::text] AS path
+            SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path
             FROM nodes n WHERE n.id = $1
             UNION ALL
             SELECT target.id, t.depth + 1, t.path || target.id::text
             FROM traversal t
-            JOIN edges e ON e.source_id = t.node_id::uuid
+            JOIN edges e ON e.source_id = t."nodeId"::uuid
             JOIN nodes target ON target.id = e.target_id
             WHERE t.depth < $2 AND NOT (target.id::text = ANY(t.path))
           )
-          SELECT node_id, depth, path FROM traversal ORDER BY depth, node_id
+          SELECT "nodeId", depth, path FROM traversal ORDER BY depth, "nodeId"
         `, [rootId, maxDepth]);
     // Deduplicate: keep the shortest-depth entry per node (same as bidirectional merge).
     const seen = new Map<string, TraversalResult>();
     for (const r of rows) {
-      const existing = seen.get(r.node_id);
+      const existing = seen.get(r.nodeId);
       if (!existing || r.depth < existing.depth) {
-        seen.set(r.node_id, { nodeId: r.node_id, depth: r.depth, path: r.path });
+        seen.set(r.nodeId, { nodeId: r.nodeId, depth: r.depth, path: r.path });
       }
     }
     return Array.from(seen.values());
@@ -103,41 +105,41 @@ export class PostgresTraversalAdapter implements TraversalEngine {
     maxDepth: number,
     edgeTypes?: string[]
   ): Promise<TraversalResult[]> {
-    type Row = { node_id: string; depth: number; path: string[] };
+    type Row = { nodeId: string; depth: number; path: string[] };
     const hasFilter = edgeTypes && edgeTypes.length > 0;
     const rows: Row[] = hasFilter
       ? await this.sql.unsafe(`
           WITH RECURSIVE traversal AS (
-            SELECT n.id AS node_id, 0 AS depth, ARRAY[n.id::text] AS path
+            SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path
             FROM nodes n WHERE n.id = $1
             UNION ALL
             SELECT source.id, t.depth + 1, t.path || source.id::text
             FROM traversal t
-            JOIN edges e ON e.target_id = t.node_id::uuid AND e.type = ANY($3::text[])
+            JOIN edges e ON e.target_id = t."nodeId"::uuid AND e.type = ANY($3::text[])
             JOIN nodes source ON source.id = e.source_id
             WHERE t.depth < $2 AND NOT (source.id::text = ANY(t.path))
           )
-          SELECT node_id, depth, path FROM traversal ORDER BY depth, node_id
+          SELECT "nodeId", depth, path FROM traversal ORDER BY depth, "nodeId"
         `, [rootId, maxDepth, edgeTypes])
       : await this.sql.unsafe(`
           WITH RECURSIVE traversal AS (
-            SELECT n.id AS node_id, 0 AS depth, ARRAY[n.id::text] AS path
+            SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path
             FROM nodes n WHERE n.id = $1
             UNION ALL
             SELECT source.id, t.depth + 1, t.path || source.id::text
             FROM traversal t
-            JOIN edges e ON e.target_id = t.node_id::uuid
+            JOIN edges e ON e.target_id = t."nodeId"::uuid
             JOIN nodes source ON source.id = e.source_id
             WHERE t.depth < $2 AND NOT (source.id::text = ANY(t.path))
           )
-          SELECT node_id, depth, path FROM traversal ORDER BY depth, node_id
+          SELECT "nodeId", depth, path FROM traversal ORDER BY depth, "nodeId"
         `, [rootId, maxDepth]);
     // Deduplicate: keep the shortest-depth entry per node.
     const seen = new Map<string, TraversalResult>();
     for (const r of rows) {
-      const existing = seen.get(r.node_id);
+      const existing = seen.get(r.nodeId);
       if (!existing || r.depth < existing.depth) {
-        seen.set(r.node_id, { nodeId: r.node_id, depth: r.depth, path: r.path });
+        seen.set(r.nodeId, { nodeId: r.nodeId, depth: r.depth, path: r.path });
       }
     }
     return Array.from(seen.values());

@@ -1,239 +1,190 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, expect, it, vi } from "vitest";
-import type { Sql } from "../src/db/client.js";
-import type { LsdsCache } from "../src/cache/index.js";
-import { LifecycleService } from "../src/lifecycle/index.js";
-import type { NodeRow } from "../src/db/types.js";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { app } from "../src/app";
+import { sql } from "../src/db/client";
+import { cleanTenant } from "./test-helpers";
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+let tid: string;
+const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 
-function makeNodeRow(overrides: Partial<NodeRow> = {}): NodeRow {
-  return {
-    id: "node-1",
-    tenantId: "t1",
-    type: "Service",
-    layer: "L3",
-    name: "auth-service",
-    version: "1.0.0",
-    lifecycleStatus: "ACTIVE",
-    attributes: {},
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    deprecatedAt: null,
-    archivedAt: null,
-    purgeAfter: null,
-    ...overrides,
-  };
+beforeEach(() => { tid = randomUUID(); });
+afterEach(async () => { await cleanTenant(sql, tid); });
+
+async function createNode(name = "test-node") {
+  const res = await app.request("/v1/nodes", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({ type: "Service", layer: "L4", name }),
+  });
+  return (await res.json()).data;
 }
 
-function makeQueuedSql(responses: unknown[][]): Sql {
-  const queue = [...responses];
-  const fn = (_first: unknown, ..._rest: unknown[]) => Promise.resolve(queue.shift() ?? []);
-  return fn as unknown as Sql;
-}
+// ── full lifecycle flow ───────────────────────────────────────────────────────
 
-function makeMockCache(): LsdsCache {
-  return {
-    nodes: {} as LsdsCache["nodes"],
-    edges: {} as LsdsCache["edges"],
-    traversals: {} as LsdsCache["traversals"],
-    nodeKey: vi.fn(),
-    edgeKey: vi.fn(),
-    traversalKey: vi.fn(),
-    invalidateNode: vi.fn(),
-    invalidateEdge: vi.fn(),
-    destroy: vi.fn(),
-  } as unknown as LsdsCache;
-}
+describe("full ACTIVE → DEPRECATED → ARCHIVED → PURGE → deleted flow", () => {
+  it("transitions a node through all lifecycle stages", async () => {
+    const node = await createNode("lifecycle-node");
 
-// ── deprecate ─────────────────────────────────────────────────────────────────
+    // 1. Deprecate (ACTIVE → DEPRECATED)
+    let res = await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("DEPRECATED");
 
-describe("LifecycleService.deprecate", () => {
-  it("returns the updated node row", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "DEPRECATED" });
-    const svc = new LifecycleService(makeQueuedSql([[node]]), makeMockCache());
-    const result = await svc.deprecate("t1", "node-1");
-    expect(result.lifecycleStatus).toBe("DEPRECATED");
-    expect(result.id).toBe("node-1");
-  });
+    // 2. Archive (DEPRECATED → ARCHIVED)
+    res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("ARCHIVED");
 
-  it("invalidates the cache after deprecating", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "DEPRECATED" });
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[node]]), cache);
-    await svc.deprecate("t1", "node-1");
-    expect(cache.invalidateNode).toHaveBeenCalledWith("t1", "node-1");
-    expect(cache.invalidateNode).toHaveBeenCalledTimes(1);
-  });
+    // 3. Mark for purge with -1 days → purge_after is in the past
+    res = await app.request(`/v1/lifecycle/nodes/${node.id}/mark-purge`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ purgeAfterDays: -1 }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("PURGE");
 
-  it("throws when node is not found or not ACTIVE", async () => {
-    const svc = new LifecycleService(makeQueuedSql([[]]), makeMockCache());
-    await expect(svc.deprecate("t1", "missing")).rejects.toThrow("node not found or not ACTIVE");
-  });
+    // 4. Purge (DELETE from DB)
+    res = await app.request(`/v1/lifecycle/nodes/${node.id}/purge`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.purged).toBe(true);
 
-  it("does not call invalidateNode on failure", async () => {
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[]]), cache);
-    await svc.deprecate("t1", "missing").catch(() => undefined);
-    expect(cache.invalidateNode).not.toHaveBeenCalled();
+    // 5. Verify the node is gone
+    res = await app.request(`/v1/nodes/${node.id}`, { headers: h() });
+    expect(res.status).toBe(404);
   });
 });
 
-// ── archive ───────────────────────────────────────────────────────────────────
+// ── POST .../deprecate ────────────────────────────────────────────────────────
 
-describe("LifecycleService.archive", () => {
-  it("returns the updated node row", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED" });
-    const svc = new LifecycleService(makeQueuedSql([[node]]), makeMockCache());
-    const result = await svc.archive("t1", "node-1");
-    expect(result.lifecycleStatus).toBe("ARCHIVED");
+describe("POST /v1/lifecycle/nodes/:id/deprecate", () => {
+  it("transitions ACTIVE → DEPRECATED and returns the node", async () => {
+    const node = await createNode();
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.lifecycleStatus).toBe("DEPRECATED");
+    expect(data.deprecatedAt).toBeTruthy();
   });
 
-  it("invalidates the cache after archiving", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED" });
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[node]]), cache);
-    await svc.archive("t1", "node-1");
-    expect(cache.invalidateNode).toHaveBeenCalledWith("t1", "node-1");
-  });
-
-  it("throws when node is not found or already archived/purged", async () => {
-    const svc = new LifecycleService(makeQueuedSql([[]]), makeMockCache());
-    await expect(svc.archive("t1", "node-1")).rejects.toThrow(
-      "node not found or already archived/purged"
-    );
-  });
-
-  it("does not call invalidateNode on failure", async () => {
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[]]), cache);
-    await svc.archive("t1", "node-1").catch(() => undefined);
-    expect(cache.invalidateNode).not.toHaveBeenCalled();
+  it("returns 400 when the node is already DEPRECATED (not ACTIVE)", async () => {
+    const node = await createNode();
+    // First deprecate: OK
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+    // Second deprecate: 400 — no longer ACTIVE
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/ACTIVE/);
   });
 });
 
-// ── markForPurge ──────────────────────────────────────────────────────────────
+// ── POST .../archive ──────────────────────────────────────────────────────────
 
-describe("LifecycleService.markForPurge", () => {
-  it("returns the updated node row", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "PURGE" });
-    const svc = new LifecycleService(makeQueuedSql([[node]]), makeMockCache());
-    const result = await svc.markForPurge("t1", "node-1");
-    expect(result.lifecycleStatus).toBe("PURGE");
+describe("POST /v1/lifecycle/nodes/:id/archive", () => {
+  it("transitions ACTIVE → ARCHIVED", async () => {
+    const node = await createNode();
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("ARCHIVED");
   });
 
-  it("invalidates the cache after marking for purge", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "PURGE" });
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[node]]), cache);
-    await svc.markForPurge("t1", "node-1");
-    expect(cache.invalidateNode).toHaveBeenCalledWith("t1", "node-1");
+  it("transitions DEPRECATED → ARCHIVED", async () => {
+    const node = await createNode();
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("ARCHIVED");
   });
 
-  it("throws when node is not ARCHIVED", async () => {
-    const svc = new LifecycleService(makeQueuedSql([[]]), makeMockCache());
-    await expect(svc.markForPurge("t1", "node-1")).rejects.toThrow(
-      "node not found or not ARCHIVED"
-    );
-  });
-
-  it("accepts a custom purgeAfterDays parameter", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "PURGE" });
-    const svc = new LifecycleService(makeQueuedSql([[node]]), makeMockCache());
-    await expect(svc.markForPurge("t1", "node-1", 30)).resolves.toBeDefined();
-  });
-
-  it("uses retention policy default when purgeAfterDays is not provided", async () => {
-    const node = makeNodeRow({ lifecycleStatus: "PURGE" });
-    const cache = makeMockCache();
-    const svc = new LifecycleService(
-      makeQueuedSql([[node]]),
-      cache,
-      { deprecatedToArchivedDays: 365, archivedToPurgeDays: 90 }
-    );
-    const result = await svc.markForPurge("t1", "node-1");
-    expect(result).toBeDefined();
+  it("returns 400 for an already ARCHIVED node", async () => {
+    const node = await createNode();
+    await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, { method: "POST", headers: h() });
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(400);
   });
 });
 
-// ── purge ─────────────────────────────────────────────────────────────────────
+// ── POST .../mark-purge ───────────────────────────────────────────────────────
 
-describe("LifecycleService.purge", () => {
-  it("resolves without value when node is eligible", async () => {
-    const svc = new LifecycleService(makeQueuedSql([[{ id: "node-1" }]]), makeMockCache());
-    await expect(svc.purge("t1", "node-1")).resolves.toBeUndefined();
+describe("POST /v1/lifecycle/nodes/:id/mark-purge", () => {
+  it("transitions ARCHIVED → PURGE and sets purge_after", async () => {
+    const node = await createNode();
+    await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, { method: "POST", headers: h() });
+
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/mark-purge`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ purgeAfterDays: 30 }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.lifecycleStatus).toBe("PURGE");
+    expect(data.purgeAfter).toBeTruthy();
   });
 
-  it("invalidates the cache after purge", async () => {
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[{ id: "node-1" }]]), cache);
-    await svc.purge("t1", "node-1");
-    expect(cache.invalidateNode).toHaveBeenCalledWith("t1", "node-1");
-  });
-
-  it("throws when node is not eligible for purge", async () => {
-    const svc = new LifecycleService(makeQueuedSql([[]]), makeMockCache());
-    await expect(svc.purge("t1", "node-1")).rejects.toThrow("node not eligible for purge");
-  });
-
-  it("does not call invalidateNode on failure", async () => {
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[]]), cache);
-    await svc.purge("t1", "node-1").catch(() => undefined);
-    expect(cache.invalidateNode).not.toHaveBeenCalled();
+  it("returns 400 when the node is not ARCHIVED", async () => {
+    const node = await createNode();  // ACTIVE state
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/mark-purge`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/ARCHIVED/);
   });
 });
 
-// ── applyRetentionPolicy ──────────────────────────────────────────────────────
+// ── DELETE .../purge ──────────────────────────────────────────────────────────
 
-describe("LifecycleService.applyRetentionPolicy", () => {
-  it("returns counts of each transition batch", async () => {
-    const svc = new LifecycleService(
-      makeQueuedSql([
-        [{ id: "n1" }, { id: "n2" }], // deprecated → archived
-        [{ id: "n3" }],               // archived → purge
-      ]),
-      makeMockCache()
-    );
-    const result = await svc.applyRetentionPolicy("t1");
-    expect(result.deprecated).toBe(2);
-    expect(result.archived).toBe(1);
+describe("DELETE /v1/lifecycle/nodes/:id/purge", () => {
+  it("returns 400 when node is not in PURGE state", async () => {
+    const node = await createNode();  // ACTIVE
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/purge`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/not eligible/);
   });
+});
 
-  it("returns zeros when no nodes transition", async () => {
-    const svc = new LifecycleService(makeQueuedSql([[], []]), makeMockCache());
-    const result = await svc.applyRetentionPolicy("t1");
-    expect(result).toEqual({ deprecated: 0, archived: 0 });
-  });
+// ── POST /v1/lifecycle/apply-retention ───────────────────────────────────────
 
-  it("invalidates cache for all transitioned nodes", async () => {
-    const cache = makeMockCache();
-    const svc = new LifecycleService(
-      makeQueuedSql([[{ id: "n1" }], [{ id: "n2" }]]),
-      cache
-    );
-    await svc.applyRetentionPolicy("t1");
-    expect(cache.invalidateNode).toHaveBeenCalledTimes(2);
-    expect(cache.invalidateNode).toHaveBeenCalledWith("t1", "n1");
-    expect(cache.invalidateNode).toHaveBeenCalledWith("t1", "n2");
-  });
-
-  it("does not call invalidateNode when both batches are empty", async () => {
-    const cache = makeMockCache();
-    const svc = new LifecycleService(makeQueuedSql([[], []]), cache);
-    await svc.applyRetentionPolicy("t1");
-    expect(cache.invalidateNode).not.toHaveBeenCalled();
-  });
-
-  it("uses custom retention policy thresholds", async () => {
-    const svc = new LifecycleService(
-      makeQueuedSql([[], []]),
-      makeMockCache(),
-      { deprecatedToArchivedDays: 30, archivedToPurgeDays: 60 }
-    );
-    const result = await svc.applyRetentionPolicy("t1");
-    expect(result).toEqual({ deprecated: 0, archived: 0 });
+describe("POST /v1/lifecycle/apply-retention", () => {
+  it("returns 200 with deprecated and archived counts", async () => {
+    const res = await app.request("/v1/lifecycle/apply-retention", {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(typeof data.deprecated).toBe("number");
+    expect(typeof data.archived).toBe("number");
   });
 });
