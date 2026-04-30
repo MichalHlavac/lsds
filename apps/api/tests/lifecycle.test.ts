@@ -244,6 +244,27 @@ describe("PATCH /v1/nodes/:id/lifecycle — positive paths", () => {
     expect((await edgeRes.json()).data.lifecycleStatus).toBe("ARCHIVED");
   });
 
+  it("archive: cascades to incoming edges (target_id = archived node)", async () => {
+    const upstream = await createNode("lc-upstream");
+    const archived = await createNode("lc-archived");
+    // incoming edge: upstream → archived (archived is the target)
+    const incomingEdge = await createEdge(upstream.id, archived.id);
+
+    await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    const res = await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "archive" }),
+    });
+    expect(res.status).toBe(200);
+
+    // Incoming edge must also be ARCHIVED (not left ACTIVE)
+    const edgeRes = await app.request(`/v1/edges/${incomingEdge.id}`, { headers: h() });
+    expect((await edgeRes.json()).data.lifecycleStatus).toBe("ARCHIVED");
+  });
+
   it("purge: ARCHIVED → PURGE", async () => {
     const node = await createNode("lc-purge");
     await app.request(`/v1/nodes/${node.id}/lifecycle`, {
