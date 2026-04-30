@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-export * from "./types";
-export * from "./violation";
-export * from "./propagation";
-export { GUARDRAIL_CATALOG } from "./catalog";
+export * from "./types.js";
+export * from "./violation.js";
+export * from "./propagation.js";
+export { GUARDRAIL_CATALOG } from "./catalog.js";
 export {
   listGuardrails,
   getGuardrail,
@@ -17,5 +17,5 @@ export {
   guardrailsBySeverity,
   findGuardrails,
   validateCatalog,
-} from "./registry";
-export type { GuardrailQuery } from "./registry";
+} from "./registry.js";
+export type { GuardrailQuery } from "./registry.js";

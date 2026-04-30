@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { classifyChange } from "./classifier";
-import { policyForLayer } from "./policy";
-import { propagationFor, ChangePropagationPolicy } from "./propagation";
+import { classifyChange } from "./classifier.js";
+import { policyForLayer } from "./policy.js";
+import { propagationFor, ChangePropagationPolicy } from "./propagation.js";
 import { ChangePolicy } from "../layer/index.js";
 import {
   ChangeConfirmation,
@@ -14,7 +14,7 @@ import {
   ChangeSeverity,
   DecisionStatus,
   ObjectLayer,
-} from "./types";
+} from "./types.js";
 
 export interface ChangeDecisionInput {
   layer: ObjectLayer;
