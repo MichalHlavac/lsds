@@ -127,6 +127,42 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.severity).toBe("ERROR");
   });
 
+  it("GR-L6-009 walks OnCallPolicy `covers` edge and infers PRODUCTION via deploys-to → DeploymentUnit.environment", () => {
+    // Positive: production status is inferred from the deploys-to →
+    // DeploymentUnit.environment edge (Service has no direct environment
+    // attribute) and the on-call link is the canonical incoming `covers`
+    // edge from OnCallPolicy. Mirrors GR-L6-004's pattern.
+    const rule = getGuardrailOrThrow("GR-L6-009");
+    expect(rule.layer).toBe("L6");
+    expect(rule.scope.object_type).toBe("Service");
+    expect(rule.condition).toContain("deploys-to");
+    expect(rule.condition).toContain("DeploymentUnit");
+    expect(rule.condition).toContain("'PRODUCTION'");
+    expect(rule.condition).toContain("type='covers'");
+    expect(rule.condition).toContain("source_type='OnCallPolicy'");
+    expect(rule.scope.relationship_type).toBe("covers");
+    expect(rule.origin).toBe("SEMANTIC");
+    expect(rule.evaluation).toBe("DESCRIPTIVE");
+    expect(rule.severity).toBe("WARNING");
+    expect(rule.scope.triggers).toContain("PERIODIC");
+    expect(rule.scope.triggers).toContain("UPDATE");
+  });
+
+  it("GR-L6-009 does not infer environment via a direct attribute or a non-canonical edge", () => {
+    // Negative: catch the two ways this rule has historically drifted —
+    // (a) reading object.environment as if Service had a direct attribute,
+    // (b) using an invented `oncalled-by`/`has-oncall` edge instead of the
+    // canonical incoming `covers` from OnCallPolicy (kap. 2.2).
+    const rule = getGuardrailOrThrow("GR-L6-009");
+    expect(rule.condition).not.toMatch(/object\.environment\s*==/);
+    expect(rule.condition).not.toContain("type='oncalled-by'");
+    expect(rule.condition).not.toContain("type='has-oncall'");
+    expect(rule.condition).not.toContain("type='oncall-for'");
+    expect(rule.rationale.length).toBeGreaterThanOrEqual(20);
+    expect(rule.remediation).toContain("OnCallPolicy");
+    expect(rule.remediation).toContain("covers");
+  });
+
   it("no rule uses the invalid PRESCRIPTIVE+WARNING combination", async () => {
     // PRESCRIPTIVE rules must block (severity=ERROR); WARNING/INFO must be
     // DESCRIPTIVE. Ratified by CTO on LSDS-90; enforced here as a regression
