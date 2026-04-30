@@ -78,13 +78,15 @@ export class LifecycleService {
       throw new LifecycleTransitionError(current, "archive", ALLOWED_TRANSITIONS[current]);
     }
 
-    // Cascade: archive all outgoing edges that aren't already ARCHIVED/PURGE
+    // Cascade: archive all edges that touch this node (outgoing and incoming)
+    // that aren't already ARCHIVED/PURGE. Incoming edges to an archived node are
+    // dangling references — structural integrity (ADR-A2) requires they follow the node.
     const cascaded = await this.sql<Pick<EdgeRow, "id" | "sourceId" | "targetId">[]>`
       UPDATE edges
       SET lifecycle_status = 'ARCHIVED',
           archived_at = now(),
           updated_at = now()
-      WHERE source_id = ${nodeId}
+      WHERE (source_id = ${nodeId} OR target_id = ${nodeId})
         AND tenant_id = ${tenantId}
         AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
       RETURNING id, source_id, target_id
