@@ -58,7 +58,9 @@ export class PostgresTraversalAdapter implements TraversalEngine {
     maxDepth: number,
     edgeTypes?: string[]
   ): Promise<TraversalResult[]> {
-    type Row = { node_id: string; depth: number; path: string[] };
+    // postgres.camel transform is active on the connection, so snake_case column
+    // names in sql.unsafe results are automatically converted to camelCase.
+    type Row = { nodeId: string; depth: number; path: string[] };
     const hasFilter = edgeTypes && edgeTypes.length > 0;
     const rows: Row[] = hasFilter
       ? await this.sql.unsafe(`
@@ -90,9 +92,9 @@ export class PostgresTraversalAdapter implements TraversalEngine {
     // Deduplicate: keep the shortest-depth entry per node (same as bidirectional merge).
     const seen = new Map<string, TraversalResult>();
     for (const r of rows) {
-      const existing = seen.get(r.node_id);
+      const existing = seen.get(r.nodeId);
       if (!existing || r.depth < existing.depth) {
-        seen.set(r.node_id, { nodeId: r.node_id, depth: r.depth, path: r.path });
+        seen.set(r.nodeId, { nodeId: r.nodeId, depth: r.depth, path: r.path });
       }
     }
     return Array.from(seen.values());
@@ -103,7 +105,7 @@ export class PostgresTraversalAdapter implements TraversalEngine {
     maxDepth: number,
     edgeTypes?: string[]
   ): Promise<TraversalResult[]> {
-    type Row = { node_id: string; depth: number; path: string[] };
+    type Row = { nodeId: string; depth: number; path: string[] };
     const hasFilter = edgeTypes && edgeTypes.length > 0;
     const rows: Row[] = hasFilter
       ? await this.sql.unsafe(`
@@ -135,9 +137,9 @@ export class PostgresTraversalAdapter implements TraversalEngine {
     // Deduplicate: keep the shortest-depth entry per node.
     const seen = new Map<string, TraversalResult>();
     for (const r of rows) {
-      const existing = seen.get(r.node_id);
+      const existing = seen.get(r.nodeId);
       if (!existing || r.depth < existing.depth) {
-        seen.set(r.node_id, { nodeId: r.node_id, depth: r.depth, path: r.path });
+        seen.set(r.nodeId, { nodeId: r.nodeId, depth: r.depth, path: r.path });
       }
     }
     return Array.from(seen.values());

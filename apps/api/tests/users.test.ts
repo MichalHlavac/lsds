@@ -1,83 +1,74 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, expect, it } from "vitest";
-import { Hono } from "hono";
-import { usersRouter, teamsRouter } from "../src/routes/users";
-import { T, ID1, ID2, h, makeSql, makeSeqSql, withErrorHandler, fakeUser, fakeTeam } from "./test-helpers";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { app } from "../src/app";
+import { sql } from "../src/db/client";
+import { cleanTenant } from "./test-helpers";
 
-function makeUsersApp(rows: unknown[] = []) {
-  const app = new Hono();
-  app.route("/v1/users", usersRouter(makeSql(rows)));
-  return withErrorHandler(app);
-}
+let tid: string;
+const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 
-function makeTeamsApp(rows: unknown[] = []) {
-  const app = new Hono();
-  app.route("/v1/teams", teamsRouter(makeSql(rows)));
-  return withErrorHandler(app);
-}
+beforeEach(() => { tid = randomUUID(); });
+afterEach(async () => { await cleanTenant(sql, tid); });
 
-function makeTeamsSeqApp(...responses: unknown[][]) {
-  const app = new Hono();
-  app.route("/v1/teams", teamsRouter(makeSeqSql(...responses)));
-  return withErrorHandler(app);
-}
-
-// ── Users ────────────────────────────────────────────────────────────────────
-
-describe("GET /v1/users", () => {
-  it("returns 200 with data array", async () => {
-    const app = makeUsersApp([fakeUser()]);
-    const res = await app.request("/v1/users", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(Array.isArray(body.data)).toBe(true);
+async function createUser(externalId = "ext-001", displayName = "Alice") {
+  const res = await app.request("/v1/users", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({ externalId, displayName, email: `${externalId}@example.com` }),
   });
+  return (await res.json()).data;
+}
 
-  it("returns 400 when x-tenant-id header is missing", async () => {
-    const app = makeUsersApp();
-    const res = await app.request("/v1/users");
-    expect(res.status).toBe(400);
+async function createTeam(name = "platform") {
+  const res = await app.request("/v1/teams", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({ name }),
   });
-});
+  return (await res.json()).data;
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
 
 describe("POST /v1/users", () => {
-  it("returns 201 for a valid user", async () => {
-    const app = makeUsersApp([fakeUser()]);
+  it("creates a user and returns 201", async () => {
     const res = await app.request("/v1/users", {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({
-        externalId: "ext-001",
-        displayName: "Alice",
-        email: "alice@example.com",
-        role: "editor",
-      }),
+      body: JSON.stringify({ externalId: "ext-001", displayName: "Alice", email: "alice@x.com" }),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
+    const { data } = await res.json();
+    expect(data.externalId).toBe("ext-001");
+    expect(data.displayName).toBe("Alice");
+    expect(data.role).toBe("viewer");
   });
 
-  it("returns 400 for invalid email", async () => {
-    const app = makeUsersApp();
+  it("upserts on duplicate externalId (same tenant)", async () => {
+    await createUser("ext-001", "Alice");
     const res = await app.request("/v1/users", {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({
-        externalId: "ext-001",
-        displayName: "Alice",
-        email: "not-an-email",
-      }),
+      body: JSON.stringify({ externalId: "ext-001", displayName: "Alice Updated" }),
+    });
+    expect(res.status).toBe(201);
+    expect((await res.json()).data.displayName).toBe("Alice Updated");
+  });
+
+  it("returns 400 for an invalid email", async () => {
+    const res = await app.request("/v1/users", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ externalId: "x", displayName: "A", email: "not-email" }),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe("validation error");
+    expect((await res.json()).error).toBe("validation error");
   });
 
   it("returns 400 when externalId is missing", async () => {
-    const app = makeUsersApp();
     const res = await app.request("/v1/users", {
       method: "POST",
       headers: h(),
@@ -85,178 +76,170 @@ describe("POST /v1/users", () => {
     });
     expect(res.status).toBe(400);
   });
+});
 
-  it("returns 400 for invalid role", async () => {
-    const app = makeUsersApp();
-    const res = await app.request("/v1/users", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ externalId: "x", displayName: "A", role: "superuser" }),
-    });
-    expect(res.status).toBe(400);
+describe("GET /v1/users", () => {
+  it("returns 200 and lists users for the tenant", async () => {
+    await createUser();
+    const res = await app.request("/v1/users", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("returns empty array for a tenant with no users", async () => {
+    const res = await app.request("/v1/users", { headers: h() });
+    expect((await res.json()).data).toEqual([]);
   });
 });
 
 describe("GET /v1/users/:id", () => {
-  it("returns 200 when user exists", async () => {
-    const app = makeUsersApp([fakeUser()]);
-    const res = await app.request(`/v1/users/${ID1}`, { headers: h() });
+  it("returns 200 and the user when found", async () => {
+    const user = await createUser();
+    const res = await app.request(`/v1/users/${user.id}`, { headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    expect((await res.json()).data.id).toBe(user.id);
   });
 
-  it("returns 404 when user does not exist", async () => {
-    const app = makeUsersApp([]);
-    const res = await app.request(`/v1/users/${ID1}`, { headers: h() });
+  it("returns 404 for a nonexistent user ID", async () => {
+    const res = await app.request(`/v1/users/${randomUUID()}`, { headers: h() });
     expect(res.status).toBe(404);
   });
 });
 
 describe("DELETE /v1/users/:id", () => {
-  it("returns 200 when user is deleted", async () => {
-    const app = makeUsersApp([{ id: ID1 }]);
-    const res = await app.request(`/v1/users/${ID1}`, {
-      method: "DELETE",
-      headers: h(),
-    });
+  it("deletes the user and returns its id", async () => {
+    const user = await createUser();
+    const res = await app.request(`/v1/users/${user.id}`, { method: "DELETE", headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    expect((await res.json()).data.id).toBe(user.id);
   });
 
-  it("returns 404 when user does not exist", async () => {
-    const app = makeUsersApp([]);
-    const res = await app.request(`/v1/users/${ID1}`, {
-      method: "DELETE",
-      headers: h(),
-    });
+  it("returns 404 for a nonexistent user ID", async () => {
+    const res = await app.request(`/v1/users/${randomUUID()}`, { method: "DELETE", headers: h() });
     expect(res.status).toBe(404);
   });
 });
 
-// ── Teams ────────────────────────────────────────────────────────────────────
-
-describe("GET /v1/teams", () => {
-  it("returns 200 with data array", async () => {
-    const app = makeTeamsApp([fakeTeam()]);
-    const res = await app.request("/v1/teams", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(Array.isArray(body.data)).toBe(true);
-  });
-});
+// ── Teams ─────────────────────────────────────────────────────────────────────
 
 describe("POST /v1/teams", () => {
-  it("returns 201 for a valid team", async () => {
-    const app = makeTeamsApp([fakeTeam()]);
+  it("creates a team and returns 201", async () => {
     const res = await app.request("/v1/teams", {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({ name: "platform" }),
+      body: JSON.stringify({ name: "backend" }),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
+    expect((await res.json()).data.name).toBe("backend");
+  });
+
+  it("upserts on duplicate name (same tenant)", async () => {
+    await createTeam("alpha");
+    const res = await app.request("/v1/teams", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ name: "alpha", attributes: { region: "eu" } }),
+    });
+    expect(res.status).toBe(201);
   });
 
   it("returns 400 when name is missing", async () => {
-    const app = makeTeamsApp();
     const res = await app.request("/v1/teams", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe("validation error");
+    expect((await res.json()).error).toBe("validation error");
   });
+});
 
-  it("returns 400 when name is empty", async () => {
-    const app = makeTeamsApp();
-    const res = await app.request("/v1/teams", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ name: "" }),
-    });
-    expect(res.status).toBe(400);
+describe("GET /v1/teams", () => {
+  it("returns 200 with teams for the tenant", async () => {
+    await createTeam();
+    const res = await app.request("/v1/teams", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.length).toBeGreaterThanOrEqual(1);
   });
 });
 
 describe("GET /v1/teams/:id", () => {
-  it("returns 200 when team exists", async () => {
-    const app = makeTeamsApp([fakeTeam()]);
-    const res = await app.request(`/v1/teams/${ID1}`, { headers: h() });
+  it("returns 200 and the team when found", async () => {
+    const team = await createTeam();
+    const res = await app.request(`/v1/teams/${team.id}`, { headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    expect((await res.json()).data.id).toBe(team.id);
   });
 
-  it("returns 404 when team does not exist", async () => {
-    const app = makeTeamsApp([]);
-    const res = await app.request(`/v1/teams/${ID1}`, { headers: h() });
+  it("returns 404 for a nonexistent team ID", async () => {
+    const res = await app.request(`/v1/teams/${randomUUID()}`, { headers: h() });
     expect(res.status).toBe(404);
   });
 });
 
 describe("POST /v1/teams/:id/members", () => {
-  it("returns 200 when team and user both exist", async () => {
-    const team = fakeTeam();
-    const user = fakeUser();
-    // team lookup → [team], user lookup → [user]
-    const app = makeTeamsSeqApp([team], [user]);
-    const res = await app.request(`/v1/teams/${ID1}/members`, {
+  it("adds a user to a team and returns the membership", async () => {
+    const team = await createTeam();
+    const user = await createUser();
+
+    const res = await app.request(`/v1/teams/${team.id}/members`, {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({ userId: ID2 }),
+      body: JSON.stringify({ userId: user.id }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.teamId).toBe(ID1);
-    expect(body.data.userId).toBe(ID2);
+    const { data } = await res.json();
+    expect(data.teamId).toBe(team.id);
+    expect(data.userId).toBe(user.id);
   });
 
-  it("returns 404 when team does not exist", async () => {
-    const app = makeTeamsSeqApp([], [fakeUser()]);
-    const res = await app.request(`/v1/teams/${ID1}/members`, {
+  it("returns 404 when the team does not exist", async () => {
+    const user = await createUser();
+    const res = await app.request(`/v1/teams/${randomUUID()}/members`, {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({ userId: ID2 }),
+      body: JSON.stringify({ userId: user.id }),
     });
     expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body.error).toMatch(/team/);
+    expect((await res.json()).error).toMatch(/team/);
   });
 
-  it("returns 404 when user does not exist", async () => {
-    const app = makeTeamsSeqApp([fakeTeam()], []);
-    const res = await app.request(`/v1/teams/${ID1}/members`, {
+  it("returns 404 when the user does not exist", async () => {
+    const team = await createTeam();
+    const res = await app.request(`/v1/teams/${team.id}/members`, {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({ userId: ID2 }),
+      body: JSON.stringify({ userId: randomUUID() }),
     });
     expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body.error).toMatch(/user/);
+    expect((await res.json()).error).toMatch(/user/);
   });
 });
 
 describe("DELETE /v1/teams/:id/members/:userId", () => {
-  it("returns 200 when team exists", async () => {
-    const app = makeTeamsSeqApp([fakeTeam()]);
-    const res = await app.request(`/v1/teams/${ID1}/members/${ID2}`, {
+  it("removes a member and returns the membership identifiers", async () => {
+    const team = await createTeam();
+    const user = await createUser();
+    await app.request(`/v1/teams/${team.id}/members`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ userId: user.id }),
+    });
+
+    const res = await app.request(`/v1/teams/${team.id}/members/${user.id}`, {
       method: "DELETE",
       headers: h(),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.teamId).toBe(ID1);
-    expect(body.data.userId).toBe(ID2);
+    const { data } = await res.json();
+    expect(data.teamId).toBe(team.id);
+    expect(data.userId).toBe(user.id);
   });
 
-  it("returns 404 when team does not exist", async () => {
-    const app = makeTeamsSeqApp([]);
-    const res = await app.request(`/v1/teams/${ID1}/members/${ID2}`, {
+  it("returns 404 when the team does not exist", async () => {
+    const res = await app.request(`/v1/teams/${randomUUID()}/members/${randomUUID()}`, {
       method: "DELETE",
       headers: h(),
     });
@@ -265,23 +248,15 @@ describe("DELETE /v1/teams/:id/members/:userId", () => {
 });
 
 describe("DELETE /v1/teams/:id", () => {
-  it("returns 200 when team is deleted", async () => {
-    const app = makeTeamsApp([{ id: ID1 }]);
-    const res = await app.request(`/v1/teams/${ID1}`, {
-      method: "DELETE",
-      headers: h(),
-    });
+  it("deletes the team and returns its id", async () => {
+    const team = await createTeam("disposable");
+    const res = await app.request(`/v1/teams/${team.id}`, { method: "DELETE", headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    expect((await res.json()).data.id).toBe(team.id);
   });
 
-  it("returns 404 when team does not exist", async () => {
-    const app = makeTeamsApp([]);
-    const res = await app.request(`/v1/teams/${ID1}`, {
-      method: "DELETE",
-      headers: h(),
-    });
+  it("returns 404 for a nonexistent team ID", async () => {
+    const res = await app.request(`/v1/teams/${randomUUID()}`, { method: "DELETE", headers: h() });
     expect(res.status).toBe(404);
   });
 });

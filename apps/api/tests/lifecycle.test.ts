@@ -1,78 +1,129 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, expect, it, vi } from "vitest";
-import { Hono } from "hono";
-import { lifecycleRouter } from "../src/routes/lifecycle";
-import type { LifecycleService } from "../src/lifecycle/index";
-import { T, ID1, h, withErrorHandler, fakeNode } from "./test-helpers";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { app } from "../src/app";
+import { sql } from "../src/db/client";
+import { cleanTenant } from "./test-helpers";
 
-function makeSvc(overrides: Partial<LifecycleService> = {}): LifecycleService {
-  return {
-    deprecate: vi.fn().mockResolvedValue(fakeNode()),
-    archive: vi.fn().mockResolvedValue(fakeNode()),
-    markForPurge: vi.fn().mockResolvedValue(fakeNode()),
-    purge: vi.fn().mockResolvedValue(undefined),
-    applyRetentionPolicy: vi.fn().mockResolvedValue({ deprecated: 0, archived: 0, purged: 0 }),
-    ...overrides,
-  } as unknown as LifecycleService;
+let tid: string;
+const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
+
+beforeEach(() => { tid = randomUUID(); });
+afterEach(async () => { await cleanTenant(sql, tid); });
+
+async function createNode(name = "test-node") {
+  const res = await app.request("/v1/nodes", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({ type: "Service", layer: "L4", name }),
+  });
+  return (await res.json()).data;
 }
 
-function makeApp(svc: LifecycleService) {
-  const app = new Hono();
-  app.route("/v1/lifecycle", lifecycleRouter(svc));
-  return withErrorHandler(app);
-}
+// ── full lifecycle flow ───────────────────────────────────────────────────────
+
+describe("full ACTIVE → DEPRECATED → ARCHIVED → PURGE → deleted flow", () => {
+  it("transitions a node through all lifecycle stages", async () => {
+    const node = await createNode("lifecycle-node");
+
+    // 1. Deprecate (ACTIVE → DEPRECATED)
+    let res = await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("DEPRECATED");
+
+    // 2. Archive (DEPRECATED → ARCHIVED)
+    res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("ARCHIVED");
+
+    // 3. Mark for purge with -1 days → purge_after is in the past
+    res = await app.request(`/v1/lifecycle/nodes/${node.id}/mark-purge`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ purgeAfterDays: -1 }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("PURGE");
+
+    // 4. Purge (DELETE from DB)
+    res = await app.request(`/v1/lifecycle/nodes/${node.id}/purge`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.purged).toBe(true);
+
+    // 5. Verify the node is gone
+    res = await app.request(`/v1/nodes/${node.id}`, { headers: h() });
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── POST .../deprecate ────────────────────────────────────────────────────────
 
 describe("POST /v1/lifecycle/nodes/:id/deprecate", () => {
-  it("returns 200 with node data on success", async () => {
-    const svc = makeSvc();
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/deprecate`, {
+  it("transitions ACTIVE → DEPRECATED and returns the node", async () => {
+    const node = await createNode();
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, {
       method: "POST",
       headers: h(),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
-    expect(svc.deprecate).toHaveBeenCalledWith(T, ID1);
+    const { data } = await res.json();
+    expect(data.lifecycleStatus).toBe("DEPRECATED");
+    expect(data.deprecatedAt).toBeTruthy();
   });
 
-  it("returns 400 when service throws", async () => {
-    const svc = makeSvc({
-      deprecate: vi.fn().mockRejectedValue(new Error("node not found or not ACTIVE")),
-    });
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/deprecate`, {
+  it("returns 400 when the node is already DEPRECATED (not ACTIVE)", async () => {
+    const node = await createNode();
+    // First deprecate: OK
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+    // Second deprecate: 400 — no longer ACTIVE
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, {
       method: "POST",
       headers: h(),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain("not ACTIVE");
+    expect((await res.json()).error).toMatch(/ACTIVE/);
   });
 });
+
+// ── POST .../archive ──────────────────────────────────────────────────────────
 
 describe("POST /v1/lifecycle/nodes/:id/archive", () => {
-  it("returns 200 with node data on success", async () => {
-    const svc = makeSvc();
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/archive`, {
+  it("transitions ACTIVE → ARCHIVED", async () => {
+    const node = await createNode();
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
       method: "POST",
       headers: h(),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
-    expect(svc.archive).toHaveBeenCalledWith(T, ID1);
+    expect((await res.json()).data.lifecycleStatus).toBe("ARCHIVED");
   });
 
-  it("returns 400 when service throws", async () => {
-    const svc = makeSvc({
-      archive: vi.fn().mockRejectedValue(new Error("already archived")),
+  it("transitions DEPRECATED → ARCHIVED", async () => {
+    const node = await createNode();
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
+      method: "POST",
+      headers: h(),
     });
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/archive`, {
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("ARCHIVED");
+  });
+
+  it("returns 400 for an already ARCHIVED node", async () => {
+    const node = await createNode();
+    await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, { method: "POST", headers: h() });
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
       method: "POST",
       headers: h(),
     });
@@ -80,69 +131,60 @@ describe("POST /v1/lifecycle/nodes/:id/archive", () => {
   });
 });
 
-describe("POST /v1/lifecycle/nodes/:id/mark-purge", () => {
-  it("returns 200 on success with no body", async () => {
-    const svc = makeSvc();
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/mark-purge`, {
-      method: "POST",
-      headers: h(),
-    });
-    expect(res.status).toBe(200);
-    expect(svc.markForPurge).toHaveBeenCalledWith(T, ID1, undefined);
-  });
+// ── POST .../mark-purge ───────────────────────────────────────────────────────
 
-  it("forwards purgeAfterDays to service", async () => {
-    const svc = makeSvc();
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/mark-purge`, {
+describe("POST /v1/lifecycle/nodes/:id/mark-purge", () => {
+  it("transitions ARCHIVED → PURGE and sets purge_after", async () => {
+    const node = await createNode();
+    await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, { method: "POST", headers: h() });
+
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/mark-purge`, {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ purgeAfterDays: 30 }),
     });
     expect(res.status).toBe(200);
-    expect(svc.markForPurge).toHaveBeenCalledWith(T, ID1, 30);
+    const { data } = await res.json();
+    expect(data.lifecycleStatus).toBe("PURGE");
+    expect(data.purgeAfter).toBeTruthy();
+  });
+
+  it("returns 400 when the node is not ARCHIVED", async () => {
+    const node = await createNode();  // ACTIVE state
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/mark-purge`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/ARCHIVED/);
   });
 });
 
-describe("DELETE /v1/lifecycle/nodes/:id/purge", () => {
-  it("returns 200 with purged: true on success", async () => {
-    const svc = makeSvc();
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/purge`, {
-      method: "DELETE",
-      headers: h(),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.purged).toBe(true);
-    expect(body.data.id).toBe(ID1);
-  });
+// ── DELETE .../purge ──────────────────────────────────────────────────────────
 
-  it("returns 400 when service throws", async () => {
-    const svc = makeSvc({
-      purge: vi.fn().mockRejectedValue(new Error("node not ready for purge")),
-    });
-    const app = makeApp(svc);
-    const res = await app.request(`/v1/lifecycle/nodes/${ID1}/purge`, {
+describe("DELETE /v1/lifecycle/nodes/:id/purge", () => {
+  it("returns 400 when node is not in PURGE state", async () => {
+    const node = await createNode();  // ACTIVE
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/purge`, {
       method: "DELETE",
       headers: h(),
     });
     expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/not eligible/);
   });
 });
 
+// ── POST /v1/lifecycle/apply-retention ───────────────────────────────────────
+
 describe("POST /v1/lifecycle/apply-retention", () => {
-  it("returns 200 with retention result", async () => {
-    const svc = makeSvc();
-    const app = makeApp(svc);
+  it("returns 200 with deprecated and archived counts", async () => {
     const res = await app.request("/v1/lifecycle/apply-retention", {
       method: "POST",
       headers: h(),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
-    expect(svc.applyRetentionPolicy).toHaveBeenCalledWith(T);
+    const { data } = await res.json();
+    expect(typeof data.deprecated).toBe("number");
+    expect(typeof data.archived).toBe("number");
   });
 });

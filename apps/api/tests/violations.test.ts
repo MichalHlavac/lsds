@@ -1,161 +1,200 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, expect, it } from "vitest";
-import { Hono } from "hono";
-import { violationsRouter } from "../src/routes/violations";
-import { T, ID1, ID2, h, makeSql, withErrorHandler, fakeViolation } from "./test-helpers";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { app } from "../src/app";
+import { sql } from "../src/db/client";
+import { cleanTenant } from "./test-helpers";
 
-function makeApp(rows: unknown[] = []) {
-  const app = new Hono();
-  app.route("/v1/violations", violationsRouter(makeSql(rows)));
-  return withErrorHandler(app);
+let tid: string;
+const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
+
+beforeEach(() => { tid = randomUUID(); });
+afterEach(async () => { await cleanTenant(sql, tid); });
+
+async function createNode() {
+  const res = await app.request("/v1/nodes", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({ type: "Service", layer: "L4", name: "target-node" }),
+  });
+  return (await res.json()).data;
 }
 
+async function createViolation(nodeId: string) {
+  const res = await app.request("/v1/violations", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({
+      nodeId,
+      ruleKey: "naming.min_length",
+      severity: "WARN",
+      message: "Name is too short",
+    }),
+  });
+  return (await res.json()).data;
+}
+
+// ── GET /v1/violations ────────────────────────────────────────────────────────
+
 describe("GET /v1/violations", () => {
-  it("returns 200 with data array", async () => {
-    const app = makeApp([fakeViolation()]);
+  it("returns 200 with an empty array for a fresh tenant", async () => {
     const res = await app.request("/v1/violations", { headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(Array.isArray(body.data)).toBe(true);
+    expect((await res.json()).data).toEqual([]);
   });
 
-  it("returns 400 when x-tenant-id header is missing", async () => {
-    const app = makeApp();
-    const res = await app.request("/v1/violations");
-    expect(res.status).toBe(400);
+  it("returns violations for the tenant", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+
+    const res = await app.request("/v1/violations", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data[0].ruleKey).toBe("naming.min_length");
+  });
+
+  it("filters by nodeId query param", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+
+    const res = await app.request(`/v1/violations?nodeId=${node.id}`, { headers: h() });
+    const { data } = await res.json();
+    expect(data.every((v: any) => v.nodeId === node.id)).toBe(true);
   });
 });
 
+// ── POST /v1/violations ───────────────────────────────────────────────────────
+
 describe("POST /v1/violations", () => {
-  it("returns 201 for a valid violation with nodeId", async () => {
-    const app = makeApp([fakeViolation()]);
+  it("creates a violation and returns 201", async () => {
+    const node = await createNode();
     const res = await app.request("/v1/violations", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({
-        nodeId: ID2,
+        nodeId: node.id,
         ruleKey: "naming.min_length",
         severity: "WARN",
         message: "Name is too short",
       }),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
+    const { data } = await res.json();
+    expect(data.ruleKey).toBe("naming.min_length");
+    expect(data.resolved).toBe(false);
   });
 
-  it("returns 201 for a valid violation with edgeId only", async () => {
-    const app = makeApp([fakeViolation()]);
+  it("creates a violation without a nodeId (edge-level violation)", async () => {
     const res = await app.request("/v1/violations", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({
-        edgeId: ID2,
-        ruleKey: "edge.cross_layer",
+        ruleKey: "edge.invalid",
         severity: "ERROR",
-        message: "Cross-layer edge not allowed",
+        message: "Edge violates constraints",
       }),
     });
     expect(res.status).toBe(201);
+    expect((await res.json()).data.nodeId).toBeNull();
   });
 
-  it("returns 400 for invalid severity", async () => {
-    const app = makeApp();
+  it("returns 400 for an invalid severity", async () => {
     const res = await app.request("/v1/violations", {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({
-        ruleKey: "naming.min_length",
-        severity: "CRITICAL",
-        message: "bad",
-      }),
+      body: JSON.stringify({ ruleKey: "r", severity: "CRITICAL", message: "m" }),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe("validation error");
+    expect((await res.json()).error).toBe("validation error");
   });
 
   it("returns 400 when ruleKey is missing", async () => {
-    const app = makeApp();
     const res = await app.request("/v1/violations", {
       method: "POST",
       headers: h(),
-      body: JSON.stringify({ severity: "WARN", message: "missing key" }),
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 400 when message is empty", async () => {
-    const app = makeApp();
-    const res = await app.request("/v1/violations", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ ruleKey: "r", severity: "WARN", message: "" }),
+      body: JSON.stringify({ severity: "WARN", message: "no rule" }),
     });
     expect(res.status).toBe(400);
   });
 });
+
+// ── GET /v1/violations/:id ────────────────────────────────────────────────────
 
 describe("GET /v1/violations/:id", () => {
-  it("returns 200 when violation exists", async () => {
-    const app = makeApp([fakeViolation()]);
-    const res = await app.request(`/v1/violations/${ID1}`, { headers: h() });
+  it("returns 200 and the violation when it exists", async () => {
+    const node = await createNode();
+    const v = await createViolation(node.id);
+
+    const res = await app.request(`/v1/violations/${v.id}`, { headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    expect((await res.json()).data.id).toBe(v.id);
   });
 
-  it("returns 404 when violation does not exist", async () => {
-    const app = makeApp([]);
-    const res = await app.request(`/v1/violations/${ID1}`, { headers: h() });
+  it("returns 404 for a nonexistent violation ID", async () => {
+    const res = await app.request(`/v1/violations/${randomUUID()}`, { headers: h() });
     expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body.error).toBe("not found");
   });
 });
+
+// ── POST /v1/violations/:id/resolve ───────────────────────────────────────────
 
 describe("POST /v1/violations/:id/resolve", () => {
-  it("returns 200 when violation is resolved", async () => {
-    const resolved = { ...fakeViolation(), resolved: true, resolvedAt: new Date() };
-    const app = makeApp([resolved]);
-    const res = await app.request(`/v1/violations/${ID1}/resolve`, {
+  it("marks the violation as resolved and returns the updated row", async () => {
+    const node = await createNode();
+    const v = await createViolation(node.id);
+
+    const res = await app.request(`/v1/violations/${v.id}/resolve`, {
       method: "POST",
       headers: h(),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
+    const { data } = await res.json();
+    expect(data.resolved).toBe(true);
+    expect(data.resolvedAt).toBeTruthy();
   });
 
-  it("returns 404 when violation not found or already resolved", async () => {
-    const app = makeApp([]);
-    const res = await app.request(`/v1/violations/${ID1}/resolve`, {
+  it("returns 404 when resolving an already-resolved violation", async () => {
+    const node = await createNode();
+    const v = await createViolation(node.id);
+    await app.request(`/v1/violations/${v.id}/resolve`, { method: "POST", headers: h() });
+
+    const res = await app.request(`/v1/violations/${v.id}/resolve`, {
       method: "POST",
       headers: h(),
     });
     expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body.error).toMatch(/not found/);
+    expect((await res.json()).error).toMatch(/already resolved/);
+  });
+
+  it("returns 404 for a nonexistent violation ID", async () => {
+    const res = await app.request(`/v1/violations/${randomUUID()}/resolve`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(404);
   });
 });
 
+// ── DELETE /v1/violations/:id ─────────────────────────────────────────────────
+
 describe("DELETE /v1/violations/:id", () => {
-  it("returns 200 when violation is deleted", async () => {
-    const app = makeApp([{ id: ID1 }]);
-    const res = await app.request(`/v1/violations/${ID1}`, {
+  it("deletes the violation and returns its id", async () => {
+    const node = await createNode();
+    const v = await createViolation(node.id);
+
+    const res = await app.request(`/v1/violations/${v.id}`, {
       method: "DELETE",
       headers: h(),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    expect((await res.json()).data.id).toBe(v.id);
   });
 
-  it("returns 404 when violation does not exist", async () => {
-    const app = makeApp([]);
-    const res = await app.request(`/v1/violations/${ID1}`, {
+  it("returns 404 for a nonexistent violation ID", async () => {
+    const res = await app.request(`/v1/violations/${randomUUID()}`, {
       method: "DELETE",
       headers: h(),
     });

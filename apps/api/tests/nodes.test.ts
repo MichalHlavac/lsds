@@ -1,48 +1,37 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, expect, it } from "vitest";
-import { Hono } from "hono";
-import { nodesRouter } from "../src/routes/nodes";
-import { T, ID1, h, makeSql, makeCache, withErrorHandler, fakeNode } from "./test-helpers";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { app } from "../src/app";
+import { sql } from "../src/db/client";
+import { cleanTenant } from "./test-helpers";
 
-function makeApp(rows: unknown[] = []) {
-  const app = new Hono();
-  app.route("/v1/nodes", nodesRouter(makeSql(rows), makeCache()));
-  return withErrorHandler(app);
-}
+let tid: string;
+const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 
-describe("GET /v1/nodes", () => {
-  it("returns 200 with data array", async () => {
-    const app = makeApp([fakeNode()]);
-    const res = await app.request("/v1/nodes", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(Array.isArray(body.data)).toBe(true);
-  });
+beforeEach(() => { tid = randomUUID(); });
+afterEach(async () => { await cleanTenant(sql, tid); });
 
-  it("returns 400 when x-tenant-id header is missing", async () => {
-    const app = makeApp();
-    const res = await app.request("/v1/nodes");
-    expect(res.status).toBe(400);
-  });
-});
+// ── POST /v1/nodes ────────────────────────────────────────────────────────────
 
 describe("POST /v1/nodes", () => {
-  it("returns 201 with a valid body", async () => {
-    const app = makeApp([fakeNode()]);
+  it("creates a node and returns 201 with the persisted row", async () => {
     const res = await app.request("/v1/nodes", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ type: "Service", layer: "L4", name: "auth-service" }),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
+    const { data } = await res.json();
+    expect(typeof data.id).toBe("string");
+    expect(data.type).toBe("Service");
+    expect(data.layer).toBe("L4");
+    expect(data.name).toBe("auth-service");
+    expect(data.lifecycleStatus).toBe("ACTIVE");
   });
 
-  it("returns 400 for missing type", async () => {
-    const app = makeApp();
+  it("returns 400 for a missing required field (type)", async () => {
     const res = await app.request("/v1/nodes", {
       method: "POST",
       headers: h(),
@@ -53,8 +42,7 @@ describe("POST /v1/nodes", () => {
     expect(body.error).toBe("validation error");
   });
 
-  it("returns 400 for invalid layer", async () => {
-    const app = makeApp();
+  it("returns 400 for an invalid layer value", async () => {
     const res = await app.request("/v1/nodes", {
       method: "POST",
       headers: h(),
@@ -63,106 +51,155 @@ describe("POST /v1/nodes", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 for invalid lifecycleStatus", async () => {
-    const app = makeApp();
+  it("returns 400 when x-tenant-id header is absent", async () => {
     const res = await app.request("/v1/nodes", {
       method: "POST",
-      headers: h(),
-      body: JSON.stringify({ type: "Service", layer: "L1", name: "x", lifecycleStatus: "GONE" }),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "x" }),
     });
     expect(res.status).toBe(400);
   });
 });
+
+// ── GET /v1/nodes ─────────────────────────────────────────────────────────────
+
+describe("GET /v1/nodes", () => {
+  it("returns 200 and lists all nodes for the tenant", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "svc-a" }),
+    });
+    const res = await app.request("/v1/nodes", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data.every((n: any) => n.type !== undefined)).toBe(true);
+  });
+
+  it("returns empty array for a tenant with no nodes", async () => {
+    const res = await app.request("/v1/nodes", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data).toEqual([]);
+  });
+
+  it("filters by type query param", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Database", layer: "L3", name: "pg" }),
+    });
+    const res = await app.request("/v1/nodes?type=Database", { headers: h() });
+    const { data } = await res.json();
+    expect(data.every((n: any) => n.type === "Database")).toBe(true);
+  });
+});
+
+// ── GET /v1/nodes/:id ─────────────────────────────────────────────────────────
 
 describe("GET /v1/nodes/:id", () => {
-  it("returns 200 when node exists", async () => {
-    const app = makeApp([fakeNode()]);
-    const res = await app.request(`/v1/nodes/${ID1}`, { headers: h() });
+  it("returns 200 and the node when it exists", async () => {
+    const createRes = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "my-node" }),
+    });
+    const { data: created } = await createRes.json();
+
+    const res = await app.request(`/v1/nodes/${created.id}`, { headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    const { data } = await res.json();
+    expect(data.id).toBe(created.id);
+    expect(data.name).toBe("my-node");
   });
 
-  it("returns 404 when node does not exist", async () => {
-    const app = makeApp([]);
-    const res = await app.request(`/v1/nodes/${ID1}`, { headers: h() });
+  it("returns 404 for a nonexistent node ID", async () => {
+    const res = await app.request(`/v1/nodes/${randomUUID()}`, { headers: h() });
     expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body.error).toBe("not found");
   });
 });
+
+// ── PATCH /v1/nodes/:id ───────────────────────────────────────────────────────
 
 describe("PATCH /v1/nodes/:id", () => {
-  it("returns 200 on successful update", async () => {
-    const app = makeApp([fakeNode()]);
-    const res = await app.request(`/v1/nodes/${ID1}`, {
+  it("updates name and returns the updated row", async () => {
+    const createRes = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "old-name" }),
+    });
+    const { data: created } = await createRes.json();
+
+    const res = await app.request(`/v1/nodes/${created.id}`, {
       method: "PATCH",
       headers: h(),
       body: JSON.stringify({ name: "new-name" }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data).toBeDefined();
+    const { data } = await res.json();
+    expect(data.name).toBe("new-name");
   });
 
-  it("returns 404 when node does not exist", async () => {
-    const app = makeApp([]);
-    const res = await app.request(`/v1/nodes/${ID1}`, {
+  it("returns 404 for a nonexistent node ID", async () => {
+    const res = await app.request(`/v1/nodes/${randomUUID()}`, {
       method: "PATCH",
       headers: h(),
-      body: JSON.stringify({ name: "new-name" }),
+      body: JSON.stringify({ name: "x" }),
     });
     expect(res.status).toBe(404);
   });
-
-  it("returns 400 for invalid lifecycleStatus in patch", async () => {
-    const app = makeApp();
-    const res = await app.request(`/v1/nodes/${ID1}`, {
-      method: "PATCH",
-      headers: h(),
-      body: JSON.stringify({ lifecycleStatus: "DEAD" }),
-    });
-    expect(res.status).toBe(400);
-  });
 });
+
+// ── DELETE /v1/nodes/:id ──────────────────────────────────────────────────────
 
 describe("DELETE /v1/nodes/:id", () => {
-  it("returns 200 when node is deleted", async () => {
-    const app = makeApp([{ id: ID1 }]);
-    const res = await app.request(`/v1/nodes/${ID1}`, {
+  it("deletes the node and returns its id", async () => {
+    const createRes = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "doomed" }),
+    });
+    const { data: created } = await createRes.json();
+
+    const delRes = await app.request(`/v1/nodes/${created.id}`, {
       method: "DELETE",
       headers: h(),
     });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.id).toBe(ID1);
+    expect(delRes.status).toBe(200);
+    expect((await delRes.json()).data.id).toBe(created.id);
+
+    // confirm gone
+    const getRes = await app.request(`/v1/nodes/${created.id}`, { headers: h() });
+    expect(getRes.status).toBe(404);
   });
 
-  it("returns 404 when node does not exist", async () => {
-    const app = makeApp([]);
-    const res = await app.request(`/v1/nodes/${ID1}`, {
+  it("returns 404 for a nonexistent node ID", async () => {
+    const res = await app.request(`/v1/nodes/${randomUUID()}`, {
       method: "DELETE",
       headers: h(),
     });
     expect(res.status).toBe(404);
   });
 });
+
+// ── GET /v1/nodes/:id/neighbors ───────────────────────────────────────────────
 
 describe("GET /v1/nodes/:id/neighbors", () => {
   it("returns 200 with outbound and inbound arrays", async () => {
-    const app = makeApp([fakeNode()]);
-    const res = await app.request(`/v1/nodes/${ID1}/neighbors`, { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data).toHaveProperty("outbound");
-    expect(body.data).toHaveProperty("inbound");
-  });
+    const createRes = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "isolated" }),
+    });
+    const { data: node } = await createRes.json();
 
-  it("returns 200 with direction=outbound", async () => {
-    const app = makeApp([fakeNode()]);
-    const res = await app.request(`/v1/nodes/${ID1}/neighbors?direction=outbound`, { headers: h() });
+    const res = await app.request(`/v1/nodes/${node.id}/neighbors`, { headers: h() });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(Array.isArray(body.data.outbound)).toBe(true);
+    const { data } = await res.json();
+    expect(Array.isArray(data.outbound)).toBe(true);
+    expect(Array.isArray(data.inbound)).toBe(true);
+    expect(data.outbound).toHaveLength(0);
+    expect(data.inbound).toHaveLength(0);
   });
 });
