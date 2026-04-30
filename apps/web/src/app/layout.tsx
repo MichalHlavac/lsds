@@ -3,6 +3,7 @@
 
 import type { Metadata } from "next";
 import "./globals.css";
+import { Sidebar } from "../components/Sidebar";
 
 export const metadata: Metadata = {
   title: "LSDS",
@@ -16,7 +17,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="flex bg-gray-950 text-gray-100 min-h-screen">
+        <Sidebar />
+        <main className="flex-1 p-8">{children}</main>
+      </body>
     </html>
   );
 }
