@@ -100,11 +100,13 @@ export function createLsdsClient(config: LsdsClientConfig) {
 
   return {
     // ── Knowledge Agent (read) ─────────────────────────────────────────────
-    getContext: (nodeId: string, depth?: number) =>
-      req(
-        "GET",
-        `/agent/v1/context/${nodeId}${depth != null ? `?depth=${depth}` : ""}`
-      ),
+    getContext: (nodeId: string, depth?: number, profile?: string) => {
+      const params = new URLSearchParams();
+      if (depth != null) params.set("depth", String(depth));
+      if (profile) params.set("profile", profile);
+      const qs = params.toString();
+      return req("GET", `/agent/v1/context/${nodeId}${qs ? `?${qs}` : ""}`);
+    },
 
     searchNodes: (params: {
       query?: string;
