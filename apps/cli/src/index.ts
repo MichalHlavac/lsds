@@ -4,6 +4,8 @@
 
 import { parseArgs } from "node:util";
 import { runDiagnosticsBundle } from "./commands/diagnostics-bundle.js";
+import { runBackup } from "./commands/backup.js";
+import { runRestore } from "./commands/restore.js";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -23,10 +25,12 @@ if (values.help || !command) {
 lsds — LSDS operational CLI
 
 Commands:
-  diagnostics bundle   Collect a redacted diagnostics bundle for support
+  backup <out-dir>         Backup full LSDS state to a tar bundle
+  restore <bundle>         Restore LSDS state from a tar bundle
+  diagnostics bundle       Collect a redacted diagnostics bundle for support
 
 Options:
-  -o, --out <dir>      Output directory (default: .)
+  -o, --out <dir>      Output directory for backup (default: .)
   -d, --days <n>       Include logs from the last N days (default: 7)
       --log-dir <dir>  Directory containing app *.log files (default: /var/log/lsds)
   -h, --help           Show this help
@@ -34,7 +38,28 @@ Options:
   process.exit(0);
 }
 
-if (command === "diagnostics" && subcommand === "bundle") {
+if (command === "backup") {
+  const outDir = subcommand ?? String(values.out);
+  const databaseUrl = process.env["DATABASE_URL"];
+  if (!databaseUrl) {
+    console.error("Error: DATABASE_URL environment variable is required for backup.");
+    process.exit(1);
+  }
+  const bundlePath = await runBackup({ outDir, databaseUrl });
+  console.log(`Backup written to: ${bundlePath}`);
+} else if (command === "restore") {
+  const bundlePath = subcommand;
+  if (!bundlePath) {
+    console.error("Error: restore requires a bundle path argument.\nUsage: lsds restore <bundle>");
+    process.exit(1);
+  }
+  const databaseUrl = process.env["DATABASE_URL"];
+  if (!databaseUrl) {
+    console.error("Error: DATABASE_URL environment variable is required for restore.");
+    process.exit(1);
+  }
+  await runRestore({ bundlePath, databaseUrl });
+} else if (command === "diagnostics" && subcommand === "bundle") {
   const bundlePath = await runDiagnosticsBundle({
     outDir: String(values.out),
     days: Math.max(1, parseInt(String(values.days), 10) || 7),

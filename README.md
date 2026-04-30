@@ -49,6 +49,30 @@ pnpm --filter @lsds/api run migrate
 pnpm dev
 ```
 
+## Backup and restore
+
+Back up and restore the complete LSDS state (graph nodes, edges, lifecycle states, violations, snapshots, users, teams, guardrails).
+
+```bash
+# Backup — writes lsds-backup-<timestamp>.tar.gz to <out-dir>
+DATABASE_URL=postgres://lsds:lsds@localhost:5432/lsds lsds backup /var/backups/lsds
+
+# Restore — target database must have migrations applied and be empty
+DATABASE_URL=postgres://lsds:lsds@localhost:5432/lsds_restore lsds restore /var/backups/lsds/lsds-backup-2026-05-01T00-00-00.tar.gz
+```
+
+**Bundle contents:**
+
+| File | Description |
+|------|-------------|
+| `manifest.json` | Schema version, timestamp, row counts, SHA-256 hashes |
+| `dump.json` | Full table export (all rows, all columns) |
+
+**Restore guards:**
+
+- Aborts with a clear error if the target schema version does not match the bundle.
+- Aborts with a clear error if the `dump.json` SHA-256 hash does not match the manifest.
+
 ## Diagnostics bundle
 
 For support troubleshooting, generate a redacted diagnostics bundle:
