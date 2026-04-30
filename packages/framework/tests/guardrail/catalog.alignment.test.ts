@@ -256,3 +256,377 @@ describe("catalog field-name alignment with kap. 4", () => {
   });
 });
 
+// Lock-in for the cross-layer (XL) catalog row of kap. 5 (LSDS-166).
+// Mirrors the L1 (LSDS-165) and L6 (LSDS-144) alignment scans: every
+// XL-NNN rule asserts condition fields, remediation references, propagation
+// policy, and severity so silent drift in the universal/lifecycle rules
+// fails loudly with the exact rule id.
+describe("catalog field-name alignment with kap. 5 — GR-XL", () => {
+  describe("GR-XL-001 — Object without owner (universal owner attribute)", () => {
+    const rule = getGuardrailOrThrow("GR-XL-001");
+
+    it("condition reads the canonical TknBase.owner attribute", () => {
+      // Positive: kap. 4 universal TknBase exposes `owner` (TeamRef|PersonRef).
+      expect(rule.condition).toContain("object.owner");
+      expect(rule.condition).toContain("!= null");
+      // Negative: the owner attribute is the universal one, not a per-type
+      // alias such as ownerId, owner_id, or owner_team.
+      expect(rule.condition).not.toContain("object.ownerId");
+      expect(rule.condition).not.toContain("object.owner_id");
+      expect(rule.condition).not.toContain("object.owner_team");
+      expect(rule.condition).not.toContain("object.team_owner");
+      expect(rule.condition).not.toContain("object.responsible");
+    });
+
+    it("remediation names owner + TeamRef/PersonRef so authors know what to set", () => {
+      expect(rule.remediation).toContain("owner");
+      expect(rule.remediation).toMatch(/TeamRef|PersonRef/);
+    });
+
+    it("severity ERROR + propagation NONE (rule is local — owner does not cascade)", () => {
+      // Owner-missing is a structural local invariant — there is no parent
+      // that should inherit a missing-owner violation, so propagation stays
+      // NONE. PRESCRIPTIVE+ERROR is the only valid blocking combination.
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope is universal (object_type='*') with CREATE+UPDATE triggers", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+  });
+
+  describe("GR-XL-002 — Relationship targets a non-existent object", () => {
+    const rule = getGuardrailOrThrow("GR-XL-002");
+
+    it("condition checks the canonical target_object_id reference", () => {
+      // Positive: kap. 2.2 names the field `target_object_id` (and
+      // `source_object_id`); other variants are drift.
+      expect(rule.condition).toContain("target_object_id");
+      // Negative: drift guards for the most likely renames.
+      expect(rule.condition).not.toContain("targetId");
+      expect(rule.condition).not.toContain("target_id");
+      expect(rule.condition).not.toContain("toId");
+      expect(rule.condition).not.toContain("to_id");
+    });
+
+    it("remediation tells the author to create the target or drop the edge", () => {
+      expect(rule.remediation.toLowerCase()).toContain("relationship");
+      expect(rule.remediation.toLowerCase()).toMatch(/target|missing/);
+    });
+
+    it("severity ERROR + propagation LATERAL (dangling edge spreads via the graph)", () => {
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("LATERAL");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope targets the Relationship pseudo-object on CREATE+UPDATE", () => {
+      expect(rule.scope.object_type).toBe("Relationship");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+  });
+
+  describe("GR-XL-003 — Relationship violates layer rules", () => {
+    const rule = getGuardrailOrThrow("GR-XL-003");
+
+    it("condition references source.layer and target.layer (kap. 3 layer ordinal)", () => {
+      // Positive: layer rules are checked off the source/target layer
+      // ordinals defined in kap. 3.
+      expect(rule.condition).toContain("source.layer");
+      expect(rule.condition).toContain("target.layer");
+      expect(rule.condition).toContain("relationship.kind");
+      // Negative: must not invent attribute names for the layer dimension.
+      expect(rule.condition).not.toContain("source_layer");
+      expect(rule.condition).not.toContain("target_layer");
+      expect(rule.condition).not.toContain("layer_id");
+    });
+
+    it("remediation talks about layers and re-targeting via permitted relationship kinds", () => {
+      expect(rule.remediation.toLowerCase()).toMatch(/layer|relationship|kind/);
+    });
+
+    it("severity ERROR + propagation LATERAL (illegal edge stays at the seam)", () => {
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("LATERAL");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope targets the Relationship pseudo-object on CREATE+UPDATE", () => {
+      expect(rule.scope.object_type).toBe("Relationship");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+  });
+
+  describe("GR-XL-004 — Archiving an object with ACTIVE dependents", () => {
+    const rule = getGuardrailOrThrow("GR-XL-004");
+
+    it("condition reads incoming relationships and source.lifecycle='ACTIVE'", () => {
+      // Positive: cascade is detected by inspecting incoming edges and the
+      // source object's lifecycle (kap. 2.9 lifecycle vocabulary).
+      expect(rule.condition).toContain("incoming_relationships");
+      expect(rule.condition).toContain("source.lifecycle");
+      expect(rule.condition).toContain("'ACTIVE'");
+      // Negative: lifecycle is the universal field — not state/status/phase.
+      expect(rule.condition).not.toContain("source.state");
+      expect(rule.condition).not.toContain("source.status");
+      expect(rule.condition).not.toContain("source.phase");
+    });
+
+    it("remediation names migrating/archiving dependents before the parent", () => {
+      expect(rule.remediation.toLowerCase()).toMatch(/dependent|migrate|archive/);
+    });
+
+    it("severity ERROR + propagation DOWNWARD (cascades to dependents)", () => {
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("DOWNWARD");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope is universal with ARCHIVE + UPDATE triggers", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.triggers).toContain("ARCHIVE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+  });
+
+  describe("GR-XL-005 — Hard delete of an object with incoming relationships", () => {
+    const rule = getGuardrailOrThrow("GR-XL-005");
+
+    it("condition checks incoming_relationships count is 0 on the deleted target", () => {
+      expect(rule.condition).toContain("incoming_relationships");
+      expect(rule.condition).toContain("length == 0");
+      // Negative: must not invert the meaning by checking outgoing edges.
+      expect(rule.condition).not.toContain("outgoing_relationships");
+    });
+
+    it("remediation routes the author to ARCHIVED → PURGE (no hard delete shortcut)", () => {
+      expect(rule.remediation).toContain("ARCHIVED");
+      expect(rule.remediation).toContain("PURGE");
+    });
+
+    it("severity ERROR + propagation DOWNWARD (deletion would orphan dependents)", () => {
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("DOWNWARD");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope is universal and fires on DELETE only", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.triggers).toContain("DELETE");
+    });
+  });
+
+  describe("GR-XL-006 — DEPRECATED object still has active depends-on dependents", () => {
+    const rule = getGuardrailOrThrow("GR-XL-006");
+
+    it("condition reads object.lifecycle='DEPRECATED' and incoming depends-on with ACTIVE source", () => {
+      expect(rule.condition).toContain("object.lifecycle");
+      expect(rule.condition).toContain("'DEPRECATED'");
+      expect(rule.condition).toContain("type='depends-on'");
+      expect(rule.condition).toContain("source.lifecycle");
+      expect(rule.condition).toContain("'ACTIVE'");
+      // Negative: must not use object.status/state for the lifecycle field
+      // and must not invent depends-on aliases.
+      expect(rule.condition).not.toContain("object.status == 'DEPRECATED'");
+      expect(rule.condition).not.toContain("object.state == 'DEPRECATED'");
+      expect(rule.condition).not.toContain("type='uses'");
+      expect(rule.condition).not.toContain("type='consumes'");
+    });
+
+    it("remediation surfaces migration of ACTIVE dependents or rolling lifecycle back", () => {
+      expect(rule.remediation.toLowerCase()).toMatch(/migrat|rollback|active/);
+    });
+
+    it("severity WARNING + propagation DOWNWARD (descriptive, not blocking)", () => {
+      // STRUCTURAL but DESCRIPTIVE: the framework wants to surface stalled
+      // deprecations, not block writes that landed before the deprecation.
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      expect(rule.propagation).toBe("DOWNWARD");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope is universal with PERIODIC + UPDATE triggers and depends-on relationship_type", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.relationship_type).toBe("depends-on");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+  });
+
+  describe("GR-XL-008 — Object with > 20 direct relationships (god object)", () => {
+    const rule = getGuardrailOrThrow("GR-XL-008");
+
+    it("condition reads object.direct_relationships.length and the literal 20 threshold", () => {
+      expect(rule.condition).toContain("object.direct_relationships");
+      expect(rule.condition).toContain("length");
+      expect(rule.condition).toContain("20");
+      // Negative: must not use renamed counters or alternative thresholds.
+      expect(rule.condition).not.toContain("object.relationship_count");
+      expect(rule.condition).not.toContain("object.edges");
+      expect(rule.condition).not.toContain("object.relationships.length");
+    });
+
+    it("remediation suggests decomposition / aggregating intermediary", () => {
+      expect(rule.remediation.toLowerCase()).toMatch(/decompose|split|aggreg/);
+    });
+
+    it("severity INFO + propagation LATERAL (advisory, surfaced on the cluster)", () => {
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("INFO");
+      expect(rule.propagation).toBe("LATERAL");
+      expect(rule.origin).toBe("SEMANTIC");
+    });
+
+    it("scope is universal with PERIODIC + UPDATE triggers", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+  });
+
+  describe("GR-XL-009 — DEPRECATED object still has active depends-on relationships", () => {
+    const rule = getGuardrailOrThrow("GR-XL-009");
+
+    it("condition reads object.lifecycle and walks incoming depends-on for ACTIVE callers", () => {
+      // ADR A09 (archive lifecycle) frames this as the migration-debt rule
+      // distinct from XL-006: it counts incoming depends-on edges where the
+      // source's lifecycle is still ACTIVE.
+      expect(rule.condition).toContain("object.lifecycle");
+      expect(rule.condition).toContain("'DEPRECATED'");
+      expect(rule.condition).toContain("'depends-on'");
+      expect(rule.condition).toContain("'ACTIVE'");
+      // Negative: must not flatten lifecycle to status/state.
+      expect(rule.condition).not.toContain("object.status == 'DEPRECATED'");
+      expect(rule.condition).not.toContain("object.state == 'DEPRECATED'");
+    });
+
+    it("remediation names migrating ACTIVE consumers or rolling lifecycle back", () => {
+      expect(rule.remediation.toLowerCase()).toMatch(/migrat|active|consumer/);
+      expect(rule.remediation).toContain("ACTIVE");
+    });
+
+    it("severity WARNING + propagation UPWARD (callers escalate to the deprecated owner)", () => {
+      // ADR A09 places XL-009 alongside XL-006 as the structural pair that
+      // surfaces stalled migrations; severity is WARNING (not ERROR) so the
+      // deprecation itself is not blocked.
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      expect(rule.propagation).toBe("UPWARD");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope is universal with UPDATE + PERIODIC triggers and depends-on relationship_type", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.relationship_type).toBe("depends-on");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+  });
+
+  describe("GR-XL-010 — ARCHIVED object has non-archived contains children", () => {
+    const rule = getGuardrailOrThrow("GR-XL-010");
+
+    it("condition reads object.lifecycle='ARCHIVED' and walks outgoing contains children", () => {
+      expect(rule.condition).toContain("object.lifecycle");
+      expect(rule.condition).toContain("'ARCHIVED'");
+      expect(rule.condition).toContain("'contains'");
+      // PURGE is an accepted terminal sibling of ARCHIVED for cascade.
+      expect(rule.condition).toContain("'PURGE'");
+      // Negative: must not invent edge aliases or use status/state for lifecycle.
+      expect(rule.condition).not.toContain("type='has-child'");
+      expect(rule.condition).not.toContain("type='owns'");
+      expect(rule.condition).not.toContain("object.status == 'ARCHIVED'");
+    });
+
+    it("remediation tells author to archive children before parent (cascade rule)", () => {
+      expect(rule.remediation.toLowerCase()).toMatch(/archive|child|migrate/);
+    });
+
+    it("severity ERROR + propagation DOWNWARD (children inherit the cascade)", () => {
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("DOWNWARD");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope is universal with UPDATE + ARCHIVE + PERIODIC triggers and contains relationship_type", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.relationship_type).toBe("contains");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("ARCHIVE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+  });
+
+  describe("GR-XL-011 — Hard delete blocked while incoming relationships exist", () => {
+    const rule = getGuardrailOrThrow("GR-XL-011");
+
+    it("condition checks object.incoming_relationships.length is 0", () => {
+      expect(rule.condition).toContain("object.incoming_relationships");
+      expect(rule.condition).toContain("length");
+      expect(rule.condition).toContain("0");
+      // Negative: must not invert direction or use renamed counters.
+      expect(rule.condition).not.toContain("object.outgoing_relationships");
+      expect(rule.condition).not.toContain("object.inbound");
+    });
+
+    it("remediation routes through DEPRECATED → ARCHIVED → PURGE (the lifecycle path)", () => {
+      expect(rule.remediation).toContain("DEPRECATED");
+      expect(rule.remediation).toContain("ARCHIVED");
+      expect(rule.remediation).toContain("PURGE");
+    });
+
+    it("severity ERROR + propagation UPWARD (the still-pointing parents need to know)", () => {
+      // ADR A09 pairs XL-005 + XL-011 as the structural guarantee that PURGE
+      // is the only sanctioned physical removal path. XL-011 escalates
+      // upward: the agent attempting the delete (and any blocking parents)
+      // are the ones who must act.
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("UPWARD");
+      expect(rule.origin).toBe("STRUCTURAL");
+    });
+
+    it("scope is universal and fires on DELETE only", () => {
+      expect(rule.scope.object_type).toBe("*");
+      expect(rule.scope.triggers).toContain("DELETE");
+    });
+  });
+
+  it("every GR-XL-NNN rule has at least one alignment assertion (no XL rule unguarded)", async () => {
+    // Fail loudly if a future XL rule lands in the catalog without an
+    // accompanying drift guard in this file. Keeps LSDS-166 enforced.
+    const { GUARDRAIL_CATALOG } = await import("../../src/guardrail/catalog");
+    const xlRules = GUARDRAIL_CATALOG.filter((r) => r.layer === "XL").map(
+      (r) => r.rule_id,
+    );
+    const guardedIds = new Set([
+      "GR-XL-001",
+      "GR-XL-002",
+      "GR-XL-003",
+      "GR-XL-004",
+      "GR-XL-005",
+      "GR-XL-006",
+      "GR-XL-007",
+      "GR-XL-008",
+      "GR-XL-009",
+      "GR-XL-010",
+      "GR-XL-011",
+    ]);
+    const unguarded = xlRules.filter((id) => !guardedIds.has(id));
+    expect(unguarded).toEqual([]);
+  });
+});
+
