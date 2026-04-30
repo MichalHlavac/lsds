@@ -30,9 +30,13 @@ export interface EdgeRow {
   type: string;
   layer: Layer;
   traversalWeight: number;
+  lifecycleStatus: LifecycleStatus;
   attributes: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+  deprecatedAt: Date | null;
+  archivedAt: Date | null;
+  purgeAfter: Date | null;
 }
 
 export interface ViolationRow {
