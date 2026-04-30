@@ -87,7 +87,15 @@ export class PostgresTraversalAdapter implements TraversalEngine {
           )
           SELECT node_id, depth, path FROM traversal ORDER BY depth, node_id
         `, [rootId, maxDepth]);
-    return rows.map((r) => ({ nodeId: r.node_id, depth: r.depth, path: r.path }));
+    // Deduplicate: keep the shortest-depth entry per node (same as bidirectional merge).
+    const seen = new Map<string, TraversalResult>();
+    for (const r of rows) {
+      const existing = seen.get(r.node_id);
+      if (!existing || r.depth < existing.depth) {
+        seen.set(r.node_id, { nodeId: r.node_id, depth: r.depth, path: r.path });
+      }
+    }
+    return Array.from(seen.values());
   }
 
   private async inboundCTE(
@@ -124,6 +132,14 @@ export class PostgresTraversalAdapter implements TraversalEngine {
           )
           SELECT node_id, depth, path FROM traversal ORDER BY depth, node_id
         `, [rootId, maxDepth]);
-    return rows.map((r) => ({ nodeId: r.node_id, depth: r.depth, path: r.path }));
+    // Deduplicate: keep the shortest-depth entry per node.
+    const seen = new Map<string, TraversalResult>();
+    for (const r of rows) {
+      const existing = seen.get(r.node_id);
+      if (!existing || r.depth < existing.depth) {
+        seen.set(r.node_id, { nodeId: r.node_id, depth: r.depth, path: r.path });
+      }
+    }
+    return Array.from(seen.values());
   }
 }
