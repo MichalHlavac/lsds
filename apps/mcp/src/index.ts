@@ -19,7 +19,7 @@ const server = new McpServer({
 
 server.tool(
   "lsds_get_context",
-  "Get the full context package for a knowledge graph node: the node itself, its direct neighbors, edges, and open violations. Use this to understand a component's role in the architecture.",
+  "Get the full context package for a knowledge graph node assembled by the traversal engine. Returns the root node, neighbor buckets (upward/downward/lateral), open violations, and a truncation report. Use this to understand a component's role in the architecture.",
   {
     nodeId: z.string().uuid().describe("UUID of the node to fetch context for"),
     depth: z
@@ -29,10 +29,16 @@ server.tool(
       .max(5)
       .optional()
       .describe("Traversal depth 1–5 (default 2)"),
+    profile: z
+      .enum(["OPERATIONAL", "ANALYTICAL", "FULL"])
+      .optional()
+      .describe(
+        "Traversal profile controlling which edges and lifecycle states are visible. OPERATIONAL (default): EAGER edges, ACTIVE+DEPRECATED nodes. ANALYTICAL: adds LAZY edges, ARCHIVED nodes, and analytical buckets. FULL: all of the above plus inherited violations and history."
+      ),
   },
-  async ({ nodeId, depth }) => {
+  async ({ nodeId, depth, profile }) => {
     try {
-      const data = await client.getContext(nodeId, depth);
+      const data = await client.getContext(nodeId, depth, profile);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     } catch (e) {
       return { content: [{ type: "text", text: String(e) }], isError: true };

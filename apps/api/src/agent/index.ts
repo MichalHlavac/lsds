@@ -2,71 +2,71 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
+import {
+  DefaultTraversalEngine,
+  TraversalError,
+  type TraversalProfile,
+} from "@lsds/framework";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
-import type { TraversalEngine } from "../db/traversal-adapter.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
-import type { NodeRow, EdgeRow, ViolationRow } from "../db/types.js";
+import type { NodeRow, ViolationRow } from "../db/types.js";
 import { getTenantId, jsonb } from "../routes/util.js";
 import { AgentSearchSchema, BatchIdsSchema } from "../routes/schemas.js";
+import { PostgresGraphRepository } from "../db/graph-repository.js";
 
 // Agent API — machine-friendly surface for AI agent consumption.
 // Returns minimal, structured payloads; uses application/json throughout.
 // Bulk operations are preferred over per-item round-trips.
 
+const VALID_PROFILES: ReadonlySet<string> = new Set(["OPERATIONAL", "ANALYTICAL", "FULL"]);
+
 export function agentRouter(
   sql: Sql,
   cache: LsdsCache,
-  adapter: TraversalEngine,
   guardrails: GuardrailsRegistry,
   lifecycle: LifecycleService
 ): Hono {
   const app = new Hono();
 
   // ── Context package: full graph context for a node ─────────────────────────
-  // Returns the node + its neighbors + open violations in one round-trip.
+  // Returns a ContextPackage assembled by DefaultTraversalEngine.
+  // ?profile=OPERATIONAL|ANALYTICAL|FULL (default OPERATIONAL)
+  // ?tokenBudget=<number>               (default 4000)
   app.get("/context/:nodeId", async (c) => {
     const tenantId = getTenantId(c);
     const { nodeId } = c.req.param();
-    const depth = Math.min(Number(c.req.query("depth") ?? 2), 5);
 
-    const cacheKey = `agent:ctx:${cache.traversalKey(tenantId, nodeId, depth, "both")}`;
+    const profileParam = c.req.query("profile") ?? "OPERATIONAL";
+    if (!VALID_PROFILES.has(profileParam)) {
+      return c.json({ error: "invalid profile: must be OPERATIONAL, ANALYTICAL, or FULL" }, 400);
+    }
+    const profile = profileParam as TraversalProfile;
+
+    const tokenBudgetParam = c.req.query("tokenBudget");
+    const tokenBudget = tokenBudgetParam != null ? Number(tokenBudgetParam) : undefined;
+    if (tokenBudget !== undefined && (!Number.isFinite(tokenBudget) || tokenBudget <= 0)) {
+      return c.json({ error: "tokenBudget must be a positive number" }, 400);
+    }
+
+    const cacheKey = `agent:ctx:${tenantId}:${nodeId}:${profile}:${tokenBudget ?? ""}`;
     const hit = cache.traversals.get(cacheKey);
     if (hit) return c.json({ data: hit, cached: true });
 
-    const [node] = await sql<NodeRow[]>`
-      SELECT * FROM nodes WHERE id = ${nodeId} AND tenant_id = ${tenantId}
-    `;
-    if (!node) return c.json({ error: "not found" }, 404);
+    const repo = new PostgresGraphRepository(sql, tenantId);
+    const engine = new DefaultTraversalEngine(repo);
 
-    const traversalResults = await adapter.traverseWithDepth(nodeId, depth, "both");
-    const neighborIds = traversalResults.map((r) => r.nodeId).filter((id) => id !== nodeId);
-
-    const [neighbors, edges, violations] = await Promise.all([
-      neighborIds.length > 0
-        ? sql<NodeRow[]>`SELECT * FROM nodes WHERE id = ANY(${neighborIds}) AND tenant_id = ${tenantId}`
-        : Promise.resolve([] as NodeRow[]),
-      sql<EdgeRow[]>`
-        SELECT * FROM edges
-        WHERE tenant_id = ${tenantId}
-          AND (source_id = ${nodeId} OR target_id = ${nodeId})
-      `,
-      sql<ViolationRow[]>`
-        SELECT * FROM violations
-        WHERE tenant_id = ${tenantId} AND node_id = ${nodeId} AND resolved = FALSE
-      `,
-    ]);
-
-    const result = {
-      node,
-      neighbors,
-      edges,
-      violations,
-      traversal: traversalResults,
-    };
-    cache.traversals.set(cacheKey, result);
-    return c.json({ data: result, cached: false });
+    try {
+      const pkg = await engine.traverse(nodeId, { profile, tokenBudget });
+      cache.traversals.set(cacheKey, pkg);
+      return c.json({ data: pkg, cached: false });
+    } catch (e) {
+      if (e instanceof TraversalError) {
+        return c.json({ error: e.message }, 404);
+      }
+      throw e;
+    }
   });
 
   // ── Bulk node lookup ────────────────────────────────────────────────────────
