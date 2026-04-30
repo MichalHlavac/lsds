@@ -265,6 +265,26 @@ describe("PATCH /v1/nodes/:id/lifecycle — positive paths", () => {
     expect((await edgeRes.json()).data.lifecycleStatus).toBe("ARCHIVED");
   });
 
+  it("deprecate does not cascade incoming edges — edge stays ACTIVE", async () => {
+    const upstream = await createNode("lc-no-cascade-up");
+    const target = await createNode("lc-no-cascade-tgt");
+    // incoming edge: upstream → target
+    const incomingEdge = await createEdge(upstream.id, target.id);
+
+    // Deprecate target — must NOT touch the edge
+    const res = await app.request(`/v1/nodes/${target.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "deprecate" }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("DEPRECATED");
+
+    // Incoming edge must remain ACTIVE
+    const edgeRes = await app.request(`/v1/edges/${incomingEdge.id}`, { headers: h() });
+    expect((await edgeRes.json()).data.lifecycleStatus).toBe("ACTIVE");
+  });
+
   it("purge: ARCHIVED → PURGE", async () => {
     const node = await createNode("lc-purge");
     await app.request(`/v1/nodes/${node.id}/lifecycle`, {
