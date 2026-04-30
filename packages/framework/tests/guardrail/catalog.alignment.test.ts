@@ -99,6 +99,34 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.scope.triggers).toContain("UPDATE");
   });
 
+  it("GR-L6-006 reads Environment.environment_type and Environment.iac_reference", () => {
+    const rule = getGuardrailOrThrow("GR-L6-006");
+    expect(rule.condition).toContain("object.environment_type");
+    expect(rule.condition).toContain("'PRODUCTION'");
+    expect(rule.condition).toContain("'DR'");
+    expect(rule.condition).toContain("object.iac_reference");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+  });
+
+  it("GR-L6-007 reads Environment.environment_type and Environment.promotion_gate", () => {
+    const rule = getGuardrailOrThrow("GR-L6-007");
+    expect(rule.condition).toContain("object.environment_type");
+    expect(rule.condition).toContain("object.promotion_gate");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+  });
+
+  it("GR-L6-008 walks OnCallPolicy `covers` edge and reads response_time_sla.p1", () => {
+    const rule = getGuardrailOrThrow("GR-L6-008");
+    expect(rule.condition).toContain("type='covers'");
+    expect(rule.condition).toContain("object.response_time_sla.p1");
+    expect(rule.condition).toContain("escalation_levels");
+    expect(rule.scope.relationship_type).toBe("covers");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+  });
+
   it("no rule uses the invalid PRESCRIPTIVE+WARNING combination", async () => {
     // PRESCRIPTIVE rules must block (severity=ERROR); WARNING/INFO must be
     // DESCRIPTIVE. Ratified by CTO on LSDS-90; enforced here as a regression

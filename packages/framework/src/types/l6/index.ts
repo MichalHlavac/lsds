@@ -6,3 +6,5 @@ export * from "./deployment-unit.js";
 export * from "./slo.js";
 export * from "./runbook.js";
 export * from "./alert.js";
+export * from "./environment.js";
+export * from "./on-call-policy.js";

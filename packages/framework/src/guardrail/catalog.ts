@@ -867,6 +867,64 @@ const L6_RULES: GuardrailRule[] = [
       "Add a traces-to relationship from this SLO to the QualityAttribute it operationalises.",
     propagation: "UPWARD",
   },
+  {
+    rule_id: "GR-L6-006",
+    name: "PRODUCTION/DR Environment must declare iac_reference",
+    layer: "L6",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "Environment",
+      triggers: ["CREATE", "UPDATE"],
+    },
+    condition:
+      "object.environment_type in ['PRODUCTION', 'DR'] implies object.iac_reference != null",
+    rationale:
+      "PRODUCTION and DR environments are the recovery surface of the system; without an IaC reference there is no reproducible way to rebuild them, audit drift, or review changes — the environment becomes click-ops with hidden coupling.",
+    remediation:
+      "Set iac_reference to the Terraform/Pulumi/Crossplane/Helm path that defines and reconciles this environment. If the environment is genuinely not in IaC yet, file the migration first and keep the type at STAGING/PREVIEW until it is.",
+    propagation: "NONE",
+  },
+  {
+    rule_id: "GR-L6-007",
+    name: "PRODUCTION/DR Environment must declare promotion_gate",
+    layer: "L6",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "Environment",
+      triggers: ["CREATE", "UPDATE"],
+    },
+    condition:
+      "object.environment_type in ['PRODUCTION', 'DR'] implies object.promotion_gate != null",
+    rationale:
+      "Without an explicit promotion gate, deploys to PRODUCTION/DR happen on whatever ad-hoc rule the last engineer remembered; this is how unreviewed code reaches production. The gate names the checks (tests, approvals, signed artifacts) that must pass before promotion.",
+    remediation:
+      "Document promotion_gate explicitly: list the smoke tests, approvals, signed-artifact checks, or change-window rules a deploy must satisfy before it reaches this environment.",
+    propagation: "NONE",
+  },
+  {
+    rule_id: "GR-L6-008",
+    name: "OnCallPolicy must cover ≥ 1 target and declare p1 SLA",
+    layer: "L6",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "OnCallPolicy",
+      triggers: ["CREATE", "UPDATE"],
+      relationship_type: "covers",
+    },
+    condition:
+      "object.relationships.filter(type='covers').length >= 1 && object.response_time_sla.p1 != null && escalation_levels_contiguous_from_one(object.escalation_levels)",
+    rationale:
+      "An on-call policy with no covered Service/DeploymentUnit is a paper rota that protects nothing; missing p1 SLA means there is no defensible response time for the most severe incidents; non-contiguous escalation_levels (skipped or duplicated levels) silently break the escalation chain so the secondary is never paged.",
+    remediation:
+      "Attach at least one covers edge from this OnCallPolicy to the Service or DeploymentUnit it protects, set response_time_sla.p1 to a duration the team will actually meet, and number escalation_levels 1..N contiguously.",
+    propagation: "LATERAL",
+  },
 ];
 
 const XL_RULES: GuardrailRule[] = [
