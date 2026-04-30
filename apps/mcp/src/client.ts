@@ -125,6 +125,9 @@ export function createLsdsClient(config: LsdsClientConfig) {
     evaluateNode: (nodeId: string, persist: boolean) =>
       req("POST", `/agent/v1/evaluate/${nodeId}?persist=${persist}`),
 
+    getWriteGuidance: (nodeType: string) =>
+      req("GET", `/agent/v1/write-guidance/${encodeURIComponent(nodeType)}`),
+
     // ── Traversal ──────────────────────────────────────────────────────────
     traverse: (
       nodeId: string,

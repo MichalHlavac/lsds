@@ -84,6 +84,46 @@ describe("createLsdsClient", () => {
     expect(opts.method).toBe("POST");
   });
 
+  it("getWriteGuidance sends GET to /agent/v1/write-guidance/:nodeType", async () => {
+    const guidance = {
+      nodeType: "Service",
+      guardrails: [
+        {
+          ruleKey: "service.naming.kebab",
+          severity: "ERROR",
+          condition: "name matches /^[a-z][a-z0-9-]*$/",
+          rationale: "kebab-case keeps service identifiers DNS-safe",
+          remediation: "rename to kebab-case",
+        },
+      ],
+      instruction: "For each rule above, verify…",
+    };
+    const fetch = mockFetch({ data: guidance });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.getWriteGuidance("Service");
+
+    expect(result).toEqual(guidance);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/write-guidance/Service");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe(
+      "test-tenant"
+    );
+  });
+
+  it("getWriteGuidance URL-encodes the nodeType", async () => {
+    const fetch = mockFetch({ data: { nodeType: "weird/type", guardrails: [], instruction: "" } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.getWriteGuidance("weird/type");
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/write-guidance/weird%2Ftype");
+  });
+
   it("throws on non-ok response", async () => {
     const fetch = mockFetch({ error: "not found" }, 404);
     vi.stubGlobal("fetch", fetch);
