@@ -105,3 +105,10 @@ export const CreateTeamSchema = z.object({
   name: z.string().min(1),
   attributes: z.record(z.unknown()).optional().default({}),
 });
+
+export const CreateSnapshotSchema = z.object({
+  label: z.string().optional().default(""),
+  nodeCount: z.number().int().min(0).optional().default(0),
+  edgeCount: z.number().int().min(0).optional().default(0),
+  snapshotData: z.record(z.unknown()).optional().default({}),
+});
