@@ -106,6 +106,10 @@ export const CreateTeamSchema = z.object({
   attributes: z.record(z.unknown()).optional().default({}),
 });
 
+export const LifecycleTransitionSchema = z.object({
+  transition: z.enum(["deprecate", "archive", "purge"]),
+});
+
 export const CreateSnapshotSchema = z.object({
   label: z.string().optional().default(""),
   nodeCount: z.number().int().min(0).optional().default(0),

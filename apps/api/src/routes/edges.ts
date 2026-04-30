@@ -6,10 +6,11 @@ import { validateRelationshipEdge } from "@lsds/framework";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeRow, NodeRow } from "../db/types.js";
-import { CreateEdgeSchema, UpdateEdgeSchema } from "./schemas.js";
+import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
+import { CreateEdgeSchema, UpdateEdgeSchema, LifecycleTransitionSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
 
-export function edgesRouter(sql: Sql, cache: LsdsCache): Hono {
+export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
@@ -98,6 +99,32 @@ export function edgesRouter(sql: Sql, cache: LsdsCache): Hono {
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
     return c.json({ data: row });
+  });
+
+  app.patch("/:id/lifecycle", async (c) => {
+    const tenantId = getTenantId(c);
+    const { id } = c.req.param();
+    const body = LifecycleTransitionSchema.parse(await c.req.json());
+    try {
+      const row = await lifecycle.transitionEdge(tenantId, id, body.transition);
+      return c.json({ data: row });
+    } catch (e) {
+      if (e instanceof LifecycleTransitionError) {
+        return c.json(
+          {
+            error: "invalid lifecycle transition",
+            currentStatus: e.currentStatus,
+            requestedTransition: e.requestedTransition,
+            allowed: e.allowed,
+          },
+          422
+        );
+      }
+      if (e instanceof Error && e.message === "edge not found") {
+        return c.json({ error: "not found" }, 404);
+      }
+      return c.json({ error: String(e) }, 400);
+    }
   });
 
   app.delete("/:id", async (c) => {
