@@ -15,7 +15,7 @@ import {
 import type { RelationshipType } from "../../src/relationship/index.js";
 
 describe("relationship registry — kap. 2.2 / 2.5 / 2.10", () => {
-  it("registers exactly the 19 relationship types from kap. 2.2", () => {
+  it("registers exactly the 20 relationship types from kap. 2.2", () => {
     expect([...RELATIONSHIP_TYPES]).toEqual([
       "realizes",
       "implements",
@@ -36,6 +36,7 @@ describe("relationship registry — kap. 2.2 / 2.5 / 2.10", () => {
       "impacts",
       "publishes",
       "consumes",
+      "covers",
     ]);
   });
 
@@ -92,6 +93,7 @@ describe("relationship registry — kap. 2.2 / 2.5 / 2.10", () => {
       impacts: "LAZY",
       publishes: "EAGER",
       consumes: "EAGER",
+      covers: "EAGER",
     };
     for (const type of RELATIONSHIP_TYPES) {
       expect(getRelationshipDefinition(type).traversalWeight).toBe(expected[type]);
@@ -191,5 +193,20 @@ describe("validateRelationshipEdge", () => {
     expect(validateRelationshipEdge({ type: "deploys-to", sourceLayer: "L5", targetLayer: "L6" })).toEqual([]);
     const wrong = validateRelationshipEdge({ type: "deploys-to", sourceLayer: "L6", targetLayer: "L5" });
     expect(wrong.map((i) => i.code)).toContain("SOURCE_LAYER_NOT_ALLOWED");
+  });
+
+  it("covers runs from L6 OnCallPolicy to L4 Service or L6 DeploymentUnit", () => {
+    // L6 → L4 (cross-layer): OnCallPolicy covers a Service.
+    expect(validateRelationshipEdge({ type: "covers", sourceLayer: "L6", targetLayer: "L4" })).toEqual([]);
+    // L6 → L6 (same-layer): OnCallPolicy covers a DeploymentUnit.
+    expect(validateRelationshipEdge({ type: "covers", sourceLayer: "L6", targetLayer: "L6" })).toEqual([]);
+
+    // Wrong source: only L6 (OnCallPolicy) is allowed to author covers edges.
+    const wrongSource = validateRelationshipEdge({ type: "covers", sourceLayer: "L4", targetLayer: "L4" });
+    expect(wrongSource.map((i) => i.code)).toContain("SOURCE_LAYER_NOT_ALLOWED");
+
+    // Wrong target: covers does not flow to L1/L2/L3/L5.
+    const wrongTarget = validateRelationshipEdge({ type: "covers", sourceLayer: "L6", targetLayer: "L5" });
+    expect(wrongTarget.map((i) => i.code)).toContain("TARGET_LAYER_NOT_ALLOWED");
   });
 });

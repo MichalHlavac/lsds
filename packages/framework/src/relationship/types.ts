@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { LayerIdSchema, type LayerId, getLayerOrdinal } from "../layer/index.js";
 
-// 19 relationship types from kap. 2.2.
+// 20 relationship types from kap. 2.2.
 export const RELATIONSHIP_TYPES = [
   "realizes",
   "implements",
@@ -25,6 +25,7 @@ export const RELATIONSHIP_TYPES = [
   "impacts",
   "publishes",
   "consumes",
+  "covers",
 ] as const;
 export const RelationshipTypeSchema = z.enum(RELATIONSHIP_TYPES);
 export type RelationshipType = z.infer<typeof RelationshipTypeSchema>;
@@ -44,6 +45,7 @@ export const RELATIONSHIP_CATEGORIES = [
   "MOTIVATION",
   "IMPACT",
   "EVENT_FLOW",
+  "RESPONSIBILITY",
 ] as const;
 export const RelationshipCategorySchema = z.enum(RELATIONSHIP_CATEGORIES);
 export type RelationshipCategory = z.infer<typeof RelationshipCategorySchema>;

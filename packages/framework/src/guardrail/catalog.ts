@@ -867,6 +867,84 @@ const L6_RULES: GuardrailRule[] = [
       "Add a traces-to relationship from this SLO to the QualityAttribute it operationalises.",
     propagation: "UPWARD",
   },
+  {
+    rule_id: "GR-L6-006",
+    name: "Production / DR Environment must declare iac_reference",
+    layer: "L6",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "Environment",
+      triggers: ["CREATE", "UPDATE"],
+    },
+    condition:
+      "!(object.environment_type == 'PRODUCTION' || object.environment_type == 'DR') || object.iac_reference != null",
+    rationale:
+      "PRODUCTION and DR environments are the blast-radius peaks; an environment with no IaC link is invisible click-ops. After an incident the team cannot rebuild it, audit the diff, or reason about drift — exactly the cases where IaC traceability matters most.",
+    remediation:
+      "Set iac_reference to the Terraform/Pulumi/Crossplane/Helm path (or equivalent) that creates and reconciles this environment. STAGING/DEVELOPMENT/PREVIEW are exempt.",
+    propagation: "NONE",
+  },
+  {
+    rule_id: "GR-L6-007",
+    name: "Production / DR Environment must declare promotion_gate",
+    layer: "L6",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "Environment",
+      triggers: ["CREATE", "UPDATE"],
+    },
+    condition:
+      "!(object.environment_type == 'PRODUCTION' || object.environment_type == 'DR') || object.promotion_gate != null",
+    rationale:
+      "Promotion to PRODUCTION or DR without a written gate is the textbook root cause of unreviewed prod changes; the gate documents what must pass (review, security scan, soak time, change ticket) before code reaches the highest blast-radius tier. Spec recommends APPROVALS_REQUIRED for access_restriction in these tiers — checked semantically downstream.",
+    remediation:
+      "Set promotion_gate to the explicit deploy precondition (e.g. \"merged PR + green CI + SecOps sign-off\"). STAGING/DEVELOPMENT/PREVIEW are exempt.",
+    propagation: "NONE",
+  },
+  {
+    rule_id: "GR-L6-008",
+    name: "OnCallPolicy must cover at least one Service or DeploymentUnit",
+    layer: "L6",
+    origin: "STRUCTURAL",
+    evaluation: "PRESCRIPTIVE",
+    severity: "ERROR",
+    scope: {
+      object_type: "OnCallPolicy",
+      triggers: ["CREATE", "UPDATE"],
+      relationship_type: "covers",
+    },
+    condition:
+      "object.outgoing_relationships(type='covers').filter(target_type='Service' || target_type='DeploymentUnit').length >= 1",
+    rationale:
+      "An on-call policy that covers nothing is not a policy — it cannot page anyone for any incident. Per kap. 4 § L6 the rotation only earns its keep if at least one Service or DeploymentUnit is on the receiving end of `covers`. response_time_sla.p1 mandatory is enforced locally by the OnCallPolicy schema.",
+    remediation:
+      "Add a `covers` relationship from this OnCallPolicy to each Service or DeploymentUnit it owns. If the rotation is deprecated, archive the policy instead of leaving it with zero coverage.",
+    propagation: "LATERAL",
+  },
+  {
+    rule_id: "GR-L6-009",
+    name: "Production Service without OnCallPolicy",
+    layer: "L6",
+    origin: "SEMANTIC",
+    evaluation: "DESCRIPTIVE",
+    severity: "WARNING",
+    scope: {
+      object_type: "Service",
+      triggers: ["UPDATE", "PERIODIC"],
+      relationship_type: "covers",
+    },
+    condition:
+      "!(any(object.outgoing_relationships(type='deploys-to', target_type='DeploymentUnit').target.environment == 'PRODUCTION') && incoming_relationships(type='covers', source_type='OnCallPolicy').length == 0)",
+    rationale:
+      "A production service with no OnCallPolicy has no defined responder when it pages — incidents land in nobody's queue and resolution time degrades silently. PRODUCTION status is inferred via the canonical deploys-to → DeploymentUnit.environment edge, mirroring GR-L6-004's SLO check; the policy link is the canonical incoming `covers` edge from OnCallPolicy. Surfaced as WARNING (not ERROR) so retired/sunsetting services can be flagged without blocking writes.",
+    remediation:
+      "Define or extend an OnCallPolicy and add a `covers` relationship from it to this Service. If the service is intentionally unattended (lab, ephemeral), demote it out of PRODUCTION via deploys-to instead of suppressing the warning.",
+    propagation: "NONE",
+  },
 ];
 
 const XL_RULES: GuardrailRule[] = [

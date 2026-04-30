@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-// Relationship Registry — all 19 typed edges from kap. 2.2 of the LSDS research.
+// Relationship Registry — all 20 typed edges from kap. 2.2 of the LSDS research.
 //
 // Per kap. 2.2 every relationship has: type, semantic direction, cardinality,
 // traversal weight (EAGER/LAZY, kap. 2.10) and propagation policy (kap. 2.5).
@@ -382,6 +382,29 @@ const RAW_DEFINITIONS: ReadonlyArray<RelationshipDefinition> = [
     rationale:
       "Kap. 4 surfaces consumes both at L4 (Service.consumes → EventContract) and at L2 (DomainEvent.consumes → BoundedContextRef). " +
       "Same-layer edge in either tier; cross-tier flow is mediated through `realizes` between L2 DomainEvent and L4 EventContract.",
+  },
+  // ── Responsibility ─────────────────────────────────────────────────────────
+  {
+    type: "covers",
+    category: "RESPONSIBILITY",
+    direction: "lateral",
+    cardinality: "M:N",
+    traversalWeight: "EAGER",
+    propagationPolicy: "NONE",
+    layerRules: {
+      // OnCallPolicy lives in L6 (kap. 4 § L6) and covers either an L4 Service
+      // or an L6 DeploymentUnit. Cross-layer L6→L4 plus same-layer L6→L6 are
+      // both legitimate, so the ordinal constraint is ANY.
+      allowedSourceLayers: ["L6"],
+      allowedTargetLayers: ["L4", "L6"],
+      layerOrdinalConstraint: "ANY",
+      targetIsExternal: false,
+    },
+    semantics: "Source (OnCallPolicy) nese operační odpovědnost za Target (Service nebo DeploymentUnit).",
+    rationale:
+      "Kap. 2.2 line 73: ownership-of-incident-response is a first-class edge — Service/DeploymentUnit must be reachable from the OnCallPolicy " +
+      "that pages someone when it breaks. EAGER so violation surfacing (GR-L6-008/009) carries the policy reference into every operational " +
+      "traversal. NONE propagation: pages are not transitive — coverage is declared per-target, not inferred.",
   },
 ];
 
