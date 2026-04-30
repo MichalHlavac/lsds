@@ -120,6 +120,12 @@ export function createLsdsClient(config: LsdsClientConfig) {
 
     archiveNode: (nodeId: string) =>
       req("POST", `/v1/lifecycle/nodes/${nodeId}/archive`),
+
+    transitionNodeLifecycle: (nodeId: string, to: string) =>
+      req("PATCH", `/v1/nodes/${nodeId}/lifecycle`, { to }),
+
+    transitionEdgeLifecycle: (edgeId: string, to: string) =>
+      req("PATCH", `/v1/edges/${edgeId}/lifecycle`, { to }),
   };
 }
 

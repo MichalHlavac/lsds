@@ -326,6 +326,44 @@ server.tool(
   }
 );
 
+server.tool(
+  "transition_node_lifecycle",
+  "Transition a node to a new lifecycle status. Allowed transitions: ACTIVE→DEPRECATED, ACTIVE→ARCHIVED, DEPRECATED→ACTIVE, DEPRECATED→ARCHIVED, ARCHIVED→PURGE. Returns 422 if the transition is not allowed.",
+  {
+    nodeId: z.string().uuid().describe("UUID of the node"),
+    to: z
+      .enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"])
+      .describe("Target lifecycle status"),
+  },
+  async ({ nodeId, to }) => {
+    try {
+      const data = await client.transitionNodeLifecycle(nodeId, to);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "transition_edge_lifecycle",
+  "Transition an edge to a new lifecycle status. Allowed transitions: ACTIVE→DEPRECATED, ACTIVE→ARCHIVED, DEPRECATED→ACTIVE, DEPRECATED→ARCHIVED, ARCHIVED→PURGE. Returns 422 if the transition is not allowed.",
+  {
+    edgeId: z.string().uuid().describe("UUID of the edge"),
+    to: z
+      .enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"])
+      .describe("Target lifecycle status"),
+  },
+  async ({ edgeId, to }) => {
+    try {
+      const data = await client.transitionEdgeLifecycle(edgeId, to);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();

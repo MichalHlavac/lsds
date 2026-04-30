@@ -28,9 +28,9 @@ export const app = new Hono();
 app.get("/health", (c) => c.json({ status: "ok", ts: new Date().toISOString() }));
 
 const v1 = new Hono();
-v1.route("/nodes", nodesRouter(sql, cache));
+v1.route("/nodes", nodesRouter(sql, cache, lifecycle));
 v1.route("/nodes", traversalRouter(sql, cache, adapter));
-v1.route("/edges", edgesRouter(sql, cache));
+v1.route("/edges", edgesRouter(sql, cache, lifecycle));
 v1.route("/violations", violationsRouter(sql));
 v1.route("/guardrails", guardrailsRouter(sql));
 v1.route("/lifecycle", lifecycleRouter(lifecycle));

@@ -121,4 +121,92 @@ describe("createLsdsClient", () => {
     );
     expect(opts.method).toBe("POST");
   });
+
+  it("transitionNodeLifecycle sends PATCH /v1/nodes/:id/lifecycle with to in body", async () => {
+    const nodePayload = { id: "n1", lifecycleStatus: "DEPRECATED" };
+    const fetch = mockFetch({ data: nodePayload });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.transitionNodeLifecycle(
+      "00000000-0000-0000-0000-000000000003",
+      "DEPRECATED"
+    );
+
+    expect(result).toEqual(nodePayload);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://localhost:3001/v1/nodes/00000000-0000-0000-0000-000000000003/lifecycle"
+    );
+    expect(opts.method).toBe("PATCH");
+    expect(JSON.parse(opts.body as string)).toEqual({ to: "DEPRECATED" });
+  });
+
+  it("transitionNodeLifecycle with ARCHIVED target sends correct body", async () => {
+    const fetch = mockFetch({ data: { id: "n2", lifecycleStatus: "ARCHIVED" } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.transitionNodeLifecycle("00000000-0000-0000-0000-000000000004", "ARCHIVED");
+
+    const [, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(opts.body as string)).toEqual({ to: "ARCHIVED" });
+  });
+
+  it("transitionEdgeLifecycle sends PATCH /v1/edges/:id/lifecycle with to in body", async () => {
+    const edgePayload = { id: "e1", lifecycleStatus: "DEPRECATED" };
+    const fetch = mockFetch({ data: edgePayload });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.transitionEdgeLifecycle(
+      "00000000-0000-0000-0000-000000000005",
+      "DEPRECATED"
+    );
+
+    expect(result).toEqual(edgePayload);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://localhost:3001/v1/edges/00000000-0000-0000-0000-000000000005/lifecycle"
+    );
+    expect(opts.method).toBe("PATCH");
+    expect(JSON.parse(opts.body as string)).toEqual({ to: "DEPRECATED" });
+  });
+
+  it("transitionEdgeLifecycle with ARCHIVED target sends correct body", async () => {
+    const fetch = mockFetch({ data: { id: "e2", lifecycleStatus: "ARCHIVED" } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.transitionEdgeLifecycle("00000000-0000-0000-0000-000000000006", "ARCHIVED");
+
+    const [, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(opts.body as string)).toEqual({ to: "ARCHIVED" });
+  });
+
+  it("transitionNodeLifecycle throws with 422 message on invalid transition", async () => {
+    const fetch = mockFetch(
+      { error: "invalid lifecycle transition: PURGE → DEPRECATED", from: "PURGE", to: "DEPRECATED" },
+      422
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(
+      client.transitionNodeLifecycle("00000000-0000-0000-0000-000000000007", "DEPRECATED")
+    ).rejects.toThrow("422");
+  });
+
+  it("transitionEdgeLifecycle throws with 422 message on invalid transition", async () => {
+    const fetch = mockFetch(
+      { error: "invalid lifecycle transition: PURGE → ACTIVE", from: "PURGE", to: "ACTIVE" },
+      422
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(
+      client.transitionEdgeLifecycle("00000000-0000-0000-0000-000000000008", "ACTIVE")
+    ).rejects.toThrow("422");
+  });
 });

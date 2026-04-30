@@ -2,13 +2,19 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
+import { z } from "zod";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeRow } from "../db/types.js";
 import { CreateNodeSchema, UpdateNodeSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
+import { LifecycleService, LifecycleTransitionError } from "../lifecycle/index.js";
 
-export function nodesRouter(sql: Sql, cache: LsdsCache): Hono {
+const TransitionLifecycleSchema = z.object({
+  to: z.enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"]),
+});
+
+export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
@@ -88,6 +94,24 @@ export function nodesRouter(sql: Sql, cache: LsdsCache): Hono {
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateNode(tenantId, id);
     return c.json({ data: { id } });
+  });
+
+  app.patch("/:id/lifecycle", async (c) => {
+    const tenantId = getTenantId(c);
+    const { id } = c.req.param();
+    const body = TransitionLifecycleSchema.parse(await c.req.json());
+    try {
+      const row = await lifecycle.transitionNode(tenantId, id, body.to);
+      return c.json({ data: row });
+    } catch (e) {
+      if (e instanceof LifecycleTransitionError) {
+        return c.json({ error: e.message, from: e.from, to: e.to }, 422);
+      }
+      if (e instanceof Error && e.message.includes("not found")) {
+        return c.json({ error: e.message }, 404);
+      }
+      return c.json({ error: String(e) }, 400);
+    }
   });
 
   app.get("/:id/neighbors", async (c) => {
