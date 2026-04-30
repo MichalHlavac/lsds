@@ -103,7 +103,7 @@ describe("POST /v1/lifecycle/nodes/:id/deprecate", () => {
       method: "POST",
       headers: h(),
     });
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -121,17 +121,16 @@ describe("POST /v1/lifecycle/nodes/:id/archive", () => {
     expect((await res.json()).data.lifecycleStatus).toBe("ARCHIVED");
   });
 
-  it("returns error when trying to skip from ACTIVE directly to ARCHIVED", async () => {
+  it("returns 400 when trying to skip from ACTIVE directly to ARCHIVED", async () => {
     const node = await createNode();
     const res = await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, {
       method: "POST",
       headers: h(),
     });
-    // ACTIVE→ARCHIVED is an invalid skip; must be 400 or 422
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(400);
   });
 
-  it("returns error for an already ARCHIVED node", async () => {
+  it("returns 400 for an already ARCHIVED node", async () => {
     const node = await createNode();
     await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
     await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, { method: "POST", headers: h() });
@@ -139,7 +138,7 @@ describe("POST /v1/lifecycle/nodes/:id/archive", () => {
       method: "POST",
       headers: h(),
     });
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -168,7 +167,7 @@ describe("POST /v1/lifecycle/nodes/:id/mark-purge", () => {
       method: "POST",
       headers: h(),
     });
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(400);
   });
 });
 
