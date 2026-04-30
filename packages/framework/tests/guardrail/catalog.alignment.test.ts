@@ -20,6 +20,165 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.condition).not.toContain("requirement.created_at");
   });
 
+  it("GR-L1-001 walks BusinessCapability `traces-to` BusinessGoal (canonical strategic-alignment edge)", () => {
+    // Positive: capability→goal alignment is the canonical traces-to edge
+    // (kap. 2.2). Rule blocks creation of orphan capabilities (PRESCRIPTIVE+ERROR)
+    // and propagates UPWARD so a missing strategic root surfaces violations on
+    // downstream nodes that depend on the capability.
+    const rule = getGuardrailOrThrow("GR-L1-001");
+    expect(rule.scope.object_type).toBe("BusinessCapability");
+    expect(rule.condition).toContain("type='traces-to'");
+    expect(rule.condition).toContain("target_type='BusinessGoal'");
+    expect(rule.condition).toContain(">= 1");
+    expect(rule.scope.relationship_type).toBe("traces-to");
+    expect(rule.origin).toBe("STRUCTURAL");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+    expect(rule.propagation).toBe("UPWARD");
+    // Negative: drift guard — must not use invented relationship names or
+    // non-canonical target types for the strategic-alignment edge.
+    expect(rule.condition).not.toContain("type='supports'");
+    expect(rule.condition).not.toContain("type='advances'");
+    expect(rule.condition).not.toContain("type='aligned-with'");
+    expect(rule.condition).not.toContain("type='realizes-goal'");
+    expect(rule.condition).not.toContain("target_type='BusinessObjective'");
+    expect(rule.condition).not.toContain("target_type='Goal'");
+  });
+
+  it("GR-L1-002 reads BusinessGoal.success_metrics (kap. 4 attribute name)", () => {
+    // Positive: rule reads the canonical success_metrics attribute and blocks
+    // when none are declared. Sloganeering goals are caught at CREATE/UPDATE.
+    const rule = getGuardrailOrThrow("GR-L1-002");
+    expect(rule.scope.object_type).toBe("BusinessGoal");
+    expect(rule.condition).toContain("object.success_metrics");
+    expect(rule.condition).toContain(">= 1");
+    expect(rule.origin).toBe("STRUCTURAL");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+    // Negative: drift guard — must not use shortened or alternative metric
+    // field names that have appeared in earlier drafts.
+    expect(rule.condition).not.toContain("object.metrics");
+    expect(rule.condition).not.toContain("object.kpis");
+    expect(rule.condition).not.toContain("object.outcomes");
+    expect(rule.condition).not.toContain("object.objectives");
+    expect(rule.condition).not.toContain("object.goal_metrics");
+  });
+
+  it("GR-L1-003 reads Requirement.motivation (kap. 4 attribute name) for non-empty check", () => {
+    // Positive: rule blocks Requirements with missing or empty motivation —
+    // the "why" anchor for downstream impact analysis (kap. 2.7).
+    const rule = getGuardrailOrThrow("GR-L1-003");
+    expect(rule.scope.object_type).toBe("Requirement");
+    expect(rule.condition).toContain("object.motivation");
+    expect(rule.condition).toContain("!= null");
+    expect(rule.condition).toContain("object.motivation.length > 0");
+    expect(rule.origin).toBe("STRUCTURAL");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+    // Negative: drift guard — `rationale`/`justification`/`reason` are common
+    // synonyms but not the canonical kap. 4 field name on Requirement.
+    expect(rule.condition).not.toContain("object.rationale");
+    expect(rule.condition).not.toContain("object.justification");
+    expect(rule.condition).not.toContain("object.reason");
+    expect(rule.condition).not.toContain("object.purpose");
+    expect(rule.condition).not.toContain("object.why");
+  });
+
+  it("GR-L1-004 reads Requirement.acceptance_criteria (kap. 4 snake_case attribute)", () => {
+    // Positive: rule reads the canonical acceptance_criteria attribute and
+    // blocks Requirements with no testable acceptance contract.
+    const rule = getGuardrailOrThrow("GR-L1-004");
+    expect(rule.scope.object_type).toBe("Requirement");
+    expect(rule.condition).toContain("object.acceptance_criteria");
+    expect(rule.condition).toContain(">= 1");
+    expect(rule.origin).toBe("STRUCTURAL");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+    // Negative: drift guard — must not use shortened or non-canonical field
+    // names. Catalog conditions use snake_case even though the TS schema
+    // declares acceptanceCriteria in camelCase.
+    expect(rule.condition).not.toContain("object.criteria");
+    expect(rule.condition).not.toMatch(/object\.acceptance(?!_criteria)/);
+    expect(rule.condition).not.toContain("object.acceptanceCriteria");
+    expect(rule.condition).not.toContain("object.ac_list");
+    expect(rule.condition).not.toContain("object.tests");
+  });
+
+  it("GR-L1-005 walks Requirement `part-of` BusinessCapability (canonical ownership edge)", () => {
+    // Positive: ownership of a Requirement under a BusinessCapability is
+    // expressed as a part-of edge (kap. 2.2). Rule blocks free-floating
+    // requirements (PRESCRIPTIVE+ERROR, propagation UPWARD).
+    const rule = getGuardrailOrThrow("GR-L1-005");
+    expect(rule.scope.object_type).toBe("Requirement");
+    expect(rule.condition).toContain("type='part-of'");
+    expect(rule.condition).toContain("target_type='BusinessCapability'");
+    expect(rule.condition).toContain(">= 1");
+    expect(rule.scope.relationship_type).toBe("part-of");
+    expect(rule.origin).toBe("STRUCTURAL");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+    expect(rule.propagation).toBe("UPWARD");
+    // Negative: drift guard — synonyms for ownership/membership are easy to
+    // reach for but break the kap. 2.2 catalog. The edge MUST be `part-of`.
+    expect(rule.condition).not.toContain("type='belongs-to'");
+    expect(rule.condition).not.toContain("type='owned-by'");
+    expect(rule.condition).not.toContain("type='member-of'");
+    expect(rule.condition).not.toContain("type='in'");
+    expect(rule.condition).not.toContain("type='child-of'");
+  });
+
+  it("GR-L1-006 walks BusinessGoal incoming `traces-to` from BusinessCapability (orphan-goal scan)", () => {
+    // Positive: incoming traces-to from BusinessCapability is the canonical
+    // signal that a goal will be delivered. Rule fires when that count is 0
+    // (DESCRIPTIVE+WARNING, PERIODIC scan + UPDATE re-check).
+    const rule = getGuardrailOrThrow("GR-L1-006");
+    expect(rule.scope.object_type).toBe("BusinessGoal");
+    expect(rule.condition).toContain("incoming_relationships");
+    expect(rule.condition).toContain("type='traces-to'");
+    expect(rule.condition).toContain("source_type='BusinessCapability'");
+    expect(rule.condition).toContain("== 0");
+    expect(rule.origin).toBe("SEMANTIC");
+    expect(rule.evaluation).toBe("DESCRIPTIVE");
+    expect(rule.severity).toBe("WARNING");
+    expect(rule.scope.triggers).toContain("PERIODIC");
+    expect(rule.scope.triggers).toContain("UPDATE");
+    expect(rule.propagation).toBe("DOWNWARD");
+    // Negative: drift guard — the orphan check MUST walk the incoming side
+    // (capability→goal) and MUST NOT read object.relationships (which would
+    // be the goal's outgoing edges, not its supporters), and MUST NOT swap
+    // the source type for BusinessGoal (self-loops aren't the signal).
+    expect(rule.condition).not.toMatch(/^object\.relationships/);
+    expect(rule.condition).not.toContain("outgoing_relationships");
+    expect(rule.condition).not.toContain("source_type='BusinessGoal'");
+    expect(rule.condition).not.toContain("type='supports'");
+    expect(rule.condition).not.toContain("type='advances'");
+  });
+
+  it("GR-L1-009 reads Requirement.status='APPROVED' and object.impacts (kap. 4 attribute name)", () => {
+    // Positive: rule fires on APPROVED requirements with empty impacts —
+    // the gating signal for change-propagation analysis (kap. 2.7). INFO
+    // severity because pre-implementation, but visible on PERIODIC scan.
+    const rule = getGuardrailOrThrow("GR-L1-009");
+    expect(rule.scope.object_type).toBe("Requirement");
+    expect(rule.condition).toContain("object.status == 'APPROVED'");
+    expect(rule.condition).toContain("object.impacts");
+    expect(rule.condition).toContain("== 0");
+    expect(rule.origin).toBe("SEMANTIC");
+    expect(rule.evaluation).toBe("DESCRIPTIVE");
+    expect(rule.severity).toBe("INFO");
+    expect(rule.scope.triggers).toContain("PERIODIC");
+    expect(rule.scope.triggers).toContain("UPDATE");
+    // Negative: drift guard — must not target the wrong status (the rule is
+    // pre-implementation, not in-progress) and must not use renamed field
+    // names that have appeared in earlier drafts.
+    expect(rule.condition).not.toContain("object.status == 'IMPLEMENTED'");
+    expect(rule.condition).not.toContain("object.status == 'IN_PROGRESS'");
+    expect(rule.condition).not.toContain("object.changes");
+    expect(rule.condition).not.toContain("object.impacted_objects");
+    expect(rule.condition).not.toContain("object.impact_targets");
+    expect(rule.condition).not.toContain("object.affected");
+  });
+
   it("GR-L3-009 measures ExternalSystem staleness from last_review_date", () => {
     const rule = getGuardrailOrThrow("GR-L3-009");
     expect(rule.condition).toContain("object.last_review_date");
