@@ -256,3 +256,293 @@ describe("catalog field-name alignment with kap. 4", () => {
   });
 });
 
+describe("GR-XL cross-layer guardrail drift guards (GR-XL-001..011)", () => {
+  describe("GR-XL-001 object without owner", () => {
+    it("condition reads object.owner (not ownerId or owner_id)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-001");
+      expect(rule.condition).toContain("object.owner");
+      expect(rule.condition).not.toContain("ownerId");
+      expect(rule.condition).not.toContain("owner_id");
+    });
+
+    it("remediation references owner field", () => {
+      const rule = getGuardrailOrThrow("GR-XL-001");
+      expect(rule.remediation).toContain("owner");
+    });
+
+    it("propagation is NONE", () => {
+      const rule = getGuardrailOrThrow("GR-XL-001");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("severity is ERROR and evaluation is PRESCRIPTIVE", () => {
+      const rule = getGuardrailOrThrow("GR-XL-001");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    });
+  });
+
+  describe("GR-XL-002 dangling relationship target", () => {
+    it("condition checks target_object_id (not target_id)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-002");
+      expect(rule.condition).toContain("target_object_id");
+      expect(rule.condition).not.toContain("target_id");
+    });
+
+    it("remediation references the missing target", () => {
+      const rule = getGuardrailOrThrow("GR-XL-002");
+      expect(rule.remediation.toLowerCase()).toMatch(/target/);
+    });
+
+    it("propagation is LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-XL-002");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("scope applies to Relationship objects and severity is ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-XL-002");
+      expect(rule.scope.object_type).toBe("Relationship");
+      expect(rule.severity).toBe("ERROR");
+    });
+  });
+
+  describe("GR-XL-003 relationship violates layer ordinal rules", () => {
+    it("condition reads source.layer and target.layer (not ordinal aliases)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-003");
+      expect(rule.condition).toContain("source.layer");
+      expect(rule.condition).toContain("target.layer");
+      expect(rule.condition).not.toContain("source.ordinal");
+      expect(rule.condition).not.toContain("target.ordinal");
+    });
+
+    it("remediation references layer", () => {
+      const rule = getGuardrailOrThrow("GR-XL-003");
+      expect(rule.remediation.toLowerCase()).toMatch(/layer/);
+    });
+
+    it("propagation is LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-XL-003");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("scope applies to Relationship objects and severity is ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-XL-003");
+      expect(rule.scope.object_type).toBe("Relationship");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    });
+  });
+
+  describe("GR-XL-004 archiving with ACTIVE dependents", () => {
+    it("condition checks incoming_relationships filtered by ACTIVE lifecycle (not status)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-004");
+      expect(rule.condition).toContain("incoming_relationships");
+      expect(rule.condition).toContain("ACTIVE");
+      expect(rule.condition).not.toContain("source.status");
+    });
+
+    it("remediation references ACTIVE dependents", () => {
+      const rule = getGuardrailOrThrow("GR-XL-004");
+      expect(rule.remediation).toMatch(/ACTIVE|dependent/i);
+    });
+
+    it("propagation is DOWNWARD", () => {
+      const rule = getGuardrailOrThrow("GR-XL-004");
+      expect(rule.propagation).toBe("DOWNWARD");
+    });
+
+    it("triggers include ARCHIVE and severity is ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-XL-004");
+      expect(rule.scope.triggers).toContain("ARCHIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    });
+  });
+
+  describe("GR-XL-005 hard delete with incoming relationships", () => {
+    it("condition checks incoming_relationships count (not a named edge)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-005");
+      expect(rule.condition).toContain("incoming_relationships");
+      expect(rule.condition).not.toContain("incoming_refs");
+      expect(rule.condition).not.toContain("inbound_edges");
+    });
+
+    it("remediation references the ARCHIVED lifecycle path", () => {
+      const rule = getGuardrailOrThrow("GR-XL-005");
+      expect(rule.remediation).toMatch(/ARCHIVED|lifecycle/i);
+    });
+
+    it("propagation is DOWNWARD", () => {
+      const rule = getGuardrailOrThrow("GR-XL-005");
+      expect(rule.propagation).toBe("DOWNWARD");
+    });
+
+    it("triggers include DELETE and severity is ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-XL-005");
+      expect(rule.scope.triggers).toContain("DELETE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    });
+  });
+
+  describe("GR-XL-006 DEPRECATED object with active depends-on dependents", () => {
+    it("condition checks lifecycle == DEPRECATED and depends-on edge (not status or DECOMMISSIONED)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-006");
+      expect(rule.condition).toContain("DEPRECATED");
+      expect(rule.condition).toContain("depends-on");
+      expect(rule.condition).toContain("ACTIVE");
+      expect(rule.condition).not.toContain("DECOMMISSIONED");
+      expect(rule.condition).not.toContain("object.status");
+    });
+
+    it("scope.relationship_type is depends-on", () => {
+      const rule = getGuardrailOrThrow("GR-XL-006");
+      expect(rule.scope.relationship_type).toBe("depends-on");
+    });
+
+    it("propagation is DOWNWARD", () => {
+      const rule = getGuardrailOrThrow("GR-XL-006");
+      expect(rule.propagation).toBe("DOWNWARD");
+    });
+
+    it("evaluation is DESCRIPTIVE and severity is WARNING (not PRESCRIPTIVE+WARNING)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-006");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+    });
+  });
+
+  describe("GR-XL-007 object without review for > threshold (staleness)", () => {
+    it("condition reads last_review_date (not last_reviewed_at)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-007");
+      expect(rule.condition).toContain("object.last_review_date");
+      expect(rule.condition).not.toContain("last_reviewed_at");
+    });
+
+    it("remediation references last_review_date (not last_reviewed_at)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-007");
+      expect(rule.remediation).toContain("last_review_date");
+      expect(rule.remediation).not.toContain("last_reviewed_at");
+    });
+
+    it("propagation is NONE", () => {
+      const rule = getGuardrailOrThrow("GR-XL-007");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("evaluation is DESCRIPTIVE and severity is INFO", () => {
+      const rule = getGuardrailOrThrow("GR-XL-007");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("INFO");
+    });
+  });
+
+  describe("GR-XL-008 god object with >20 direct relationships", () => {
+    it("condition reads direct_relationships.length with threshold 20 (not edge_count or relationship_count)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-008");
+      expect(rule.condition).toContain("direct_relationships");
+      expect(rule.condition).toContain("20");
+      expect(rule.condition).not.toContain("edge_count");
+      expect(rule.condition).not.toContain("relationship_count");
+      expect(rule.condition).not.toContain("relationships.count");
+    });
+
+    it("remediation references decomposition", () => {
+      const rule = getGuardrailOrThrow("GR-XL-008");
+      expect(rule.remediation).toMatch(/[Dd]ecompos/);
+    });
+
+    it("propagation is LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-XL-008");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("evaluation is DESCRIPTIVE and severity is INFO", () => {
+      const rule = getGuardrailOrThrow("GR-XL-008");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("INFO");
+    });
+  });
+
+  describe("GR-XL-009 DEPRECATED object still has active depends-on relationships", () => {
+    it("condition checks lifecycle DEPRECATED and incoming depends-on edge with ACTIVE source (not DECOMMISSIONED)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-009");
+      expect(rule.condition).toContain("DEPRECATED");
+      expect(rule.condition).toContain("depends-on");
+      expect(rule.condition).toContain("ACTIVE");
+      expect(rule.condition).not.toContain("DECOMMISSIONED");
+    });
+
+    it("scope.relationship_type is depends-on", () => {
+      const rule = getGuardrailOrThrow("GR-XL-009");
+      expect(rule.scope.relationship_type).toBe("depends-on");
+    });
+
+    it("propagation is UPWARD (not DOWNWARD — distinguish from GR-XL-006)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-009");
+      expect(rule.propagation).toBe("UPWARD");
+      expect(rule.propagation).not.toBe("DOWNWARD");
+    });
+
+    it("evaluation is DESCRIPTIVE and severity is WARNING", () => {
+      const rule = getGuardrailOrThrow("GR-XL-009");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+    });
+  });
+
+  describe("GR-XL-010 ARCHIVED object with non-archived contains children", () => {
+    it("condition checks lifecycle ARCHIVED and outgoing contains edge (not children.status)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-010");
+      expect(rule.condition).toContain("ARCHIVED");
+      expect(rule.condition).toContain("contains");
+      expect(rule.condition).not.toContain("children.status");
+      expect(rule.condition).not.toContain("child.status");
+    });
+
+    it("scope.relationship_type is contains", () => {
+      const rule = getGuardrailOrThrow("GR-XL-010");
+      expect(rule.scope.relationship_type).toBe("contains");
+    });
+
+    it("propagation is DOWNWARD", () => {
+      const rule = getGuardrailOrThrow("GR-XL-010");
+      expect(rule.propagation).toBe("DOWNWARD");
+    });
+
+    it("triggers include ARCHIVE, evaluation is PRESCRIPTIVE, severity is ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-XL-010");
+      expect(rule.scope.triggers).toContain("ARCHIVE");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+    });
+  });
+
+  describe("GR-XL-011 hard delete blocked by incoming relationships", () => {
+    it("condition reads object.incoming_relationships.length (not incoming_refs or inbound_edges)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-011");
+      expect(rule.condition).toContain("incoming_relationships");
+      expect(rule.condition).not.toContain("incoming_refs");
+      expect(rule.condition).not.toContain("inbound_edges");
+    });
+
+    it("remediation references the lifecycle soft-delete path (DEPRECATED → ARCHIVED → PURGE)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-011");
+      expect(rule.remediation).toMatch(/DEPRECATED|ARCHIVED|lifecycle/i);
+    });
+
+    it("propagation is UPWARD (not DOWNWARD — distinguish from GR-XL-005)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-011");
+      expect(rule.propagation).toBe("UPWARD");
+      expect(rule.propagation).not.toBe("DOWNWARD");
+    });
+
+    it("triggers include DELETE, evaluation is PRESCRIPTIVE, severity is ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-XL-011");
+      expect(rule.scope.triggers).toContain("DELETE");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+    });
+  });
+});
+
