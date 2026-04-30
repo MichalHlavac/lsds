@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import type { Sql } from "../db/client.js";
-import type { GuardrailRow, NodeRow, EdgeRow } from "../db/types.js";
+import type { GuardrailRow, NodeRow, EdgeRow, Severity } from "../db/types.js";
 
 export interface ViolationCandidate {
   ruleKey: string;
@@ -10,6 +10,14 @@ export interface ViolationCandidate {
   message: string;
   nodeId?: string;
   edgeId?: string;
+}
+
+export interface WriteGuidanceRule {
+  ruleKey: string;
+  severity: Severity;
+  condition: string;
+  rationale: string;
+  remediation: string;
 }
 
 export type GuardrailCheck = (
@@ -65,6 +73,34 @@ export class GuardrailsRegistry {
       WHERE tenant_id = ${tenantId} AND enabled = TRUE
       ORDER BY rule_key
     `;
+  }
+
+  // Returns enabled guardrails scoped to a node type, plus wildcard ('*') rules.
+  // Output is the LLM-relevant subset of each rule: ruleKey/severity for triage
+  // plus condition/rationale/remediation so the agent can self-assess before
+  // writing. Per kap. 6.2 the framework still runs final validation — this
+  // surface is advisory guidance, not a precommit gate.
+  async getForType(
+    tenantId: string,
+    nodeType: string
+  ): Promise<WriteGuidanceRule[]> {
+    const rows = await this.sql<GuardrailRow[]>`
+      SELECT * FROM guardrails
+      WHERE tenant_id = ${tenantId}
+        AND enabled = TRUE
+        AND (config->>'object_type' = ${nodeType} OR config->>'object_type' = '*')
+      ORDER BY rule_key
+    `;
+    return rows.map((row) => {
+      const cfg = row.config ?? {};
+      return {
+        ruleKey: row.ruleKey,
+        severity: row.severity,
+        condition: typeof cfg["condition"] === "string" ? (cfg["condition"] as string) : "",
+        rationale: typeof cfg["rationale"] === "string" ? (cfg["rationale"] as string) : row.description,
+        remediation: typeof cfg["remediation"] === "string" ? (cfg["remediation"] as string) : "",
+      };
+    });
   }
 
   async evaluate(

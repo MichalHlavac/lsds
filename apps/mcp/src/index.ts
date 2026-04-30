@@ -185,6 +185,25 @@ server.tool(
 // ── Write Agent tools ────────────────────────────────────────────────────────
 
 server.tool(
+  "lsds_get_write_guidance",
+  "Fetch the guardrails (with rationale and remediation) that apply to a given node type before creating or updating it. Call this BEFORE lsds_create_node so you can self-assess your draft against each rule. The framework runs final validation on write — your self-assessment is advisory.",
+  {
+    nodeType: z
+      .string()
+      .min(1)
+      .describe("Node type the agent intends to write, e.g. 'Service', 'APIEndpoint', 'BoundedContext'"),
+  },
+  async ({ nodeType }) => {
+    try {
+      const data = await client.getWriteGuidance(nodeType);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
   "lsds_create_node",
   "Create a new node in the knowledge graph. Nodes represent architecture entities across six layers (L1=Business to L6=Operations).",
   {

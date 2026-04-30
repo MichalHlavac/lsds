@@ -113,6 +113,24 @@ export function agentRouter(
     });
   });
 
+  // ── Write guidance: guardrails-as-guidance for a node type (kap. 6.2) ──────
+  // Returns the relevant guardrails (with rationale + remediation) so the agent
+  // can self-assess before drafting a node. The framework still runs final
+  // validation on write — the AI self-assessment is advisory.
+  app.get("/write-guidance/:nodeType", async (c) => {
+    const tenantId = getTenantId(c);
+    const { nodeType } = c.req.param();
+    const guardrailsForType = await guardrails.getForType(tenantId, nodeType);
+    return c.json({
+      data: {
+        nodeType,
+        guardrails: guardrailsForType,
+        instruction:
+          "For each rule above, verify your proposed object satisfies the condition. Return a self_assessment mapping ruleKey → {passes: boolean, notes: string}. The framework runs final validation on write — your self-assessment is advisory.",
+      },
+    });
+  });
+
   // ── Evaluate guardrails for a node (dry-run) ───────────────────────────────
   app.post("/evaluate/:nodeId", async (c) => {
     const tenantId = getTenantId(c);
