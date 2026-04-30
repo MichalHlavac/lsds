@@ -80,7 +80,7 @@ export class LifecycleService {
 
     // Cascade: archive all edges that touch this node (outgoing and incoming)
     // that aren't already ARCHIVED/PURGE. Incoming edges to an archived node are
-    // dangling references — structural integrity (ADR-A2) requires they follow the node.
+    // dangling references — structural integrity requires they follow the node.
     const cascaded = await this.sql<Pick<EdgeRow, "id" | "sourceId" | "targetId">[]>`
       UPDATE edges
       SET lifecycle_status = 'ARCHIVED',
