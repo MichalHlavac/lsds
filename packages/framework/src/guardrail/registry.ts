@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { GUARDRAIL_CATALOG } from "./catalog";
+import { GUARDRAIL_CATALOG } from "./catalog.js";
 import {
   GuardrailRule,
   GuardrailRuleSchema,
@@ -10,7 +10,7 @@ import {
   Origin,
   Evaluation,
   Severity,
-} from "./types";
+} from "./types.js";
 
 const BY_ID: ReadonlyMap<string, GuardrailRule> = (() => {
   const map = new Map<string, GuardrailRule>();

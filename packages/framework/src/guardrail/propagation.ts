@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { z } from "zod";
-import { PropagationSchema, SeveritySchema, type Propagation, type Severity } from "./types";
-import { ViolationSchema, type Violation } from "./violation";
+import { PropagationSchema, SeveritySchema, type Propagation, type Severity } from "./types.js";
+import { ViolationSchema, type Violation } from "./violation.js";
 
 export const PROPAGATION_DIRECTIONS = ["UP", "DOWN", "LATERAL"] as const;
 export const PropagationDirectionSchema = z.enum(PROPAGATION_DIRECTIONS);

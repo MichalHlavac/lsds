@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { z } from "zod";
-import { RuleIdSchema, SeveritySchema } from "./types";
+import { RuleIdSchema, SeveritySchema } from "./types.js";
 
 export const VIOLATION_STATUSES = [
   "DETECTED",

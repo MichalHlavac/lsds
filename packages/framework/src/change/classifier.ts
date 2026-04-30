@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { ChangeKind, ChangeSeverity } from "./types";
+import { ChangeKind, ChangeSeverity } from "./types.js";
 
 // Structural classification rules (kap. 2.7).
 // Source of truth — anything that does not match throws so callers cannot silently

@@ -5,7 +5,7 @@ import {
   ChangeSeverity,
   PropagationMode,
   StaleSeverity,
-} from "./types";
+} from "./types.js";
 
 // MINOR change events propagate over these relationship types only (kap. 2.7).
 // MAJOR propagates over every relationship; PATCH does not propagate.

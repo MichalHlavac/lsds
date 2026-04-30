@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { ChangePolicy } from "../layer/index.js";
-import { ObjectLayer } from "./types";
+import { ObjectLayer } from "./types.js";
 
 // Layer policy (ADR-004 + kap. 2.7):
 //   L1-L2 — REQUIRE_CONFIRMATION (system proposes, author confirms)
