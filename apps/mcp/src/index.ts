@@ -5,7 +5,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { createLsdsClient, getConfigFromEnv } from "./client.js";
+import { createLsdsClient, getConfigFromEnv, LifecycleTransitionApiError } from "./client.js";
 
 const config = getConfigFromEnv();
 const client = createLsdsClient(config);
@@ -321,6 +321,78 @@ server.tool(
       const data = await client.archiveNode(nodeId);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "transition_node_lifecycle",
+  "Drive a lifecycle state-machine transition for a node. Valid transitions: ACTIVE → DEPRECATED (deprecate), DEPRECATED → ARCHIVED (archive), ARCHIVED → PURGE (purge). On an invalid transition the tool returns a structured error with the current status, requested transition, and the list of allowed transitions.",
+  {
+    nodeId: z
+      .string()
+      .uuid()
+      .describe("UUID of the node to transition"),
+    transition: z
+      .enum(["deprecate", "archive", "purge"])
+      .describe("Lifecycle transition to apply"),
+  },
+  async ({ nodeId, transition }) => {
+    try {
+      const data = await client.transitionNodeLifecycle(nodeId, transition);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      if (e instanceof LifecycleTransitionApiError) {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              error: "invalid lifecycle transition",
+              currentStatus: e.currentStatus,
+              requestedTransition: e.requestedTransition,
+              allowed: e.allowed,
+            }, null, 2),
+          }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "transition_edge_lifecycle",
+  "Drive a lifecycle state-machine transition for an edge. Valid transitions: ACTIVE → DEPRECATED (deprecate), DEPRECATED → ARCHIVED (archive), ARCHIVED → PURGE (purge). On an invalid transition the tool returns a structured error with the current status, requested transition, and the list of allowed transitions.",
+  {
+    edgeId: z
+      .string()
+      .uuid()
+      .describe("UUID of the edge to transition"),
+    transition: z
+      .enum(["deprecate", "archive", "purge"])
+      .describe("Lifecycle transition to apply"),
+  },
+  async ({ edgeId, transition }) => {
+    try {
+      const data = await client.transitionEdgeLifecycle(edgeId, transition);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      if (e instanceof LifecycleTransitionApiError) {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              error: "invalid lifecycle transition",
+              currentStatus: e.currentStatus,
+              requestedTransition: e.requestedTransition,
+              allowed: e.allowed,
+            }, null, 2),
+          }],
+          isError: true,
+        };
+      }
       return { content: [{ type: "text", text: String(e) }], isError: true };
     }
   }
