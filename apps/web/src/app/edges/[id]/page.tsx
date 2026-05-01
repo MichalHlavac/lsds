@@ -44,16 +44,24 @@ export default function EdgeDetailPage({ params }: { params: Promise<{ id: strin
           ← Edges
         </Link>
       </div>
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
         <h1 className="text-2xl font-bold font-mono">{edge.type}</h1>
         <LifecycleBadge status={edge.lifecycleStatus} />
-        <LifecycleControls
-          entityId={edge.id}
-          entityType="edge"
-          entityName={edge.id}
-          currentStatus={edge.lifecycleStatus}
-          onSuccess={(updated) => setEdge(updated as EdgeRow)}
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <Link
+            href={`/edges/${edge.id}/edit`}
+            className="px-3 py-1.5 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          >
+            Edit
+          </Link>
+          <LifecycleControls
+            entityId={edge.id}
+            entityType="edge"
+            entityName={edge.id}
+            currentStatus={edge.lifecycleStatus}
+            onSuccess={(updated) => setEdge(updated as EdgeRow)}
+          />
+        </div>
       </div>
 
       <div className="rounded-lg border border-gray-800 bg-gray-900 divide-y divide-gray-800">
