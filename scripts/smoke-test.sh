@@ -13,7 +13,7 @@ done
 
 API_PORT="${API_HOST_PORT:-3001}"
 BASE_URL="http://localhost:${API_PORT}"
-TENANT_ID="${TENANT_ID:-smoke-test}"
+TENANT_ID="${TENANT_ID:-00000000-0000-0000-0000-000000000001}"
 
 cleanup() {
   if [[ "$CLEANUP" == true ]]; then
