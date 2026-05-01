@@ -96,6 +96,88 @@ describe("GET /v1/nodes", () => {
   });
 });
 
+// ── GET /v1/nodes ?sortBy / ?order ────────────────────────────────────────────
+
+describe("GET /v1/nodes sortBy + order", () => {
+  it("accepts valid sortBy=name&order=asc and returns 200", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "bravo" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "alpha" }),
+    });
+
+    const res = await app.request("/v1/nodes?sortBy=name&order=asc", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    const names = data.map((n: any) => n.name);
+    expect(names).toEqual([...names].sort());
+  });
+
+  it("returns nodes in descending name order when order=desc", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "alpha" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "zebra" }),
+    });
+
+    const res = await app.request("/v1/nodes?sortBy=name&order=desc", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const names = data.map((n: any) => n.name);
+    expect(names).toEqual([...names].sort().reverse());
+  });
+
+  it("returns 400 for invalid sortBy value", async () => {
+    const res = await app.request("/v1/nodes?sortBy=INVALID_FIELD", { headers: h() });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/invalid sortBy/);
+  });
+
+  it("returns 400 for invalid order value", async () => {
+    const res = await app.request("/v1/nodes?order=sideways", { headers: h() });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/invalid order/);
+  });
+
+  it("combines sortBy with existing type filter", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Database", layer: "L3", name: "pg" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Database", layer: "L3", name: "mysql" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "api" }),
+    });
+
+    const res = await app.request("/v1/nodes?type=Database&sortBy=name&order=asc", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.every((n: any) => n.type === "Database")).toBe(true);
+    const names = data.map((n: any) => n.name);
+    expect(names).toEqual([...names].sort());
+  });
+});
+
 // ── GET /v1/nodes/:id ─────────────────────────────────────────────────────────
 
 describe("GET /v1/nodes/:id", () => {

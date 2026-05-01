@@ -134,6 +134,62 @@ describe("GET /v1/edges", () => {
   });
 });
 
+// ── GET /v1/edges ?sortBy / ?order ────────────────────────────────────────────
+
+describe("GET /v1/edges sortBy + order", () => {
+  it("accepts valid sortBy=type&order=asc and returns 200", async () => {
+    const src = await createNode("L4", "s");
+    const tgt = await createNode("L4", "t");
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+    });
+
+    const res = await app.request("/v1/edges?sortBy=type&order=asc", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("returns 400 for invalid sortBy value", async () => {
+    const res = await app.request("/v1/edges?sortBy=INVALID_FIELD", { headers: h() });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/invalid sortBy/);
+  });
+
+  it("returns 400 for invalid order value", async () => {
+    const res = await app.request("/v1/edges?order=sideways", { headers: h() });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/invalid order/);
+  });
+
+  it("combines sortBy with existing sourceId filter", async () => {
+    const src = await createNode("L4", "s");
+    const tgt1 = await createNode("L4", "t1");
+    const tgt2 = await createNode("L4", "t2");
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt1.id, type: "contains", layer: "L4" }),
+    });
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt2.id, type: "contains", layer: "L4" }),
+    });
+
+    const res = await app.request(`/v1/edges?sourceId=${src.id}&sortBy=createdAt&order=asc`, { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.every((e: any) => e.sourceId === src.id)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 // ── GET /v1/edges/:id ─────────────────────────────────────────────────────────
 
 describe("GET /v1/edges/:id", () => {

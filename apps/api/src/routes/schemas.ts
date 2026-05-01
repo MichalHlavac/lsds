@@ -117,3 +117,12 @@ export const CreateSnapshotSchema = z.object({
   edgeCount: z.number().int().min(0).optional().default(0),
   snapshotData: z.record(z.unknown()).optional().default({}),
 });
+
+export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;
+export type NodeSortField = (typeof NODE_SORT_FIELDS)[number];
+
+export const EDGE_SORT_FIELDS = ["createdAt", "updatedAt", "type", "layer", "traversalWeight"] as const;
+export type EdgeSortField = (typeof EDGE_SORT_FIELDS)[number];
+
+export const SORT_ORDER_VALUES = ["asc", "desc"] as const;
+export type SortOrder = (typeof SORT_ORDER_VALUES)[number];
