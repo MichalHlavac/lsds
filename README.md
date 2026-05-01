@@ -49,6 +49,30 @@ pnpm --filter @lsds/api run migrate
 pnpm dev
 ```
 
+## Backup and restore
+
+Back up and restore the complete LSDS state (graph nodes, edges, lifecycle states, violations, snapshots, users, teams, guardrails).
+
+```bash
+# Backup — writes lsds-backup-<timestamp>.tar.gz to <out-dir>
+DATABASE_URL=postgres://lsds:lsds@localhost:5432/lsds lsds backup /var/backups/lsds
+
+# Restore — target database must have migrations applied; existing data will be truncated
+DATABASE_URL=postgres://lsds:lsds@localhost:5432/lsds_restore lsds restore /var/backups/lsds/lsds-backup-2026-05-01T00-00-00.tar.gz
+```
+
+**Bundle contents:**
+
+| File | Description |
+|------|-------------|
+| `manifest.json` | Schema version, timestamp, row counts, SHA-256 hashes |
+| `dump.json` | Full table export (all rows, all columns) |
+
+**Restore guards:**
+
+- Aborts with a clear error if the target schema version does not match the bundle.
+- Aborts with a clear error if the `dump.json` SHA-256 hash does not match the manifest.
+
 ## Diagnostics bundle
 
 For support troubleshooting, generate a redacted diagnostics bundle:
@@ -72,11 +96,11 @@ Options:
 The bundle contains:
 
 - `system-info.json` — OS, Node.js version, CPU/memory
-- `config.json` — process environment with secrets **redacted** (`*_KEY`, `*_SECRET`, `*_TOKEN`, `PASSWORD`, `DSN`)
+- `config.json` — process environment with secrets **redacted**: values for `*_KEY`, `*_SECRET`, `*_TOKEN`, `PASSWORD`, `DSN` keys are replaced with `<REDACTED>`; passwords embedded in `*_URL` connection strings are also stripped (e.g. `postgres://user:<REDACTED>@host/db`)
 - `db-version.txt` + `schema-snapshot.json` — PostgreSQL version and public schema (requires `DATABASE_URL`)
 - `logs/` — `*.log` files from `--log-dir` within the requested time window
 
-No credentials or secret values are included. You can verify this by inspecting `config.json` inside the bundle before sharing it.
+No API keys, tokens, passwords, or DSN credentials are included. You can verify this by inspecting `config.json` inside the bundle before sharing it.
 
 ## License
 

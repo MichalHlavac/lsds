@@ -58,9 +58,15 @@ importers:
         specifier: ^3.4.4
         version: 3.4.9
     devDependencies:
+      '@testcontainers/postgresql':
+        specifier: ^11.14.0
+        version: 11.14.0
       '@types/node':
         specifier: ^24.0.0
         version: 24.12.2
+      testcontainers:
+        specifier: ^11.14.0
+        version: 11.14.0
       tsx:
         specifier: ^4.7.0
         version: 4.21.0
