@@ -99,6 +99,17 @@ export const BatchIdsSchema = z.object({
   ids: z.array(z.string().uuid()).min(1),
 });
 
+// POST /agent/v1/architect/analyze — bulk drift scan input.
+// All fields optional; defaults yield a full-graph scan over non-archived nodes.
+export const AgentAnalyzeSchema = z.object({
+  persist: z.boolean().optional().default(false),
+  types: z.array(z.string().min(1)).optional(),
+  layers: z.array(LayerEnum).optional(),
+  lifecycleStatuses: z.array(LifecycleEnum).optional(),
+  sampleLimit: z.number().int().min(0).max(500).optional().default(50),
+});
+export type AgentAnalyze = z.infer<typeof AgentAnalyzeSchema>;
+
 export const CreateUserSchema = z.object({
   externalId: z.string().min(1),
   displayName: z.string().min(1),
