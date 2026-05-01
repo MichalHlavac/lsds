@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   api,
   type LifecycleStatus,
@@ -53,6 +53,9 @@ export function LifecycleControls({
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
   const transition = NEXT_TRANSITION[currentStatus];
   if (!transition) return null;
 
@@ -69,13 +72,34 @@ export function LifecycleControls({
     if (pending) return;
     setShowDialog(false);
     setInlineError(null);
+    requestAnimationFrame(() => triggerRef.current?.focus());
   }
+
+  // Focus the cancel button when dialog opens
+  useEffect(() => {
+    if (showDialog && cancelRef.current) {
+      cancelRef.current.focus();
+    }
+  }, [showDialog]);
+
+  // Escape key closes dialog
+  useEffect(() => {
+    if (!showDialog) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) {
+        setShowDialog(false);
+        setInlineError(null);
+        requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showDialog, pending]);
 
   async function handleConfirm() {
     setPending(true);
     setInlineError(null);
     try {
-      // transition is always defined here — early return above guards the null case
       const t = transition as LifecycleTransition;
       const res =
         entityType === "node"
@@ -83,6 +107,7 @@ export function LifecycleControls({
           : await api.edges.lifecycle(entityId, t);
       setShowDialog(false);
       onSuccess(res.data);
+      requestAnimationFrame(() => triggerRef.current?.focus());
     } catch (err: unknown) {
       const e = err as { status?: number; body?: LifecycleErrorBody };
       if (e.status === 422 && e.body?.allowed) {
@@ -94,6 +119,7 @@ export function LifecycleControls({
         const msg = err instanceof Error ? err.message : "Unexpected error";
         setToast(msg);
         setTimeout(() => setToast(null), 4000);
+        requestAnimationFrame(() => triggerRef.current?.focus());
       }
     } finally {
       setPending(false);
@@ -108,7 +134,12 @@ export function LifecycleControls({
 
   return (
     <>
-      <button type="button" onClick={openDialog} className={actionButtonClass}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={openDialog}
+        className={actionButtonClass}
+      >
         {label}
       </button>
 
@@ -119,8 +150,16 @@ export function LifecycleControls({
             if (e.target === e.currentTarget) closeDialog();
           }}
         >
-          <div className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl">
-            <h2 className="text-base font-semibold text-gray-100 mb-1">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lifecycle-dialog-title"
+            className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl"
+          >
+            <h2
+              id="lifecycle-dialog-title"
+              className="text-base font-semibold text-gray-100 mb-1"
+            >
               Confirm: {label} {entityType}
             </h2>
             <p className="text-sm text-gray-400 mb-4">
@@ -138,17 +177,21 @@ export function LifecycleControls({
             )}
 
             {inlineError && (
-              <div className="mb-4 rounded border border-yellow-700 bg-yellow-950/60 px-3 py-2 text-sm text-yellow-300">
+              <div
+                role="alert"
+                className="mb-4 rounded border border-yellow-700 bg-yellow-950/60 px-3 py-2 text-sm text-yellow-300"
+              >
                 {inlineError}
               </div>
             )}
 
             <div className="flex justify-end gap-2 mt-6">
               <button
+                ref={cancelRef}
                 type="button"
                 onClick={closeDialog}
                 disabled={pending}
-                className="px-3 py-1.5 rounded text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-50"
+                className="px-3 py-1.5 rounded text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900"
               >
                 Cancel
               </button>
@@ -156,6 +199,7 @@ export function LifecycleControls({
                 type="button"
                 onClick={handleConfirm}
                 disabled={pending}
+                aria-busy={pending}
                 className={`${actionButtonClass} disabled:opacity-60`}
               >
                 {pending ? `${label}ing…` : label}
@@ -166,7 +210,11 @@ export function LifecycleControls({
       )}
 
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 rounded-lg border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-300 shadow-xl">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="fixed bottom-4 right-4 z-50 rounded-lg border border-red-700 bg-red-950 px-4 py-3 text-sm text-red-300 shadow-xl"
+        >
           {toast}
         </div>
       )}

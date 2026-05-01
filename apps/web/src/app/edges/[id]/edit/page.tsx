@@ -90,8 +90,25 @@ export default function EditEdgePage({ params }: { params: Promise<{ id: string 
     }
   }
 
-  if (loading) return <div className="text-gray-500">Loading…</div>;
-  if (loadError) return <div className="text-red-400 font-mono text-sm">{loadError}</div>;
+  if (loading) {
+    return (
+      <div role="status" aria-live="polite" className="text-gray-500">
+        Loading…
+      </div>
+    );
+  }
+  if (loadError) {
+    return (
+      <div className="space-y-3">
+        <div role="alert" className="text-red-400 font-mono text-sm">
+          {loadError}
+        </div>
+        <Link href="/edges" className="text-sm text-gray-500 hover:text-gray-300">
+          ← Back to edges
+        </Link>
+      </div>
+    );
+  }
   if (!edge) return null;
 
   return (
@@ -105,49 +122,75 @@ export default function EditEdgePage({ params }: { params: Promise<{ id: string 
       <p className="text-sm text-gray-500 mb-6 font-mono">{edge.id}</p>
 
       {serverError && (
-        <div className="mb-4 rounded border border-red-700 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+        <div
+          role="alert"
+          className="mb-4 rounded border border-red-700 bg-red-950/60 px-3 py-2 text-sm text-red-300"
+        >
           {serverError}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            Type
+          <label htmlFor="edit-type" className="block text-sm text-gray-400 mb-1">
+            Type{" "}
             <span className="ml-2 text-xs text-gray-500">(freetext — no catalog yet)</span>
           </label>
           <input
+            id="edit-type"
             value={type}
             onChange={(e) => setType(e.target.value)}
+            aria-describedby={errors.type ? "edit-type-error" : undefined}
+            aria-invalid={!!errors.type}
             className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
           />
-          {errors.type && <p className="mt-1 text-xs text-red-400">{errors.type}</p>}
+          {errors.type && (
+            <p id="edit-type-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.type}
+            </p>
+          )}
         </div>
 
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Traversal Weight</label>
+          <label htmlFor="edit-weight" className="block text-sm text-gray-400 mb-1">
+            Traversal Weight
+          </label>
           <input
+            id="edit-weight"
             type="number"
             step="0.1"
             min="0.1"
             value={traversalWeight}
             onChange={(e) => setTraversalWeight(e.target.value)}
+            aria-describedby={errors.traversalWeight ? "edit-weight-error" : undefined}
+            aria-invalid={!!errors.traversalWeight}
             className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
           />
           {errors.traversalWeight && (
-            <p className="mt-1 text-xs text-red-400">{errors.traversalWeight}</p>
+            <p id="edit-weight-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.traversalWeight}
+            </p>
           )}
         </div>
 
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Attributes (JSON)</label>
+          <label htmlFor="edit-attributes" className="block text-sm text-gray-400 mb-1">
+            Attributes (JSON)
+          </label>
           <textarea
+            id="edit-attributes"
             value={attributesJson}
             onChange={(e) => setAttributesJson(e.target.value)}
             rows={6}
+            aria-describedby={errors.attributes ? "edit-attributes-error" : undefined}
+            aria-invalid={!!errors.attributes}
             className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-mono text-gray-100 focus:border-blue-500 focus:outline-none"
           />
-          {errors.attributes && <p className="mt-1 text-xs text-red-400">{errors.attributes}</p>}
+          {errors.attributes && (
+            <p id="edit-attributes-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.attributes}
+            </p>
+          )}
         </div>
 
         <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-3 text-xs text-gray-500 space-y-1">
@@ -175,6 +218,7 @@ export default function EditEdgePage({ params }: { params: Promise<{ id: string 
           <button
             type="submit"
             disabled={submitting}
+            aria-busy={submitting}
             className="px-4 py-2 rounded text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-60"
           >
             {submitting ? "Saving…" : "Save changes"}

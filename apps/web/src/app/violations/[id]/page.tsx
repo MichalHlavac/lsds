@@ -3,7 +3,7 @@
 
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, type ViolationRow } from "../../../lib/api";
 import { SeverityBadge } from "../../../components/SeverityBadge";
@@ -22,6 +22,9 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
 
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     api.violations
       .get(id)
@@ -35,6 +38,27 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
       });
   }, [id]);
 
+  // Focus cancel button when dialog opens
+  useEffect(() => {
+    if (showDialog && cancelRef.current) {
+      cancelRef.current.focus();
+    }
+  }, [showDialog]);
+
+  // Escape key closes dialog
+  useEffect(() => {
+    if (!showDialog) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !resolving) {
+        setShowDialog(false);
+        setResolveError(null);
+        requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showDialog, resolving]);
+
   async function handleResolve() {
     setResolving(true);
     setResolveError(null);
@@ -42,6 +66,7 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
       const res = await api.violations.resolve(id);
       setViolation(res.data);
       setShowDialog(false);
+      requestAnimationFrame(() => triggerRef.current?.focus());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to resolve violation";
       setResolveError(msg);
@@ -50,8 +75,25 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
     }
   }
 
-  if (loading) return <div className="text-gray-500">Loading…</div>;
-  if (error) return <div className="text-red-400 font-mono text-sm">{error}</div>;
+  if (loading) {
+    return (
+      <div role="status" aria-live="polite" className="text-gray-500">
+        Loading…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <div role="alert" className="text-red-400 font-mono text-sm">
+          {error}
+        </div>
+        <Link href="/violations" className="text-sm text-gray-500 hover:text-gray-300">
+          ← Back to violations
+        </Link>
+      </div>
+    );
+  }
   if (!violation) return null;
 
   return (
@@ -71,6 +113,7 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
           </span>
         ) : (
           <button
+            ref={triggerRef}
             type="button"
             onClick={() => {
               setResolveError(null);
@@ -145,11 +188,25 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           onClick={(e) => {
-            if (e.target === e.currentTarget && !resolving) setShowDialog(false);
+            if (e.target === e.currentTarget && !resolving) {
+              setShowDialog(false);
+              setResolveError(null);
+              requestAnimationFrame(() => triggerRef.current?.focus());
+            }
           }}
         >
-          <div className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl">
-            <h2 className="text-base font-semibold text-gray-100 mb-1">Mark as Resolved</h2>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="resolve-dialog-title"
+            className="w-full max-w-md rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl"
+          >
+            <h2
+              id="resolve-dialog-title"
+              className="text-base font-semibold text-gray-100 mb-1"
+            >
+              Mark as Resolved
+            </h2>
             <p className="text-sm text-gray-400 mb-4">
               <span className="font-mono text-gray-200">{violation.ruleKey}</span>
               {" · "}
@@ -157,17 +214,25 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
             </p>
 
             {resolveError && (
-              <div className="mb-4 rounded border border-yellow-700 bg-yellow-950/60 px-3 py-2 text-sm text-yellow-300">
+              <div
+                role="alert"
+                className="mb-4 rounded border border-yellow-700 bg-yellow-950/60 px-3 py-2 text-sm text-yellow-300"
+              >
                 {resolveError}
               </div>
             )}
 
             <div className="flex justify-end gap-2 mt-6">
               <button
+                ref={cancelRef}
                 type="button"
-                onClick={() => setShowDialog(false)}
+                onClick={() => {
+                  setShowDialog(false);
+                  setResolveError(null);
+                  requestAnimationFrame(() => triggerRef.current?.focus());
+                }}
                 disabled={resolving}
-                className="px-3 py-1.5 rounded text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-50"
+                className="px-3 py-1.5 rounded text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900"
               >
                 Cancel
               </button>
@@ -175,7 +240,8 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
                 type="button"
                 onClick={handleResolve}
                 disabled={resolving}
-                className="px-3 py-1.5 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-60"
+                aria-busy={resolving}
+                className="px-3 py-1.5 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900"
               >
                 {resolving ? "Resolving…" : "Mark as Resolved"}
               </button>
@@ -183,7 +249,6 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </div>
       )}
-
     </div>
   );
 }
