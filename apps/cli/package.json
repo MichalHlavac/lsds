@@ -2,6 +2,7 @@
   "name": "@lsds/cli",
   "version": "0.0.0",
   "private": true,
+  "license": "BUSL-1.1",
   "type": "module",
   "bin": {
     "lsds": "dist/index.js"
