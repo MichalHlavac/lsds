@@ -46,6 +46,9 @@ export function Sidebar() {
         </p>
         <ul className="space-y-0.5">
           <li>
+            <NavLink href="/graph">Canvas</NavLink>
+          </li>
+          <li>
             <NavLink href="/nodes">Nodes</NavLink>
           </li>
           <li>
