@@ -5,12 +5,29 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type NodeRow, type Layer, type LifecycleStatus } from "../../lib/api";
+import {
+  api,
+  type NodeRow,
+  type Layer,
+  type LifecycleStatus,
+  type LifecycleTransition,
+  type BatchFailedItem,
+} from "../../lib/api";
 import { LifecycleBadge } from "../../components/LifecycleBadge";
 
 const LAYERS: Layer[] = ["L1", "L2", "L3", "L4", "L5", "L6"];
 const STATUSES: LifecycleStatus[] = ["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"];
+const TRANSITIONS: { value: LifecycleTransition; label: string }[] = [
+  { value: "deprecate", label: "Deprecate" },
+  { value: "archive", label: "Archive" },
+  { value: "purge", label: "Purge" },
+];
 const LIMIT = 50;
+
+interface BulkResult {
+  succeededCount: number;
+  failed: BatchFailedItem[];
+}
 
 export default function NodesPage() {
   const [nodes, setNodes] = useState<NodeRow[]>([]);
@@ -22,9 +39,20 @@ export default function NodesPage() {
   const [status, setStatus] = useState<LifecycleStatus | "">("");
   const [retryCount, setRetryCount] = useState(0);
 
+  // Selection state
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Bulk action state
+  const [bulkTransition, setBulkTransition] = useState<LifecycleTransition>("deprecate");
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkPending, setBulkPending] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
+    setSelected(new Set());
     api.nodes
       .list({
         layer: layer || undefined,
@@ -49,6 +77,79 @@ export default function NodesPage() {
     setStatus("");
     setOffset(0);
   }
+
+  const allSelected = nodes.length > 0 && nodes.every((n) => selected.has(n.id));
+  const someSelected = selected.size > 0 && !allSelected;
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(nodes.map((n) => n.id)));
+    }
+  }
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function openBulkModal() {
+    setBulkResult(null);
+    setShowBulkModal(true);
+  }
+
+  function closeBulkModal() {
+    if (bulkPending) return;
+    setShowBulkModal(false);
+    setBulkResult(null);
+  }
+
+  async function handleBulkConfirm() {
+    setBulkPending(true);
+    try {
+      const res = await api.nodes.batchLifecycle([...selected], bulkTransition);
+      const { succeeded, failed } = res.data;
+      if (failed.length === 0) {
+        setShowBulkModal(false);
+        const count = succeeded.length;
+        showToast(`${count} node${count !== 1 ? "s" : ""} ${bulkTransition}d successfully.`);
+        setNodes((prev) =>
+          prev.map((n) => {
+            const updated = succeeded.find((s) => s.id === n.id);
+            return updated ?? n;
+          }),
+        );
+        setSelected(new Set());
+      } else {
+        setBulkResult({ succeededCount: succeeded.length, failed });
+        setNodes((prev) =>
+          prev.map((n) => {
+            const updated = succeeded.find((s) => s.id === n.id);
+            return updated ?? n;
+          }),
+        );
+        setSelected(new Set(failed.map((f) => f.id)));
+      }
+    } catch (err: unknown) {
+      setShowBulkModal(false);
+      showToast(err instanceof Error ? err.message : "Bulk operation failed.");
+    } finally {
+      setBulkPending(false);
+    }
+  }
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
+  }
+
+  const isPurge = bulkTransition === "purge";
+  const colSpan = 7;
 
   return (
     <div className="max-w-6xl">
@@ -130,10 +231,63 @@ export default function NodesPage() {
         </button>
       </div>
 
+      {/* Bulk actions toolbar */}
+      {selected.size > 0 && (
+        <div className="mb-3 flex items-center gap-3 rounded-lg border border-blue-700 bg-blue-950/40 px-4 py-2.5">
+          <span className="text-sm text-blue-300 font-medium">
+            {selected.size} node{selected.size !== 1 ? "s" : ""} selected
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            <label htmlFor="bulk-transition" className="text-xs text-gray-400">
+              Transition:
+            </label>
+            <select
+              id="bulk-transition"
+              value={bulkTransition}
+              onChange={(e) => setBulkTransition(e.target.value as LifecycleTransition)}
+              className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-gray-500"
+            >
+              {TRANSITIONS.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={openBulkModal}
+              className="px-3 py-1.5 text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors"
+            >
+              Apply to {selected.size}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded hover:border-gray-500 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border border-gray-800 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-800 bg-gray-900">
+              <th scope="col" className="px-4 py-2.5 w-10">
+                <input
+                  type="checkbox"
+                  aria-label="Select all nodes on this page"
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected;
+                  }}
+                  onChange={toggleAll}
+                  disabled={loading || nodes.length === 0}
+                  className="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-950"
+                />
+              </th>
               <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
                 Name
               </th>
@@ -158,7 +312,7 @@ export default function NodesPage() {
             {loading && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={colSpan}
                   className="px-4 py-8 text-center text-gray-500"
                   role="status"
                   aria-live="polite"
@@ -169,7 +323,7 @@ export default function NodesPage() {
             )}
             {!loading && error && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center" role="alert">
+                <td colSpan={colSpan} className="px-4 py-8 text-center" role="alert">
                   <p className="text-red-400 font-mono text-xs mb-3">{error}</p>
                   <button
                     type="button"
@@ -183,7 +337,7 @@ export default function NodesPage() {
             )}
             {!loading && !error && nodes.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center">
+                <td colSpan={colSpan} className="px-4 py-10 text-center">
                   <p className="text-gray-500 mb-2">No nodes found.</p>
                   <Link
                     href="/nodes/new"
@@ -200,7 +354,17 @@ export default function NodesPage() {
                 <tr
                   key={node.id}
                   className="border-b border-gray-800 last:border-0 hover:bg-gray-900 transition-colors"
+                  aria-selected={selected.has(node.id)}
                 >
+                  <td className="px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${node.name}`}
+                      checked={selected.has(node.id)}
+                      onChange={() => toggleRow(node.id)}
+                      className="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-950"
+                    />
+                  </td>
                   <td className="px-4 py-2.5">
                     <Link
                       href={`/nodes/${node.id}`}
@@ -254,6 +418,96 @@ export default function NodesPage() {
           Next →
         </button>
       </div>
+
+      {/* Bulk lifecycle confirmation modal */}
+      {showBulkModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeBulkModal();
+          }}
+        >
+          <div className="w-full max-w-lg rounded-lg border border-gray-700 bg-gray-900 p-6 shadow-xl">
+            <h2 className="text-base font-semibold text-gray-100 mb-1">
+              Confirm bulk {bulkTransition}
+            </h2>
+            <p className="text-sm text-gray-400 mb-4">
+              Apply <span className="font-semibold text-gray-200">{bulkTransition}</span> to{" "}
+              <span className="font-semibold text-gray-200">{selected.size}</span> node
+              {selected.size !== 1 ? "s" : ""}.
+            </p>
+
+            {isPurge && (
+              <div className="mb-4 rounded border border-red-700 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+                Purge cannot be undone.
+              </div>
+            )}
+
+            {/* Partial-success result */}
+            {bulkResult && (
+              <div className="mb-4 rounded border border-yellow-700 bg-yellow-950/40 px-3 py-3 text-sm">
+                {bulkResult.succeededCount > 0 && (
+                  <p className="text-green-300 mb-2">
+                    ✓ {bulkResult.succeededCount} node
+                    {bulkResult.succeededCount !== 1 ? "s" : ""} transitioned.
+                  </p>
+                )}
+                <p className="text-yellow-300 font-medium mb-1">
+                  {bulkResult.failed.length} failed:
+                </p>
+                <ul className="space-y-1 max-h-40 overflow-y-auto">
+                  {bulkResult.failed.map((f) => (
+                    <li key={f.id} className="text-yellow-200 font-mono text-xs">
+                      {f.id.slice(0, 8)}… — {f.error}
+                      {f.currentStatus && (
+                        <span className="text-yellow-400">
+                          {" "}
+                          (current: {f.currentStatus}, allowed:{" "}
+                          {f.allowed?.join(", ") ?? "none"})
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={closeBulkModal}
+                disabled={bulkPending}
+                className="px-3 py-1.5 rounded text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-50"
+              >
+                {bulkResult ? "Close" : "Cancel"}
+              </button>
+              {!bulkResult && (
+                <button
+                  type="button"
+                  onClick={handleBulkConfirm}
+                  disabled={bulkPending}
+                  className={`px-3 py-1.5 rounded text-sm font-medium text-white transition-colors disabled:opacity-60 ${
+                    isPurge
+                      ? "bg-red-700 hover:bg-red-600"
+                      : "bg-blue-700 hover:bg-blue-600"
+                  }`}
+                >
+                  {bulkPending
+                    ? `${bulkTransition.charAt(0).toUpperCase() + bulkTransition.slice(1)}ing…`
+                    : `${bulkTransition.charAt(0).toUpperCase() + bulkTransition.slice(1)} ${selected.size}`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success toast */}
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg border border-green-700 bg-green-950 px-4 py-3 text-sm text-green-300 shadow-xl">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
