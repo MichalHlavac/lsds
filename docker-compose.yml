@@ -57,7 +57,7 @@ services:
   web:
     build:
       context: .
-    command: node apps/web/.next/standalone/server.js
+    command: node apps/web/.next/standalone/apps/web/server.js
     restart: unless-stopped
     environment:
       NODE_ENV: production
