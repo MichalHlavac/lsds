@@ -40,9 +40,11 @@ COPY --from=build --chown=lsds:lsds /app/apps/api/node_modules ./apps/api/node_m
 COPY --from=build --chown=lsds:lsds /app/apps/api/package.json ./apps/api/package.json
 
 # Web service files (Next.js standalone)
+# In pnpm monorepo mode, Next.js places server.js at standalone/apps/web/server.js
+# Static assets must sit next to server.js for the standalone server to serve them.
 COPY --from=build --chown=lsds:lsds /app/apps/web/.next/standalone ./apps/web/.next/standalone
-COPY --from=build --chown=lsds:lsds /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=build --chown=lsds:lsds /app/apps/web/public ./apps/web/public
+COPY --from=build --chown=lsds:lsds /app/apps/web/.next/static ./apps/web/.next/standalone/apps/web/.next/static
+COPY --from=build --chown=lsds:lsds /app/apps/web/public ./apps/web/.next/standalone/apps/web/public
 
 # CLI tool (diagnostics sidecar — LSDS-152)
 COPY --from=build --chown=lsds:lsds /app/apps/cli/dist ./apps/cli/dist
