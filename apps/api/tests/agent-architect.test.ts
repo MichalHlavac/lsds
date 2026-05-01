@@ -42,6 +42,223 @@ async function createEdge(sourceId: string, targetId: string, type = "contains")
   return (await res.json()).data as { id: string };
 }
 
+async function createGuardrail(
+  ruleKey: string,
+  config: Record<string, unknown>,
+  severity: "ERROR" | "WARN" | "INFO" = "WARN"
+) {
+  const res = await app.request("/v1/guardrails", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({ ruleKey, severity, enabled: true, config }),
+  });
+  expect(res.status).toBe(201);
+  return (await res.json()).data as { id: string };
+}
+
+// ── POST /agent/v1/architect/analyze ─────────────────────────────────────────
+
+describe("POST /agent/v1/architect/analyze", () => {
+  it("returns 400 when x-tenant-id header is missing", async () => {
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns zero violations for an empty graph", async () => {
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.scope.nodeCount).toBe(0);
+    expect(data.rulesEvaluated).toBe(0);
+    expect(data.summary.totalViolations).toBe(0);
+    expect(data.samples).toEqual([]);
+    expect(data.persisted).toBe(false);
+    expect(data.persistedCount).toBe(0);
+  });
+
+  it("returns zero violations when no guardrails are configured", async () => {
+    await createNode("L4", "OrderService", "Service");
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.scope.nodeCount).toBe(1);
+    expect(data.rulesEvaluated).toBe(0);
+    expect(data.summary.totalViolations).toBe(0);
+  });
+
+  it("flags every node violating naming.node.min_length and groups by rule", async () => {
+    await createGuardrail("naming.node.min_length", { min: 20 });
+    await createNode("L4", "shortA", "Service");
+    await createNode("L4", "shortB", "Service");
+    await createNode("L4", "this-name-is-long-enough-to-pass", "Service");
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: "{}",
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.summary.totalViolations).toBe(2);
+    expect(data.summary.bySeverity.WARN).toBe(2);
+    expect(data.summary.byRule).toHaveLength(1);
+    expect(data.summary.byRule[0]).toMatchObject({
+      ruleKey: "naming.node.min_length",
+      severity: "WARN",
+      count: 2,
+    });
+    expect(data.samples).toHaveLength(2);
+    expect(data.samples[0].nodeId).toBeTruthy();
+  });
+
+  it("aggregates violations across multiple rules", async () => {
+    await createGuardrail("naming.node.min_length", { min: 50 });
+    await createGuardrail("lifecycle.review_cycle", { maxAgeDays: 0 });
+    await createNode("L4", "svc", "Service");
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: "{}",
+    });
+    const { data } = await res.json();
+    expect(data.summary.totalViolations).toBeGreaterThanOrEqual(2);
+    const ruleKeys = data.summary.byRule.map((r: { ruleKey: string }) => r.ruleKey);
+    expect(ruleKeys).toContain("naming.node.min_length");
+    expect(ruleKeys).toContain("lifecycle.review_cycle");
+  });
+
+  it("filters by type", async () => {
+    await createGuardrail("naming.node.min_length", { min: 50 });
+    await createNode("L4", "svc", "Service");
+    await createNode("L2", "ctx", "BoundedContext");
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ types: ["Service"] }),
+    });
+    const { data } = await res.json();
+    expect(data.scope.nodeCount).toBe(1);
+    expect(data.scope.filters.types).toEqual(["Service"]);
+    expect(data.summary.totalViolations).toBe(1);
+  });
+
+  it("filters by layer", async () => {
+    await createGuardrail("naming.node.min_length", { min: 50 });
+    await createNode("L4", "svc", "Service");
+    await createNode("L2", "ctx", "BoundedContext");
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ layers: ["L2"] }),
+    });
+    const { data } = await res.json();
+    expect(data.scope.nodeCount).toBe(1);
+    expect(data.scope.filters.layers).toEqual(["L2"]);
+  });
+
+  it("excludes ARCHIVED and PURGE nodes by default", async () => {
+    await createGuardrail("naming.node.min_length", { min: 50 });
+    const archived = await createNode("L4", "old", "Service");
+    const dep = await app.request(`/v1/lifecycle/nodes/${archived.id}/deprecate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(dep.status).toBe(200);
+    const arc = await app.request(`/v1/lifecycle/nodes/${archived.id}/archive`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(arc.status).toBe(200);
+    await createNode("L4", "live", "Service");
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: "{}",
+    });
+    const { data } = await res.json();
+    expect(data.scope.nodeCount).toBe(1);
+    expect(data.summary.totalViolations).toBe(1);
+  });
+
+  it("persists violations when persist=true", async () => {
+    await createGuardrail("naming.node.min_length", { min: 50 });
+    await createNode("L4", "svc", "Service");
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ persist: true }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.persisted).toBe(true);
+    expect(data.persistedCount).toBe(1);
+
+    const summaryRes = await app.request("/agent/v1/violations/summary", { headers: h() });
+    const { data: summary } = await summaryRes.json();
+    const warn = summary.find((s: { severity: string }) => s.severity === "WARN");
+    expect(warn?.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does NOT persist by default", async () => {
+    await createGuardrail("naming.node.min_length", { min: 50 });
+    await createNode("L4", "svc", "Service");
+
+    await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: "{}",
+    });
+
+    const summaryRes = await app.request("/agent/v1/violations/summary", { headers: h() });
+    const { data: summary } = await summaryRes.json();
+    expect(summary).toEqual([]);
+  });
+
+  it("respects sampleLimit by truncating samples but not summary counts", async () => {
+    await createGuardrail("naming.node.min_length", { min: 50 });
+    for (let i = 0; i < 5; i++) {
+      await createNode("L4", `svc${i}`, "Service");
+    }
+
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sampleLimit: 2 }),
+    });
+    const { data } = await res.json();
+    expect(data.summary.totalViolations).toBe(5);
+    expect(data.samples).toHaveLength(2);
+  });
+
+  it("includes scannedAt timestamp", async () => {
+    const res = await app.request("/agent/v1/architect/analyze", {
+      method: "POST",
+      headers: h(),
+      body: "{}",
+    });
+    const { data } = await res.json();
+    expect(data.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
 // ── GET /agent/v1/architect/consistency ──────────────────────────────────────
 
 describe("GET /agent/v1/architect/consistency", () => {

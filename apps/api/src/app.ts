@@ -50,7 +50,7 @@ v1.route("/layers", layersRouter(sql));
 
 app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle));
-app.route("/agent/v1/architect", architectRouter(sql));
+app.route("/agent/v1/architect", architectRouter(sql, guardrails));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
