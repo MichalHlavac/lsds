@@ -109,14 +109,35 @@ export function migrationRouter(sql: Sql): Hono {
       WHERE tenant_id = ${tenantId}
         AND session_id = ${sessionId}
         AND status = 'approved'
+        AND committed_node_id IS NULL
     `;
 
     if (approved.length === 0) {
-      const [all] = await sql<{ count: string }[]>`
-        SELECT COUNT(*) AS count FROM migration_drafts
+      const [summary] = await sql<{ total: string; alreadyCommitted: string }[]>`
+        SELECT
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE committed_node_id IS NOT NULL) AS already_committed
+        FROM migration_drafts
         WHERE tenant_id = ${tenantId} AND session_id = ${sessionId}
       `;
-      return c.json({ data: { committed: 0, nodeIds: [], skipped: Number(all?.count ?? 0) } });
+      const total = Number(summary?.total ?? 0);
+      const alreadyCommitted = Number(summary?.alreadyCommitted ?? 0);
+      const alreadyCommittedIds = alreadyCommitted > 0
+        ? (await sql<{ committedNodeId: string }[]>`
+            SELECT committed_node_id FROM migration_drafts
+            WHERE tenant_id = ${tenantId}
+              AND session_id = ${sessionId}
+              AND committed_node_id IS NOT NULL
+          `).map((r) => r.committedNodeId)
+        : [];
+      return c.json({
+        data: {
+          committed: alreadyCommitted,
+          nodeIds: alreadyCommittedIds,
+          skipped: total - alreadyCommitted,
+          idempotent: alreadyCommitted > 0,
+        },
+      });
     }
 
     // Defensive: reject if any approved draft somehow has an empty owner
@@ -156,11 +177,17 @@ export function migrationRouter(sql: Sql): Hono {
           RETURNING *
         `;
 
+        await tx`
+          UPDATE migration_drafts
+          SET committed_node_id = ${node.id}, updated_at = now()
+          WHERE id = ${draft.id}
+        `;
+
         nodeIds.push(node.id);
       }
     });
 
-    return c.json({ data: { committed: nodeIds.length, nodeIds, skipped } });
+    return c.json({ data: { committed: nodeIds.length, nodeIds, skipped, idempotent: false } });
   });
 
   // ── PATCH /migration/drafts/:draftId ────────────────────────────────────────

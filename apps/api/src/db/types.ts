@@ -99,6 +99,7 @@ export interface MigrationDraftRow {
   reviewFlags: string[];
   status: "pending" | "approved" | "rejected";
   reviewedAt: Date | null;
+  committedNodeId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

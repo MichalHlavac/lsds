@@ -260,4 +260,70 @@ describe("POST /agent/v1/migration/sessions/:sessionId/commit", () => {
     expect(data.committed).toBe(0);
     expect(data.skipped).toBe(0);
   });
+
+  it("double-commit is idempotent — second call returns same nodeIds and creates no duplicate nodes", async () => {
+    const r = await propose({ proposedName: "IdempotentService" });
+    const { data: draft } = await r.json();
+
+    await app.request(`/agent/v1/migration/drafts/${draft.id}`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ status: "approved" }),
+    });
+
+    // First commit
+    const first = await app.request(`/agent/v1/migration/sessions/${sessionId}/commit`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(first.status).toBe(200);
+    const { data: d1 } = await first.json();
+    expect(d1.committed).toBe(1);
+    expect(d1.idempotent).toBe(false);
+    const nodeId = d1.nodeIds[0];
+
+    // Second commit on the same session — must not create a second node
+    const second = await app.request(`/agent/v1/migration/sessions/${sessionId}/commit`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(second.status).toBe(200);
+    const { data: d2 } = await second.json();
+    expect(d2.committed).toBe(1);
+    expect(d2.nodeIds).toEqual([nodeId]);
+    expect(d2.idempotent).toBe(true);
+
+    // Verify only one node exists for this name in this tenant
+    const searchRes = await app.request(`/v1/nodes?type=Service`, { headers: h() });
+    expect(searchRes.status).toBe(200);
+    const { data: nodes } = await searchRes.json();
+    const matches = nodes.filter((n: { name: string }) => n.name === "IdempotentService");
+    expect(matches).toHaveLength(1);
+  });
+
+  it("draft committedNodeId is set after a successful commit", async () => {
+    const r = await propose({ proposedName: "TrackedService" });
+    const { data: draft } = await r.json();
+
+    await app.request(`/agent/v1/migration/drafts/${draft.id}`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ status: "approved" }),
+    });
+
+    const commitRes = await app.request(`/agent/v1/migration/sessions/${sessionId}/commit`, {
+      method: "POST",
+      headers: h(),
+    });
+    const { data: committed } = await commitRes.json();
+    const nodeId = committed.nodeIds[0];
+
+    // Session view should reflect the committed node ID in the draft
+    const sessionRes = await app.request(`/agent/v1/migration/sessions/${sessionId}`, {
+      headers: h(),
+    });
+    const { data: session } = await sessionRes.json();
+    const committedDraft = session.drafts.find((d: { id: string }) => d.id === draft.id);
+    expect(committedDraft.committedNodeId).toBe(nodeId);
+  });
 });
