@@ -10,6 +10,10 @@ export interface ViolationCandidate {
   message: string;
   nodeId?: string;
   edgeId?: string;
+  // For edge-targeted violations the framework records the offending endpoints
+  // so the violation can be traced back to its source→target pair.
+  sourceNodeId?: string;
+  targetNodeId?: string;
 }
 
 export interface WriteGuidanceRule {
@@ -130,11 +134,22 @@ export class GuardrailsRegistry {
   ): ViolationCandidate[] {
     const violations: ViolationCandidate[] = [];
     for (const subject of subjects) {
+      const isEdge = "sourceId" in subject && "targetId" in subject;
       for (const rule of rules) {
         const check = BUILT_IN_CHECKS.get(rule.ruleKey);
         if (!check) continue;
         const v = check(subject, rule.config);
-        if (v) violations.push(v);
+        if (!v) continue;
+        // Edge violations always carry the offending endpoints so the violation
+        // can be traced back to its source→target pair. Checks may
+        // return only edgeId; the evaluator fills in source/target from the row.
+        if (isEdge) {
+          const edge = subject as EdgeRow;
+          v.edgeId ??= edge.id;
+          v.sourceNodeId ??= edge.sourceId;
+          v.targetNodeId ??= edge.targetId;
+        }
+        violations.push(v);
       }
     }
     return violations;
@@ -149,12 +164,24 @@ export class GuardrailsRegistry {
       tenantId,
       nodeId: v.nodeId ?? null,
       edgeId: v.edgeId ?? null,
+      sourceNodeId: v.sourceNodeId ?? null,
+      targetNodeId: v.targetNodeId ?? null,
       ruleKey: v.ruleKey,
       severity: v.severity,
       message: v.message,
     }));
     await this.sql`
-      INSERT INTO violations ${this.sql(rows, "tenantId", "nodeId", "edgeId", "ruleKey", "severity", "message")}
+      INSERT INTO violations ${this.sql(
+        rows,
+        "tenantId",
+        "nodeId",
+        "edgeId",
+        "sourceNodeId",
+        "targetNodeId",
+        "ruleKey",
+        "severity",
+        "message",
+      )}
       ON CONFLICT DO NOTHING
     `;
   }

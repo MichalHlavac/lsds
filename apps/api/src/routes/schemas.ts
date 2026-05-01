@@ -49,6 +49,8 @@ export const UpdateEdgeSchema = z.object({
 export const CreateViolationSchema = z.object({
   nodeId: z.string().uuid().optional(),
   edgeId: z.string().uuid().optional(),
+  sourceNodeId: z.string().uuid().optional(),
+  targetNodeId: z.string().uuid().optional(),
   ruleKey: z.string().min(1),
   severity: SeverityInput,
   message: z.string().min(1),

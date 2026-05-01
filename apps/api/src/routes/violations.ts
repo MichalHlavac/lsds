@@ -7,6 +7,18 @@ import type { ViolationRow } from "../db/types.js";
 import { CreateViolationSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
 
+async function lookupEdgeEndpoints(
+  sql: Sql,
+  tenantId: string,
+  edgeId: string,
+): Promise<{ sourceId: string; targetId: string } | null> {
+  const [row] = await sql<{ sourceId: string; targetId: string }[]>`
+    SELECT source_id AS "sourceId", target_id AS "targetId"
+    FROM edges WHERE id = ${edgeId} AND tenant_id = ${tenantId}
+  `;
+  return row ?? null;
+}
+
 export function violationsRouter(sql: Sql): Hono {
   const app = new Hono();
 
@@ -33,12 +45,30 @@ export function violationsRouter(sql: Sql): Hono {
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateViolationSchema.parse(await c.req.json());
+
+    // Edge violations need their endpoints captured so architects can navigate
+    // from the violation back to the offending source→target pair (LSDS-274).
+    let sourceNodeId = body.sourceNodeId ?? null;
+    let targetNodeId = body.targetNodeId ?? null;
+    if (body.edgeId && (sourceNodeId === null || targetNodeId === null)) {
+      const endpoints = await lookupEdgeEndpoints(sql, tenantId, body.edgeId);
+      if (endpoints) {
+        sourceNodeId ??= endpoints.sourceId;
+        targetNodeId ??= endpoints.targetId;
+      }
+    }
+
     const [row] = await sql<ViolationRow[]>`
-      INSERT INTO violations (tenant_id, node_id, edge_id, rule_key, severity, message, attributes)
+      INSERT INTO violations (
+        tenant_id, node_id, edge_id, source_node_id, target_node_id,
+        rule_key, severity, message, attributes
+      )
       VALUES (
         ${tenantId},
         ${body.nodeId ?? null},
         ${body.edgeId ?? null},
+        ${sourceNodeId},
+        ${targetNodeId},
         ${body.ruleKey},
         ${body.severity},
         ${body.message},

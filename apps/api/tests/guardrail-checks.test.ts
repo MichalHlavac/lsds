@@ -218,3 +218,4 @@ describe("GuardrailsRegistry.evaluate — orchestration", () => {
     expect(violations[0]?.ruleKey).toBe("lifecycle.review_cycle");
   });
 });
+
