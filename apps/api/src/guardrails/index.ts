@@ -108,12 +108,34 @@ export class GuardrailsRegistry {
     subject: NodeRow | EdgeRow
   ): Promise<ViolationCandidate[]> {
     const rules = await this.loadEnabled(tenantId);
+    return this.applyRules(rules, [subject]);
+  }
+
+  // Bulk evaluation for drift scans (kap. 5). Loads enabled rules ONCE and runs
+  // each built-in check against every subject — O(rules * subjects) in memory,
+  // one DB round-trip total. Returns the rule set it loaded so callers can
+  // report `rulesEvaluated` without a second round-trip.
+  async evaluateBatch(
+    tenantId: string,
+    subjects: ReadonlyArray<NodeRow | EdgeRow>
+  ): Promise<{ rules: GuardrailRow[]; violations: ViolationCandidate[] }> {
+    const rules = await this.loadEnabled(tenantId);
+    if (subjects.length === 0) return { rules, violations: [] };
+    return { rules, violations: this.applyRules(rules, subjects) };
+  }
+
+  private applyRules(
+    rules: ReadonlyArray<GuardrailRow>,
+    subjects: ReadonlyArray<NodeRow | EdgeRow>
+  ): ViolationCandidate[] {
     const violations: ViolationCandidate[] = [];
-    for (const rule of rules) {
-      const check = BUILT_IN_CHECKS.get(rule.ruleKey);
-      if (!check) continue;
-      const v = check(subject, rule.config);
-      if (v) violations.push(v);
+    for (const subject of subjects) {
+      for (const rule of rules) {
+        const check = BUILT_IN_CHECKS.get(rule.ruleKey);
+        if (!check) continue;
+        const v = check(subject, rule.config);
+        if (v) violations.push(v);
+      }
     }
     return violations;
   }
