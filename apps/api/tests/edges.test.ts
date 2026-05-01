@@ -80,7 +80,7 @@ describe("POST /v1/edges", () => {
     expect((await res.json()).error).toMatch(/target/);
   });
 
-  it("returns 422 when the relationship type is not registered", async () => {
+  it("returns 400 when the relationship type is not in the registry", async () => {
     const src = await createNode("L4", "a");
     const tgt = await createNode("L4", "b");
     const res = await app.request("/v1/edges", {
@@ -93,13 +93,7 @@ describe("POST /v1/edges", () => {
         layer: "L4",
       }),
     });
-    expect(res.status).toBe(422);
-    const body = await res.json();
-    expect(body.error).toBe("invalid edge");
-    expect(Array.isArray(body.violations)).toBe(true);
-    expect(body.violations.length).toBeGreaterThan(0);
-    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
-    expect(body.violations[0].severity).toBe("ERROR");
+    expect(res.status).toBe(400);
   });
 
   // ── GR-XL-003 cross-layer negative-path tests ─────────────────────────────

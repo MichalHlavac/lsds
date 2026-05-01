@@ -107,13 +107,13 @@ describe("UpdateNodeSchema", () => {
 // ── CreateEdgeSchema ──────────────────────────────────────────────────────────
 
 describe("CreateEdgeSchema", () => {
-  const valid = { sourceId: UUID, targetId: UUID2, type: "DEPENDS_ON", layer: "L3" };
+  const valid = { sourceId: UUID, targetId: UUID2, type: "depends-on", layer: "L3" };
 
   it("parses valid edge", () => {
     const r = CreateEdgeSchema.parse(valid);
     expect(r.sourceId).toBe(UUID);
     expect(r.targetId).toBe(UUID2);
-    expect(r.type).toBe("DEPENDS_ON");
+    expect(r.type).toBe("depends-on");
   });
 
   it("applies default traversalWeight of 1.0", () => {

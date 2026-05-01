@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { LayerSchema, LifecycleStatusSchema, SeveritySchema } from "@lsds/shared";
+import { RelationshipTypeSchema } from "@lsds/framework";
 
 const LayerEnum = LayerSchema;
 const LifecycleEnum = LifecycleStatusSchema;
@@ -28,7 +29,7 @@ export const UpdateNodeSchema = z.object({
 export const CreateEdgeSchema = z.object({
   sourceId: z.string().uuid(),
   targetId: z.string().uuid(),
-  type: z.string().min(1),
+  type: RelationshipTypeSchema,
   layer: LayerEnum,
   traversalWeight: z.number().positive().optional().default(1.0),
   attributes: z.record(z.unknown()).optional().default({}),
