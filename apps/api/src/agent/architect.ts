@@ -4,15 +4,87 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { NodeRow, SnapshotRow } from "../db/types.js";
+import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getTenantId } from "../routes/util.js";
+import { AgentAnalyzeSchema } from "../routes/schemas.js";
 
 // Architect Agent API (kap. 6.3) — aggregated graph views for architectural
 // analysis. All endpoints work on the full tenant graph, not individual nodes.
 
 const ARCH_STRUCTURAL_TYPES = ["BoundedContext", "ArchitectureComponent", "ArchitectureSystem"];
 
-export function architectRouter(sql: Sql): Hono {
+export function architectRouter(sql: Sql, guardrails: GuardrailsRegistry): Hono {
   const app = new Hono();
+
+  // ── Bulk drift scan (kap. 5) ────────────────────────────────────────────────
+  // Evaluates every (filtered) node in the tenant graph against the enabled
+  // guardrail registry and returns aggregate findings. Single round-trip for
+  // rule loading; per-subject evaluation runs in memory.
+  //
+  // Body (all optional): { persist, types[], layers[], lifecycleStatuses[], sampleLimit }
+  // Default scope: every node not in ARCHIVED/PURGE.
+  app.post("/analyze", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = AgentAnalyzeSchema.parse(await c.req.json().catch(() => ({})));
+    const { persist, types, layers, lifecycleStatuses, sampleLimit } = body;
+
+    const effectiveLifecycle = lifecycleStatuses ?? ["ACTIVE", "DEPRECATED"];
+
+    const nodes = await sql<NodeRow[]>`
+      SELECT * FROM nodes
+      WHERE tenant_id = ${tenantId}
+        AND lifecycle_status = ANY(${effectiveLifecycle})
+        ${types && types.length > 0 ? sql`AND type = ANY(${types})` : sql``}
+        ${layers && layers.length > 0 ? sql`AND layer = ANY(${layers})` : sql``}
+    `;
+
+    const { rules, violations } = await guardrails.evaluateBatch(tenantId, nodes);
+
+    let persistedCount = 0;
+    if (persist && violations.length > 0) {
+      await guardrails.persistViolations(tenantId, violations);
+      persistedCount = violations.length;
+    }
+
+    const bySeverity: Record<string, number> = { ERROR: 0, WARN: 0, INFO: 0 };
+    const byRuleMap = new Map<string, { ruleKey: string; severity: string; count: number }>();
+    for (const v of violations) {
+      bySeverity[v.severity] = (bySeverity[v.severity] ?? 0) + 1;
+      const existing = byRuleMap.get(v.ruleKey);
+      if (existing) existing.count += 1;
+      else byRuleMap.set(v.ruleKey, { ruleKey: v.ruleKey, severity: v.severity, count: 1 });
+    }
+    const byRule = Array.from(byRuleMap.values()).sort((a, b) => b.count - a.count);
+
+    return c.json({
+      data: {
+        scannedAt: new Date().toISOString(),
+        scope: {
+          nodeCount: nodes.length,
+          filters: {
+            types: types ?? null,
+            layers: layers ?? null,
+            lifecycleStatuses: effectiveLifecycle,
+          },
+        },
+        rulesEvaluated: rules.length,
+        summary: {
+          totalViolations: violations.length,
+          bySeverity,
+          byRule,
+        },
+        samples: violations.slice(0, sampleLimit).map((v) => ({
+          ruleKey: v.ruleKey,
+          severity: v.severity,
+          message: v.message,
+          nodeId: v.nodeId ?? null,
+          edgeId: v.edgeId ?? null,
+        })),
+        persisted: persist,
+        persistedCount,
+      },
+    });
+  });
 
   // ── Consistency scan ────────────────────────────────────────────────────────
   // Traverses the entire knowledge graph and surfaces structural violation
