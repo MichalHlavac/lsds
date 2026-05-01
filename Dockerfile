@@ -31,6 +31,7 @@ RUN addgroup -S lsds && adduser -S lsds -G lsds
 
 # API service files
 COPY --from=build --chown=lsds:lsds /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=lsds:lsds /app/apps/api/migrations ./apps/api/migrations
 COPY --from=build --chown=lsds:lsds /app/node_modules ./node_modules
 COPY --from=build --chown=lsds:lsds /app/packages ./packages
 COPY --from=build --chown=lsds:lsds /app/package.json ./package.json
