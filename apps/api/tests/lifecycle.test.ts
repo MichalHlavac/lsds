@@ -472,6 +472,101 @@ describe("PATCH /v1/edges/:id/lifecycle — invalid transitions (422)", () => {
   });
 });
 
+// ── POST /v1/nodes/batch-lifecycle ───────────────────────────────────────────
+
+describe("POST /v1/nodes/batch-lifecycle", () => {
+  it("transitions all nodes and returns 200 when all succeed", async () => {
+    const n1 = await createNode("bl-1");
+    const n2 = await createNode("bl-2");
+
+    const res = await app.request("/v1/nodes/batch-lifecycle", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [n1.id, n2.id], transition: "deprecate" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(2);
+    expect(data.failed).toHaveLength(0);
+    expect(data.succeeded.every((n: any) => n.lifecycleStatus === "DEPRECATED")).toBe(true);
+  });
+
+  it("returns 207 for partial success (one valid, one invalid transition)", async () => {
+    const active = await createNode("bl-active");
+    const deprecated = await createNode("bl-deprecated");
+    // pre-deprecate so it's already DEPRECATED — trying to deprecate again will fail
+    await app.request(`/v1/nodes/${deprecated.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "deprecate" }),
+    });
+
+    const res = await app.request("/v1/nodes/batch-lifecycle", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [active.id, deprecated.id], transition: "deprecate" }),
+    });
+    expect(res.status).toBe(207);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(1);
+    expect(data.succeeded[0].id).toBe(active.id);
+    expect(data.failed).toHaveLength(1);
+    expect(data.failed[0].id).toBe(deprecated.id);
+    expect(data.failed[0].currentStatus).toBe("DEPRECATED");
+  });
+
+  it("returns 422 when all nodes fail the transition", async () => {
+    const n1 = await createNode("bl-fail-1");
+    const n2 = await createNode("bl-fail-2");
+    // both are ACTIVE; trying to archive (requires DEPRECATED) will fail
+    const res = await app.request("/v1/nodes/batch-lifecycle", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [n1.id, n2.id], transition: "archive" }),
+    });
+    expect(res.status).toBe(422);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(0);
+    expect(data.failed).toHaveLength(2);
+  });
+
+  it("includes not-found nodes in failed with error 'not found'", async () => {
+    const { randomUUID } = await import("node:crypto");
+    const existing = await createNode("bl-exists");
+    const missingId = randomUUID();
+
+    const res = await app.request("/v1/nodes/batch-lifecycle", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [existing.id, missingId], transition: "deprecate" }),
+    });
+    expect(res.status).toBe(207);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(1);
+    expect(data.failed[0].id).toBe(missingId);
+    expect(data.failed[0].error).toMatch(/not found/);
+  });
+
+  it("returns 400 for an invalid transition value", async () => {
+    const node = await createNode("bl-bad-transition");
+    const res = await app.request("/v1/nodes/batch-lifecycle", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [node.id], transition: "explode" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for an empty ids array", async () => {
+    const res = await app.request("/v1/nodes/batch-lifecycle", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [], transition: "deprecate" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 // ── GET /v1/nodes/:id includes lifecycle fields ───────────────────────────────
 
 describe("GET /v1/nodes/:id lifecycle fields", () => {
