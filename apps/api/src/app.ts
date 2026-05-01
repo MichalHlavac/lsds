@@ -19,6 +19,7 @@ import { usersRouter, teamsRouter } from "./routes/users.js";
 import { agentRouter } from "./agent/index.js";
 import { architectRouter } from "./agent/architect.js";
 import { snapshotsRouter } from "./routes/snapshots.js";
+import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
 const guardrails = new GuardrailsRegistry(sql);
@@ -26,7 +27,12 @@ const lifecycle = new LifecycleService(sql, cache);
 
 export const app = new Hono();
 
-app.get("/health", (c) => c.json({ status: "ok", ts: new Date().toISOString() }));
+app.get("/health", (c) =>
+  c.json({ status: "ok", ts: new Date().toISOString(), oidc: oidcEnabled })
+);
+
+app.use("/v1/*", oidcMiddleware);
+app.use("/agent/*", oidcMiddleware);
 
 const v1 = new Hono();
 v1.route("/nodes", nodesRouter(sql, cache, lifecycle));
