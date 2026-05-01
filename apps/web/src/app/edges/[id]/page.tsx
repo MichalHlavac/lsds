@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type EdgeRow } from "../../../lib/api";
 import { LifecycleBadge } from "../../../components/LifecycleBadge";
@@ -14,14 +14,15 @@ function fmt(d: string | null): string {
   return new Date(d).toLocaleString();
 }
 
-export default function EdgeDetailPage({ params }: { params: { id: string } }) {
+export default function EdgeDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [edge, setEdge] = useState<EdgeRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.edges
-      .get(params.id)
+      .get(id)
       .then((res) => {
         setEdge(res.data);
         setLoading(false);
@@ -30,7 +31,7 @@ export default function EdgeDetailPage({ params }: { params: { id: string } }) {
         setError(err instanceof Error ? err.message : "Failed to load edge");
         setLoading(false);
       });
-  }, [params.id]);
+  }, [id]);
 
   if (loading) return <div className="text-gray-500">Loading…</div>;
   if (error) return <div className="text-red-400 font-mono text-sm">{error}</div>;
