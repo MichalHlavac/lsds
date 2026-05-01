@@ -132,6 +132,44 @@ describe("GET /v1/edges", () => {
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("?q= filters edges by type substring (case-insensitive)", async () => {
+    const a = await createNode("L4", "a");
+    const b = await createNode("L4", "b");
+    const c2 = await createNode("L4", "c");
+
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: a.id, targetId: b.id, type: "contains", layer: "L4" }),
+    });
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: b.id, targetId: c2.id, type: "uses", layer: "L4" }),
+    });
+
+    const res = await app.request("/v1/edges?q=con", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.length).toBe(1);
+    expect(data[0].type).toBe("contains");
+  });
+
+  it("?q= returns empty array when nothing matches", async () => {
+    const a = await createNode("L4", "a");
+    const b = await createNode("L4", "b");
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: a.id, targetId: b.id, type: "contains", layer: "L4" }),
+    });
+
+    const res = await app.request("/v1/edges?q=zzznomatch", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data).toEqual([]);
+  });
 });
 
 // ── GET /v1/edges/:id ─────────────────────────────────────────────────────────
