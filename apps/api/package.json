@@ -14,6 +14,7 @@
   "dependencies": {
     "@hono/node-server": "^1.11.0",
     "@lsds/framework": "workspace:^",
+    "@lsds/shared": "workspace:^",
     "hono": "^4.3.0",
     "jose": "^6.2.3",
     "postgres": "^3.4.4",

@@ -2,10 +2,11 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { z } from "zod";
+import { LayerSchema, LifecycleStatusSchema, SeveritySchema } from "@lsds/shared";
 
-const LayerEnum = z.enum(["L1", "L2", "L3", "L4", "L5", "L6"]);
-const LifecycleEnum = z.enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"]);
-const SeverityEnum = z.enum(["ERROR", "WARN", "INFO"]);
+const LayerEnum = LayerSchema;
+const LifecycleEnum = LifecycleStatusSchema;
+const SeverityEnum = SeveritySchema;
 
 export const CreateNodeSchema = z.object({
   type: z.string().min(1),
