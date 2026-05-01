@@ -35,12 +35,13 @@ export function Sidebar() {
     >
       <GlobalSearch />
       <div>
-        <p
+        <Link
           id="nav-layers"
-          className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+          href="/layers"
+          className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300 transition-colors block"
         >
           Layers
-        </p>
+        </Link>
         <ul className="space-y-0.5" aria-labelledby="nav-layers">
           {LAYERS.map((layer) => (
             <li key={layer}>

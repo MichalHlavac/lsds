@@ -5,9 +5,21 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type NodeRow } from "../../../lib/api";
+import { api, type NodeRow, type NodeHistoryEntry, type HistoryOp } from "../../../lib/api";
 import { LifecycleBadge } from "../../../components/LifecycleBadge";
 import { LifecycleControls } from "../../../components/LifecycleControls";
+
+const OP_LABELS: Record<HistoryOp, string> = {
+  CREATE: "Created",
+  UPDATE: "Updated",
+  LIFECYCLE_TRANSITION: "Lifecycle",
+};
+
+const OP_COLORS: Record<HistoryOp, string> = {
+  CREATE: "bg-green-900 text-green-300",
+  UPDATE: "bg-blue-900 text-blue-300",
+  LIFECYCLE_TRANSITION: "bg-yellow-900 text-yellow-300",
+};
 
 function fmt(d: string | null): string {
   if (!d) return "—";
@@ -19,6 +31,9 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
   const [node, setNode] = useState<NodeRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<NodeHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
 
   useEffect(() => {
     api.nodes
@@ -31,6 +46,12 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
         setError(err instanceof Error ? err.message : "Failed to load node");
         setLoading(false);
       });
+    setHistoryLoading(true);
+    api.nodes
+      .history(id, { limit: 20 })
+      .then((res) => setHistory(res.data))
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
   }, [id]);
 
   if (loading) {
@@ -118,6 +139,64 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
         <pre className="rounded-lg border border-gray-800 bg-gray-900 p-4 text-xs text-gray-300 overflow-x-auto">
           {JSON.stringify(node.attributes, null, 2)}
         </pre>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          Change History
+        </h2>
+        {historyLoading && (
+          <p className="text-gray-500 text-sm">Loading history…</p>
+        )}
+        {!historyLoading && history.length === 0 && (
+          <p className="text-gray-600 text-sm">No history recorded yet.</p>
+        )}
+        {!historyLoading && history.length > 0 && (
+          <ol className="space-y-2">
+            {history.map((entry) => (
+              <li key={entry.id} className="rounded-lg border border-gray-800 bg-gray-900">
+                <button
+                  type="button"
+                  onClick={() => setExpandedEntry(expandedEntry === entry.id ? null : entry.id)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-800 transition-colors rounded-lg"
+                >
+                  <span
+                    className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded ${OP_COLORS[entry.op]}`}
+                  >
+                    {OP_LABELS[entry.op]}
+                  </span>
+                  <span className="text-sm text-gray-300 flex-1 truncate">
+                    {new Date(entry.changedAt).toLocaleString()}
+                  </span>
+                  {entry.changedBy && (
+                    <span className="text-xs text-gray-500 font-mono shrink-0">{entry.changedBy}</span>
+                  )}
+                  <span className="text-gray-600 text-xs shrink-0">
+                    {expandedEntry === entry.id ? "▲" : "▼"}
+                  </span>
+                </button>
+                {expandedEntry === entry.id && (
+                  <div className="px-4 pb-3 grid grid-cols-2 gap-3">
+                    {entry.previous !== null && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1 font-medium">Before</p>
+                        <pre className="text-xs text-gray-400 bg-gray-950 rounded p-2 overflow-x-auto">
+                          {JSON.stringify(entry.previous, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    <div className={entry.previous === null ? "col-span-2" : ""}>
+                      <p className="text-xs text-gray-500 mb-1 font-medium">After</p>
+                      <pre className="text-xs text-gray-300 bg-gray-950 rounded p-2 overflow-x-auto">
+                        {JSON.stringify(entry.current, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
     </div>
   );
