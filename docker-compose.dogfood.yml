@@ -1,5 +1,10 @@
 name: lsds-dogfood
 
+# Standalone dogfood compose — fixes tenant UUID mismatch (LSDS-287).
+# Run with:   docker compose -f docker-compose.dogfood.yml up --build -d
+# Then seed:  bash scripts/seed-dogfood-pilot.sh
+# Web UI:     http://localhost:3093
+
 services:
   db:
     image: postgres:16-alpine
@@ -36,7 +41,8 @@ services:
       NODE_ENV: production
       PORT: 3001
       DATABASE_URL: postgres://lsds:lsds@db:5432/lsds_pilot
-      TENANT_ID: lsds-pilot
+      # Must be a valid UUID — "lsds-pilot" triggers Postgres 22P02 error.
+      TENANT_ID: aaaaaaaa-bbbb-cccc-dddd-000000000001
     ports:
       - "3094:3001"
     depends_on:
@@ -52,7 +58,12 @@ services:
       start_period: 20s
 
   web:
-    image: ghcr.io/michalhlavac/lsds:1.0.1
+    # Build locally so NEXT_PUBLIC_TENANT_ID is baked into the client bundle.
+    # NEXT_PUBLIC_* vars are resolved at Next.js build time, not at runtime.
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_TENANT_ID: aaaaaaaa-bbbb-cccc-dddd-000000000001
     command: node apps/web/.next/standalone/apps/web/server.js
     restart: unless-stopped
     environment:
@@ -60,6 +71,7 @@ services:
       PORT: 3000
       HOSTNAME: "0.0.0.0"
       NEXT_PUBLIC_API_URL: http://localhost:3094
+      NEXT_PUBLIC_TENANT_ID: aaaaaaaa-bbbb-cccc-dddd-000000000001
     ports:
       - "3093:3000"
     depends_on:
