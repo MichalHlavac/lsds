@@ -44,16 +44,30 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
           ← Nodes
         </Link>
       </div>
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
         <h1 className="text-2xl font-bold">{node.name}</h1>
         <LifecycleBadge status={node.lifecycleStatus} />
-        <LifecycleControls
-          entityId={node.id}
-          entityType="node"
-          entityName={node.name}
-          currentStatus={node.lifecycleStatus}
-          onSuccess={(updated) => setNode(updated as NodeRow)}
-        />
+        <div className="flex items-center gap-2 ml-auto">
+          <Link
+            href={`/edges/new?sourceId=${node.id}`}
+            className="px-3 py-1.5 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          >
+            + Add Edge
+          </Link>
+          <Link
+            href={`/nodes/${node.id}/edit`}
+            className="px-3 py-1.5 rounded text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white transition-colors"
+          >
+            Edit
+          </Link>
+          <LifecycleControls
+            entityId={node.id}
+            entityType="node"
+            entityName={node.name}
+            currentStatus={node.lifecycleStatus}
+            onSuccess={(updated) => setNode(updated as NodeRow)}
+          />
+        </div>
       </div>
 
       <div className="rounded-lg border border-gray-800 bg-gray-900 divide-y divide-gray-800">

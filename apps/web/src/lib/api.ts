@@ -69,6 +69,12 @@ export interface LifecycleErrorBody {
   allowed: string[];
 }
 
+export interface ApiErrorBody {
+  error?: string;
+  issues?: string[];
+  message?: string;
+}
+
 export interface NodeListParams {
   type?: string;
   layer?: Layer;
@@ -88,6 +94,36 @@ export interface EdgeListParams {
 export interface HealthResponse {
   status: string;
   timestamp?: string;
+}
+
+export interface CreateNodePayload {
+  type: string;
+  layer: Layer;
+  name: string;
+  version?: string;
+  lifecycleStatus?: LifecycleStatus;
+  attributes?: Record<string, unknown>;
+}
+
+export interface UpdateNodePayload {
+  name?: string;
+  version?: string;
+  attributes?: Record<string, unknown>;
+}
+
+export interface CreateEdgePayload {
+  sourceId: string;
+  targetId: string;
+  type: string;
+  layer: Layer;
+  traversalWeight?: number;
+  attributes?: Record<string, unknown>;
+}
+
+export interface UpdateEdgePayload {
+  type?: string;
+  traversalWeight?: number;
+  attributes?: Record<string, unknown>;
 }
 
 type Params = Record<string, string | number | undefined>;
@@ -152,6 +188,16 @@ export const api = {
     list: (params?: NodeListParams) =>
       request<{ data: NodeRow[] }>("/v1/nodes", { params: params as Params }),
     get: (id: string) => request<{ data: NodeRow }>(`/v1/nodes/${id}`),
+    create: (payload: CreateNodePayload) =>
+      request<{ data: NodeRow }>("/v1/nodes", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    update: (id: string, payload: UpdateNodePayload) =>
+      request<{ data: NodeRow }>(`/v1/nodes/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
     lifecycle: (id: string, transition: LifecycleTransition) =>
       request<{ data: NodeRow }>(`/v1/nodes/${id}/lifecycle`, {
         method: "PATCH",
@@ -163,6 +209,16 @@ export const api = {
     list: (params?: EdgeListParams) =>
       request<{ data: EdgeRow[] }>("/v1/edges", { params: params as Params }),
     get: (id: string) => request<{ data: EdgeRow }>(`/v1/edges/${id}`),
+    create: (payload: CreateEdgePayload) =>
+      request<{ data: EdgeRow }>("/v1/edges", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    update: (id: string, payload: UpdateEdgePayload) =>
+      request<{ data: EdgeRow }>(`/v1/edges/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
     lifecycle: (id: string, transition: LifecycleTransition) =>
       request<{ data: EdgeRow }>(`/v1/edges/${id}/lifecycle`, {
         method: "PATCH",
