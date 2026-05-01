@@ -169,6 +169,60 @@ export function createLsdsClient(config: LsdsClientConfig) {
       attributes?: Record<string, unknown>;
     }) => req("POST", "/v1/edges", body),
 
+    upsertNode: (body: {
+      type: string;
+      layer: string;
+      name: string;
+      version?: string;
+      lifecycleStatus?: string;
+      attributes?: Record<string, unknown>;
+    }) => req("PUT", "/v1/nodes", body),
+
+    upsertEdge: (body: {
+      sourceId: string;
+      targetId: string;
+      type: string;
+      layer: string;
+      traversalWeight?: number;
+      attributes?: Record<string, unknown>;
+    }) => req("PUT", "/v1/edges", body),
+
+    queryEdges: (params: {
+      sourceId?: string;
+      targetId?: string;
+      type?: string;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params.sourceId) qs.set("sourceId", params.sourceId);
+      if (params.targetId) qs.set("targetId", params.targetId);
+      if (params.type) qs.set("type", params.type);
+      if (params.q) qs.set("q", params.q);
+      if (params.limit != null) qs.set("limit", String(params.limit));
+      if (params.offset != null) qs.set("offset", String(params.offset));
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return req("GET", `/v1/edges${suffix}`);
+    },
+
+    getViolations: (params: {
+      nodeId?: string;
+      ruleKey?: string;
+      resolved?: boolean;
+      limit?: number;
+      offset?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params.nodeId) qs.set("nodeId", params.nodeId);
+      if (params.ruleKey) qs.set("ruleKey", params.ruleKey);
+      if (params.resolved != null) qs.set("resolved", String(params.resolved));
+      if (params.limit != null) qs.set("limit", String(params.limit));
+      if (params.offset != null) qs.set("offset", String(params.offset));
+      const suffix = qs.toString() ? `?${qs.toString()}` : "";
+      return req("GET", `/v1/violations${suffix}`);
+    },
+
     // ── Lifecycle ──────────────────────────────────────────────────────────
     deprecateNode: (nodeId: string) =>
       req("POST", `/v1/lifecycle/nodes/${nodeId}/deprecate`),

@@ -316,6 +316,97 @@ server.tool(
   }
 );
 
+server.tool(
+  "lsds_upsert_node",
+  "Idempotently create or update a node by (type, layer, name) identity key. If a node with those three fields already exists it is updated in-place; otherwise a new node is created. Safe to call repeatedly without producing duplicates.",
+  {
+    type: z.string().min(1).describe("Node type, e.g. 'Service', 'BoundedContext'"),
+    layer: z
+      .enum(["L1", "L2", "L3", "L4", "L5", "L6"])
+      .describe("Architecture layer the node belongs to"),
+    name: z.string().min(1).describe("Human-readable name for the node"),
+    version: z.string().optional().describe("Semantic version (default '0.1.0')"),
+    lifecycleStatus: z
+      .enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"])
+      .optional()
+      .describe("Lifecycle status (default ACTIVE)"),
+    attributes: z.record(z.unknown()).optional().describe("Arbitrary JSONB metadata"),
+  },
+  async ({ type, layer, name, version, lifecycleStatus, attributes }) => {
+    try {
+      const data = await client.upsertNode({ type, layer, name, version, lifecycleStatus, attributes });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_upsert_edge",
+  "Idempotently create or update an edge by (sourceId, targetId, type) identity key. Returns 422 with a violations array if the edge violates cross-layer guardrails. Safe to call repeatedly without producing duplicates.",
+  {
+    sourceId: z.string().uuid().describe("UUID of the source node"),
+    targetId: z.string().uuid().describe("UUID of the target node"),
+    type: z.string().min(1).describe("Relationship type, e.g. 'DEPENDS_ON', 'IMPLEMENTS'"),
+    layer: z.enum(["L1", "L2", "L3", "L4", "L5", "L6"]).describe("Layer the relationship belongs to"),
+    traversalWeight: z.number().positive().optional().describe("Weight for graph traversal (default 1.0)"),
+    attributes: z.record(z.unknown()).optional().describe("Arbitrary JSONB metadata"),
+  },
+  async ({ sourceId, targetId, type, layer, traversalWeight, attributes }) => {
+    try {
+      const data = await client.upsertEdge({ sourceId, targetId, type, layer, traversalWeight, attributes });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_query_edges",
+  "List and filter edges in the knowledge graph. Filter by source node, target node, or edge type. Returns up to 50 results by default.",
+  {
+    sourceId: z.string().uuid().optional().describe("Filter edges originating from this node UUID"),
+    targetId: z.string().uuid().optional().describe("Filter edges pointing to this node UUID"),
+    type: z.string().optional().describe("Filter by exact edge type, e.g. 'DEPENDS_ON'"),
+    q: z.string().optional().describe("Text search across edge type"),
+    limit: z.number().int().min(1).max(500).optional().describe("Max results (default 50)"),
+    offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)"),
+  },
+  async (params) => {
+    try {
+      const data = await client.queryEdges(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_get_violations",
+  "List violations in the knowledge graph. Optionally filter by node, rule key, or resolved status. Returns full violation records including severity, message, and linked node/edge IDs.",
+  {
+    nodeId: z.string().uuid().optional().describe("Return violations for this node UUID only"),
+    ruleKey: z.string().optional().describe("Filter by guardrail rule key, e.g. 'GR-XL-003'"),
+    resolved: z
+      .boolean()
+      .optional()
+      .describe("true = resolved only; false = open only; omit for all"),
+    limit: z.number().int().min(1).max(500).optional().describe("Max results (default 50)"),
+    offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)"),
+  },
+  async (params) => {
+    try {
+      const data = await client.getViolations(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Lifecycle tools ──────────────────────────────────────────────────────────
 
 server.tool(
