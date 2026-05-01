@@ -49,20 +49,22 @@ export function GlobalSearch() {
   const runSearch = useCallback(async (term: string) => {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
+    const { signal } = abortRef.current;
 
     setLoading(true);
     setActiveIdx(-1);
     try {
       const [nodesRes, edgesRes] = await Promise.all([
-        api.nodes.list({ q: term, limit: 5 }),
-        api.edges.list({ q: term, limit: 5 }),
+        api.nodes.list({ q: term, limit: 5 }, { signal }),
+        api.edges.list({ q: term, limit: 5 }, { signal }),
       ]);
       setResults({ nodes: nodesRes.data, edges: edgesRes.data });
       setOpen(true);
-    } catch {
-      // Ignore aborted or failed fetches
-    } finally {
       setLoading(false);
+    } catch (err) {
+      if (!(err instanceof Error && err.name === "AbortError")) {
+        setLoading(false);
+      }
     }
   }, []);
 

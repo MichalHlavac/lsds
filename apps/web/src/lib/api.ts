@@ -135,6 +135,7 @@ interface RequestOptions {
   body?: string;
   cache?: RequestCache;
   params?: Params;
+  signal?: AbortSignal;
 }
 
 function getBaseUrl(): string {
@@ -186,8 +187,8 @@ export const api = {
   health: () => request<HealthResponse>("/health", {}, false),
 
   nodes: {
-    list: (params?: NodeListParams) =>
-      request<{ data: NodeRow[] }>("/v1/nodes", { params: params as Params }),
+    list: (params?: NodeListParams, fetchOpts?: { signal?: AbortSignal }) =>
+      request<{ data: NodeRow[] }>("/v1/nodes", { params: params as Params, signal: fetchOpts?.signal }),
     get: (id: string) => request<{ data: NodeRow }>(`/v1/nodes/${id}`),
     create: (payload: CreateNodePayload) =>
       request<{ data: NodeRow }>("/v1/nodes", {
@@ -207,8 +208,8 @@ export const api = {
   },
 
   edges: {
-    list: (params?: EdgeListParams) =>
-      request<{ data: EdgeRow[] }>("/v1/edges", { params: params as Params }),
+    list: (params?: EdgeListParams, fetchOpts?: { signal?: AbortSignal }) =>
+      request<{ data: EdgeRow[] }>("/v1/edges", { params: params as Params, signal: fetchOpts?.signal }),
     get: (id: string) => request<{ data: EdgeRow }>(`/v1/edges/${id}`),
     create: (payload: CreateEdgePayload) =>
       request<{ data: EdgeRow }>("/v1/edges", {
