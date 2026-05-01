@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -39,6 +39,14 @@ function isNodeSortField(v: string | null): v is NodeSortField {
 }
 
 export default function NodesPage() {
+  return (
+    <Suspense>
+      <NodesPageInner />
+    </Suspense>
+  );
+}
+
+function NodesPageInner() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

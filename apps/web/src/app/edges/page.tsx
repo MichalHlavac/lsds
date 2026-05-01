@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, type EdgeRow } from "../../lib/api";
@@ -24,6 +24,14 @@ function truncId(id: string): string {
 }
 
 export default function EdgesPage() {
+  return (
+    <Suspense>
+      <EdgesPageInner />
+    </Suspense>
+  );
+}
+
+function EdgesPageInner() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
