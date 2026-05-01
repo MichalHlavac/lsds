@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { NodeRow, SnapshotRow } from "../db/types.js";
-import { getTenantId } from "../routes/util.js";
+import { getTenantId, jsonb } from "../routes/util.js";
 
 // Architect Agent API (kap. 6.3) — aggregated graph views for architectural
 // analysis. All endpoints work on the full tenant graph, not individual nodes.
@@ -493,6 +493,78 @@ export function architectRouter(sql: Sql): Hono {
         requirements: classified,
       },
     });
+  });
+
+  // ── Snapshots ───────────────────────────────────────────────────────────────
+
+  // GET /architect/snapshots — list snapshots newest-first (limit 50)
+  app.get("/snapshots", async (c) => {
+    const tenantId = getTenantId(c);
+    const rows = await sql<SnapshotRow[]>`
+      SELECT * FROM snapshots
+      WHERE tenant_id = ${tenantId}
+      ORDER BY created_at DESC
+      LIMIT 50
+    `;
+    return c.json({
+      data: rows.map((r) => ({
+        id: r.id,
+        label: r.label,
+        nodeCount: r.nodeCount,
+        edgeCount: r.edgeCount,
+        createdAt: r.createdAt,
+      })),
+    });
+  });
+
+  // POST /architect/snapshots — capture a point-in-time snapshot of the live graph
+  // ?label=<string>  optional human-readable label
+  app.post("/snapshots", async (c) => {
+    const tenantId = getTenantId(c);
+    const label = c.req.query("label") ?? "";
+
+    const [nodeIds, edgeIds, violationCount] = await Promise.all([
+      sql<{ id: string }[]>`
+        SELECT id FROM nodes WHERE tenant_id = ${tenantId} AND lifecycle_status != 'PURGE'
+      `,
+      sql<{ id: string }[]>`
+        SELECT id FROM edges WHERE tenant_id = ${tenantId} AND lifecycle_status != 'PURGE'
+      `,
+      sql<{ count: string }[]>`
+        SELECT COUNT(*) AS count FROM violations WHERE tenant_id = ${tenantId} AND resolved = FALSE
+      `,
+    ]);
+
+    const snapshotData = {
+      nodeIds: nodeIds.map((r) => r.id),
+      edgeIds: edgeIds.map((r) => r.id),
+      openViolationCount: Number(violationCount[0]?.count ?? 0),
+    };
+
+    const [row] = await sql<SnapshotRow[]>`
+      INSERT INTO snapshots (tenant_id, label, node_count, edge_count, snapshot_data)
+      VALUES (
+        ${tenantId},
+        ${label},
+        ${nodeIds.length},
+        ${edgeIds.length},
+        ${jsonb(sql, snapshotData)}
+      )
+      RETURNING *
+    `;
+
+    return c.json(
+      {
+        data: {
+          id: row.id,
+          label: row.label,
+          nodeCount: row.nodeCount,
+          edgeCount: row.edgeCount,
+          createdAt: row.createdAt,
+        },
+      },
+      201
+    );
   });
 
   return app;

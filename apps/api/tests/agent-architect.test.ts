@@ -125,6 +125,72 @@ describe("GET /agent/v1/architect/consistency", () => {
   });
 });
 
+// ── GET /agent/v1/architect/snapshots ────────────────────────────────────────
+
+describe("GET /agent/v1/architect/snapshots", () => {
+  it("returns 400 when x-tenant-id is missing", async () => {
+    const res = await app.request("/agent/v1/architect/snapshots");
+    expect(res.status).toBe(400);
+  });
+
+  it("returns empty array for a tenant with no snapshots", async () => {
+    const res = await app.request("/agent/v1/architect/snapshots", { headers: h() });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([]);
+  });
+
+  it("returns snapshots after POST creates them", async () => {
+    await app.request("/agent/v1/architect/snapshots?label=test", {
+      method: "POST",
+      headers: h(),
+    });
+    const res = await app.request("/agent/v1/architect/snapshots", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.length).toBe(1);
+    expect(data[0].label).toBe("test");
+  });
+});
+
+// ── POST /agent/v1/architect/snapshots ───────────────────────────────────────
+
+describe("POST /agent/v1/architect/snapshots", () => {
+  it("returns 400 when x-tenant-id is missing", async () => {
+    const res = await app.request("/agent/v1/architect/snapshots", { method: "POST" });
+    expect(res.status).toBe(400);
+  });
+
+  it("creates a snapshot from live graph counts", async () => {
+    await createNode("L4", "n1");
+    await createNode("L4", "n2");
+
+    const res = await app.request("/agent/v1/architect/snapshots?label=baseline", {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.label).toBe("baseline");
+    expect(data.nodeCount).toBe(2);
+    expect(data.edgeCount).toBe(0);
+    expect(typeof data.id).toBe("string");
+  });
+
+  it("counts edges in the snapshot", async () => {
+    const a = await createNode("L4", "a");
+    const b = await createNode("L4", "b");
+    await createEdge(a.id, b.id);
+
+    const res = await app.request("/agent/v1/architect/snapshots", {
+      method: "POST",
+      headers: h(),
+    });
+    const { data } = await res.json();
+    expect(data.nodeCount).toBe(2);
+    expect(data.edgeCount).toBe(1);
+  });
+});
+
 // ── GET /agent/v1/architect/drift ─────────────────────────────────────────────
 
 describe("GET /agent/v1/architect/drift", () => {

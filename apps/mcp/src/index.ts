@@ -423,6 +423,141 @@ server.tool(
   }
 );
 
+// ── Architect Agent tools ─────────────────────────────────────────────────────
+
+server.tool(
+  "lsds_architect_consistency",
+  "Get an overview of graph consistency: open violations grouped by rule key and severity, plus the count of orphan nodes (ACTIVE nodes with no edges). Use this to assess the overall health of the knowledge graph before making architectural changes.",
+  {},
+  async () => {
+    try {
+      const data = await client.architectConsistency();
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_list_snapshots",
+  "List the 50 most recent graph snapshots, ordered newest first. Each snapshot records node count, edge count, and a label at the time it was taken. Use snapshot IDs with lsds_architect_drift to compute deltas.",
+  {},
+  async () => {
+    try {
+      const data = await client.architectListSnapshots();
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_create_snapshot",
+  "Capture a point-in-time snapshot of the live knowledge graph: counts all non-purged nodes and edges, records their IDs, and stores the open violation count. Returns the created snapshot with its ID for use with lsds_architect_drift.",
+  {
+    label: z
+      .string()
+      .optional()
+      .describe("Human-readable label for the snapshot, e.g. 'before-q2-migration'"),
+  },
+  async ({ label }) => {
+    try {
+      const data = await client.architectCreateSnapshot(label);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_drift",
+  "Compute drift between a saved snapshot and the current live graph. Returns added/removed node IDs, edge delta counts, and the change in open violations since the snapshot was taken.",
+  {
+    snapshotId: z
+      .string()
+      .uuid()
+      .describe("UUID of the snapshot to diff against (from lsds_architect_list_snapshots)"),
+  },
+  async ({ snapshotId }) => {
+    try {
+      const data = await client.architectDrift(snapshotId);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_debt",
+  "Aggregate technical debt nodes by lifecycle status and architecture layer. Shows how many debt items are ACTIVE, DEPRECATED, or ARCHIVED per layer so you can prioritize remediation.",
+  {
+    type: z
+      .string()
+      .optional()
+      .describe("Node type to treat as debt (default 'TechnicalDebt')"),
+  },
+  async ({ type }) => {
+    try {
+      const data = await client.architectDebt(type);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_adr_coverage",
+  "Identify high-connectivity ACTIVE nodes that have no ADR (Architecture Decision Record) linked to them. Nodes with many edges represent significant architectural decisions — this tool surfaces the undocumented ones.",
+  {
+    edgeThreshold: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Minimum edge count to flag a node (default 5)"),
+    adrType: z
+      .string()
+      .optional()
+      .describe("Node type used for ADRs (default 'ADR')"),
+  },
+  async ({ edgeThreshold, adrType }) => {
+    try {
+      const data = await client.architectAdrCoverage({ edgeThreshold, adrType });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_requirements",
+  "List requirement nodes with their implementation counts (number of nodes connected via incoming edges). Results sorted by implementation count ascending so unimplemented requirements surface first. Optionally filter by requirement status stored in node attributes.",
+  {
+    requirementType: z
+      .string()
+      .optional()
+      .describe("Node type for requirements (default 'Requirement')"),
+    status: z
+      .string()
+      .optional()
+      .describe("Filter by attributes.status value, e.g. 'APPROVED', 'DRAFT'"),
+  },
+  async ({ requirementType, status }) => {
+    try {
+      const data = await client.architectRequirements({ requirementType, status });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();

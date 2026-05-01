@@ -181,6 +181,42 @@ export function createLsdsClient(config: LsdsClientConfig) {
 
     transitionEdgeLifecycle: (edgeId: string, transition: string) =>
       lifecyclePatch(config, `/v1/edges/${edgeId}/lifecycle`, transition),
+
+    // ── Architect Agent ────────────────────────────────────────────────────
+    architectConsistency: () =>
+      req("GET", "/agent/v1/architect/consistency"),
+
+    architectListSnapshots: () =>
+      req("GET", "/agent/v1/architect/snapshots"),
+
+    architectCreateSnapshot: (label?: string) => {
+      const qs = label ? `?label=${encodeURIComponent(label)}` : "";
+      return req("POST", `/agent/v1/architect/snapshots${qs}`);
+    },
+
+    architectDrift: (snapshotId: string) =>
+      req("GET", `/agent/v1/architect/drift?snapshotId=${encodeURIComponent(snapshotId)}`),
+
+    architectDebt: (type?: string) => {
+      const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+      return req("GET", `/agent/v1/architect/debt${qs}`);
+    },
+
+    architectAdrCoverage: (params?: { edgeThreshold?: number; adrType?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.edgeThreshold != null) qs.set("edgeThreshold", String(params.edgeThreshold));
+      if (params?.adrType) qs.set("adrType", params.adrType);
+      const qstr = qs.toString();
+      return req("GET", `/agent/v1/architect/adr-coverage${qstr ? `?${qstr}` : ""}`);
+    },
+
+    architectRequirements: (params?: { requirementType?: string; status?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.requirementType) qs.set("requirementType", params.requirementType);
+      if (params?.status) qs.set("status", params.status);
+      const qstr = qs.toString();
+      return req("GET", `/agent/v1/architect/requirements${qstr ? `?${qstr}` : ""}`);
+    },
   };
 }
 
