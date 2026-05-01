@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createGunzip } from "node:zlib";
@@ -77,6 +77,23 @@ describe("diagnostics bundle", () => {
 
     const raw = await readGzipBytes(bundlePath);
     expect(raw.includes(Buffer.from("app-today.log"))).toBe(true);
+  });
+
+  it("excludes log files older than the days window", async () => {
+    const oldLog = join(logDir, "app-old.log");
+    writeFileSync(oldLog, "stale log content\n");
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000);
+    utimesSync(oldLog, thirtyDaysAgo, thirtyDaysAgo);
+
+    const bundlePath = await runDiagnosticsBundle({
+      outDir,
+      days: 7,
+      logDir,
+      databaseUrl: undefined,
+    });
+
+    const raw = await readGzipBytes(bundlePath);
+    expect(raw.includes(Buffer.from("app-old.log"))).toBe(false);
   });
 
   it("includes system-info.json with node version", async () => {
