@@ -110,7 +110,7 @@ describe("POST /v1/violations", () => {
     expect((await res.json()).data.nodeId).toBeNull();
   });
 
-  // LSDS-274: edge violations must capture source/target node IDs so architects
+  // Edge violations must capture source/target node IDs so architects
   // can navigate from the violation back to the offending pair.
   it("derives sourceNodeId and targetNodeId from edgeId when omitted", async () => {
     const src = await createNode("svc-a");

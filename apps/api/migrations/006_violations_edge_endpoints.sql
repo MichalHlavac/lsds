@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: BUSL-1.1
 -- Copyright (c) 2026 Michal Hlavac. All rights reserved.
--- LSDS-274: violations are missing the source/target node pair for edge-targeted rules.
+-- Violations are missing the source/target node pair for edge-targeted rules.
 -- Without these columns architects can't navigate from a violation row back to
 -- the offending edge endpoints.
 

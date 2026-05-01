@@ -243,7 +243,7 @@ describe("CreateViolationSchema", () => {
     expect(CreateViolationSchema.parse(valid).attributes).toEqual({});
   });
 
-  it("accepts sourceNodeId and targetNodeId as valid UUIDs (LSDS-274)", () => {
+  it("accepts sourceNodeId and targetNodeId as valid UUIDs", () => {
     const r = CreateViolationSchema.parse({
       ...valid,
       edgeId: UUID,

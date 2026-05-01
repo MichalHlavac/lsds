@@ -47,7 +47,7 @@ export function violationsRouter(sql: Sql): Hono {
     const body = CreateViolationSchema.parse(await c.req.json());
 
     // Edge violations need their endpoints captured so architects can navigate
-    // from the violation back to the offending source→target pair (LSDS-274).
+    // from the violation back to the offending source→target pair.
     let sourceNodeId = body.sourceNodeId ?? null;
     let targetNodeId = body.targetNodeId ?? null;
     if (body.edgeId && (sourceNodeId === null || targetNodeId === null)) {
