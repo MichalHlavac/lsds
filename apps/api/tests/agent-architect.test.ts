@@ -360,7 +360,7 @@ describe("GET /agent/v1/architect/requirements", () => {
     expect(data.summary.unfulfilled).toBe(1);
   });
 
-  it("classifies APPROVED requirement with linked nodes as in_progress", async () => {
+  it("classifies APPROVED requirement with linked nodes as inProgress", async () => {
     const req = await createNode("L1", "Search feature", "Requirement", {
       status: "APPROVED",
       requirementType: "FUNCTIONAL",
@@ -371,7 +371,7 @@ describe("GET /agent/v1/architect/requirements", () => {
     const res = await app.request("/agent/v1/architect/requirements", { headers: h() });
     const { data } = await res.json();
     const found = data.requirements.find((r: { id: string }) => r.id === req.id);
-    expect(found.fulfillmentStatus).toBe("in_progress");
+    expect(found.fulfillmentStatus).toBe("inProgress");
     expect(found.linkedNodes).toBeGreaterThan(0);
   });
 

@@ -230,7 +230,7 @@ export function architectRouter(sql: Sql): Hono {
       SELECT
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE attributes->>'status' = 'OPEN')        AS open,
-        COUNT(*) FILTER (WHERE attributes->>'status' = 'IN_PROGRESS') AS in_progress
+        COUNT(*) FILTER (WHERE attributes->>'status' = 'IN_PROGRESS') AS "inProgress"
       FROM nodes
       WHERE tenant_id = ${tenantId}
         AND type = 'TechnicalDebt'
@@ -451,13 +451,13 @@ export function architectRouter(sql: Sql): Hono {
       const reqStatus = (attrs?.status as string | undefined) ?? "PROPOSED";
       const linkedCount = linkedMap.get(req.id) ?? 0;
 
-      let fulfillmentStatus: "fulfilled" | "in_progress" | "unfulfilled" | "obsolete";
+      let fulfillmentStatus: "fulfilled" | "inProgress" | "unfulfilled" | "obsolete";
       if (reqStatus === "IMPLEMENTED") {
         fulfillmentStatus = "fulfilled";
       } else if (reqStatus === "OBSOLETE") {
         fulfillmentStatus = "obsolete";
       } else if (reqStatus === "IN_PROGRESS" || (reqStatus === "APPROVED" && linkedCount > 0)) {
-        fulfillmentStatus = "in_progress";
+        fulfillmentStatus = "inProgress";
       } else {
         fulfillmentStatus = "unfulfilled";
       }
