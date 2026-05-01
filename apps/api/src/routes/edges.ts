@@ -7,7 +7,14 @@ import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
-import { CreateEdgeSchema, UpdateEdgeSchema, LifecycleTransitionSchema } from "./schemas.js";
+import {
+  CreateEdgeSchema,
+  UpdateEdgeSchema,
+  LifecycleTransitionSchema,
+  EDGE_SORT_FIELDS,
+  SORT_ORDER_VALUES,
+  type EdgeSortField,
+} from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
 
 export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService): Hono {
@@ -21,6 +28,26 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const type = c.req.query("type");
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
     const offset = Number(c.req.query("offset") ?? 0);
+    const sortByRaw = c.req.query("sortBy");
+    const orderRaw = c.req.query("order");
+
+    if (sortByRaw && !(EDGE_SORT_FIELDS as readonly string[]).includes(sortByRaw)) {
+      return c.json({ error: `invalid sortBy: must be one of ${EDGE_SORT_FIELDS.join(", ")}` }, 400);
+    }
+    if (orderRaw && !(SORT_ORDER_VALUES as readonly string[]).includes(orderRaw)) {
+      return c.json({ error: "invalid order: must be 'asc' or 'desc'" }, 400);
+    }
+
+    const sortColMap: Record<EdgeSortField, ReturnType<typeof sql>> = {
+      createdAt: sql`created_at`,
+      updatedAt: sql`updated_at`,
+      type: sql`type`,
+      layer: sql`layer`,
+      traversalWeight: sql`traversal_weight`,
+    };
+
+    const sortCol = sortByRaw ? sortColMap[sortByRaw as EdgeSortField] : sql`created_at`;
+    const sortDir = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc" ? sql`DESC` : sql`ASC`;
 
     const rows = await sql<EdgeRow[]>`
       SELECT * FROM edges
@@ -29,7 +56,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         ${sourceId ? sql`AND source_id = ${sourceId}` : sql``}
         ${targetId ? sql`AND target_id = ${targetId}` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
-      ORDER BY created_at DESC
+      ORDER BY ${sortCol} ${sortDir}
       LIMIT ${limit} OFFSET ${offset}
     `;
     return c.json({ data: rows });

@@ -6,7 +6,14 @@ import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
-import { CreateNodeSchema, UpdateNodeSchema, LifecycleTransitionSchema } from "./schemas.js";
+import {
+  CreateNodeSchema,
+  UpdateNodeSchema,
+  LifecycleTransitionSchema,
+  NODE_SORT_FIELDS,
+  SORT_ORDER_VALUES,
+  type NodeSortField,
+} from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
 
 export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService): Hono {
@@ -20,6 +27,27 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const lifecycleStatus = c.req.query("lifecycleStatus");
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
     const offset = Number(c.req.query("offset") ?? 0);
+    const sortByRaw = c.req.query("sortBy");
+    const orderRaw = c.req.query("order");
+
+    if (sortByRaw && !(NODE_SORT_FIELDS as readonly string[]).includes(sortByRaw)) {
+      return c.json({ error: `invalid sortBy: must be one of ${NODE_SORT_FIELDS.join(", ")}` }, 400);
+    }
+    if (orderRaw && !(SORT_ORDER_VALUES as readonly string[]).includes(orderRaw)) {
+      return c.json({ error: "invalid order: must be 'asc' or 'desc'" }, 400);
+    }
+
+    const sortColMap: Record<NodeSortField, ReturnType<typeof sql>> = {
+      name: sql`name`,
+      createdAt: sql`created_at`,
+      updatedAt: sql`updated_at`,
+      type: sql`type`,
+      layer: sql`layer`,
+      lifecycleStatus: sql`lifecycle_status`,
+    };
+
+    const sortCol = sortByRaw ? sortColMap[sortByRaw as NodeSortField] : sql`created_at`;
+    const sortDir = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc" ? sql`DESC` : sql`ASC`;
 
     const rows = await sql<NodeRow[]>`
       SELECT * FROM nodes
@@ -28,7 +56,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         ${type ? sql`AND type = ${type}` : sql``}
         ${layer ? sql`AND layer = ${layer}` : sql``}
         ${lifecycleStatus ? sql`AND lifecycle_status = ${lifecycleStatus}` : sql``}
-      ORDER BY created_at DESC
+      ORDER BY ${sortCol} ${sortDir}
       LIMIT ${limit} OFFSET ${offset}
     `;
     return c.json({ data: rows });
