@@ -13,11 +13,20 @@ const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 beforeEach(() => { tid = randomUUID(); });
 afterEach(async () => { await cleanTenant(sql, tid); });
 
-async function createNode() {
+async function createNode(name = "target-node") {
   const res = await app.request("/v1/nodes", {
     method: "POST",
     headers: h(),
-    body: JSON.stringify({ type: "Service", layer: "L4", name: "target-node" }),
+    body: JSON.stringify({ type: "Service", layer: "L4", name }),
+  });
+  return (await res.json()).data;
+}
+
+async function createEdge(sourceId: string, targetId: string) {
+  const res = await app.request("/v1/edges", {
+    method: "POST",
+    headers: h(),
+    body: JSON.stringify({ sourceId, targetId, type: "calls", layer: "L4" }),
   });
   return (await res.json()).data;
 }
@@ -99,6 +108,62 @@ describe("POST /v1/violations", () => {
     });
     expect(res.status).toBe(201);
     expect((await res.json()).data.nodeId).toBeNull();
+  });
+
+  // Edge violations must capture source/target node IDs so architects
+  // can navigate from the violation back to the offending pair.
+  it("derives sourceNodeId and targetNodeId from edgeId when omitted", async () => {
+    const src = await createNode("svc-a");
+    const tgt = await createNode("svc-b");
+    const edge = await createEdge(src.id, tgt.id);
+
+    const res = await app.request("/v1/violations", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        edgeId: edge.id,
+        ruleKey: "edge.cross_layer",
+        severity: "ERROR",
+        message: "cross-layer edge",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.edgeId).toBe(edge.id);
+    expect(data.sourceNodeId).toBe(src.id);
+    expect(data.targetNodeId).toBe(tgt.id);
+  });
+
+  it("respects caller-supplied sourceNodeId and targetNodeId over edge lookup", async () => {
+    const src = await createNode("svc-a");
+    const tgt = await createNode("svc-b");
+    const explicitSrc = await createNode("svc-c");
+    const explicitTgt = await createNode("svc-d");
+    const edge = await createEdge(src.id, tgt.id);
+
+    const res = await app.request("/v1/violations", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        edgeId: edge.id,
+        sourceNodeId: explicitSrc.id,
+        targetNodeId: explicitTgt.id,
+        ruleKey: "edge.custom",
+        severity: "WARN",
+        message: "custom",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.sourceNodeId).toBe(explicitSrc.id);
+    expect(data.targetNodeId).toBe(explicitTgt.id);
+  });
+
+  it("leaves sourceNodeId/targetNodeId null for node-level violations", async () => {
+    const node = await createNode();
+    const v = await createViolation(node.id);
+    expect(v.sourceNodeId).toBeNull();
+    expect(v.targetNodeId).toBeNull();
   });
 
   it("returns 400 for an invalid severity", async () => {

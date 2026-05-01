@@ -43,6 +43,8 @@ export interface ViolationRow {
   tenantId: string;
   nodeId: string | null;
   edgeId: string | null;
+  sourceNodeId: string | null;
+  targetNodeId: string | null;
   ruleKey: string;
   severity: Severity;
   message: string;

@@ -242,6 +242,29 @@ describe("CreateViolationSchema", () => {
   it("applies default empty attributes", () => {
     expect(CreateViolationSchema.parse(valid).attributes).toEqual({});
   });
+
+  it("accepts sourceNodeId and targetNodeId as valid UUIDs", () => {
+    const r = CreateViolationSchema.parse({
+      ...valid,
+      edgeId: UUID,
+      sourceNodeId: UUID,
+      targetNodeId: UUID2,
+    });
+    expect(r.sourceNodeId).toBe(UUID);
+    expect(r.targetNodeId).toBe(UUID2);
+  });
+
+  it("rejects non-UUID sourceNodeId", () => {
+    expect(() =>
+      CreateViolationSchema.parse({ ...valid, sourceNodeId: "bad" }),
+    ).toThrow();
+  });
+
+  it("rejects non-UUID targetNodeId", () => {
+    expect(() =>
+      CreateViolationSchema.parse({ ...valid, targetNodeId: "bad" }),
+    ).toThrow();
+  });
 });
 
 // ── TraverseSchema ────────────────────────────────────────────────────────────

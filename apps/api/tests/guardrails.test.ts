@@ -72,10 +72,59 @@ describe("GuardrailsRegistry.persistViolations", () => {
 
     expect(fragmentArgs).toHaveLength(1);
     const [rows, ...cols] = fragmentArgs[0] as [unknown[], ...string[]];
-    expect(cols).toEqual(["tenantId", "nodeId", "edgeId", "ruleKey", "severity", "message"]);
+    expect(cols).toEqual([
+      "tenantId",
+      "nodeId",
+      "edgeId",
+      "sourceNodeId",
+      "targetNodeId",
+      "ruleKey",
+      "severity",
+      "message",
+    ]);
     expect(rows).toEqual([
-      { tenantId: "t-1", nodeId: "node-a", edgeId: null, ruleKey: "naming.node.min_length", severity: "WARN", message: "short" },
-      { tenantId: "t-1", nodeId: null, edgeId: "edge-b", ruleKey: "lifecycle.review_cycle", severity: "INFO", message: "stale" },
+      { tenantId: "t-1", nodeId: "node-a", edgeId: null, sourceNodeId: null, targetNodeId: null, ruleKey: "naming.node.min_length", severity: "WARN", message: "short" },
+      { tenantId: "t-1", nodeId: null, edgeId: "edge-b", sourceNodeId: null, targetNodeId: null, ruleKey: "lifecycle.review_cycle", severity: "INFO", message: "stale" },
+    ]);
+  });
+
+  it("propagates sourceNodeId and targetNodeId through to the persisted row", async () => {
+    const fragmentArgs: unknown[][] = [];
+    const fn = (first: unknown, ...rest: unknown[]) => {
+      if (Array.isArray(first) && !Object.hasOwn(first, "raw")) {
+        fragmentArgs.push([first, ...rest]);
+      }
+      return Array.isArray(first) && Object.hasOwn(first, "raw")
+        ? Promise.resolve([])
+        : [];
+    };
+    const registry = new GuardrailsRegistry(fn as unknown as Sql);
+
+    const violations: ViolationCandidate[] = [
+      {
+        ruleKey: "edge.cross_layer.l1_to_l3",
+        severity: "ERROR",
+        message: "L1 → L3 edge",
+        edgeId: "edge-1",
+        sourceNodeId: "node-src",
+        targetNodeId: "node-tgt",
+      },
+    ];
+    await registry.persistViolations("t-1", violations);
+
+    expect(fragmentArgs).toHaveLength(1);
+    const [rows] = fragmentArgs[0] as [unknown[]];
+    expect(rows).toEqual([
+      {
+        tenantId: "t-1",
+        nodeId: null,
+        edgeId: "edge-1",
+        sourceNodeId: "node-src",
+        targetNodeId: "node-tgt",
+        ruleKey: "edge.cross_layer.l1_to_l3",
+        severity: "ERROR",
+        message: "L1 → L3 edge",
+      },
     ]);
   });
 });

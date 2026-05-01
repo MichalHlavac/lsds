@@ -157,6 +157,26 @@ export default function ViolationDetailPage({ params }: { params: Promise<{ id: 
             <code className="text-xs text-gray-300">{violation.edgeId}</code>
           </Field>
         )}
+        {violation.sourceNodeId && (
+          <Field label="Source">
+            <Link
+              href={`/nodes/${violation.sourceNodeId}`}
+              className="text-blue-400 hover:text-blue-300 font-mono text-xs"
+            >
+              {violation.sourceNodeId}
+            </Link>
+          </Field>
+        )}
+        {violation.targetNodeId && (
+          <Field label="Target">
+            <Link
+              href={`/nodes/${violation.targetNodeId}`}
+              className="text-blue-400 hover:text-blue-300 font-mono text-xs"
+            >
+              {violation.targetNodeId}
+            </Link>
+          </Field>
+        )}
         <Field label="Status">
           {violation.resolved ? (
             <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-900/50 text-green-300 ring-1 ring-green-700">
