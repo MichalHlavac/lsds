@@ -22,13 +22,12 @@ server.tool(
   "Get the full context package for a knowledge graph node assembled by the traversal engine. Returns the root node, neighbor buckets (upward/downward/lateral), open violations, and a truncation report. Use this to understand a component's role in the architecture.",
   {
     nodeId: z.string().uuid().describe("UUID of the node to fetch context for"),
-    depth: z
+    tokenBudget: z
       .number()
       .int()
-      .min(1)
-      .max(5)
+      .positive()
       .optional()
-      .describe("Traversal depth 1–5 (default 2)"),
+      .describe("Maximum estimated token count for the returned context package. Defaults to 4000. Reduce for smaller context windows; increase (e.g. 8000–16000) for richer context."),
     profile: z
       .enum(["OPERATIONAL", "ANALYTICAL", "FULL"])
       .optional()
@@ -36,9 +35,9 @@ server.tool(
         "Traversal profile controlling which edges and lifecycle states are visible. OPERATIONAL (default): EAGER edges, ACTIVE+DEPRECATED nodes. ANALYTICAL: adds LAZY edges, ARCHIVED nodes, and analytical buckets. FULL: all of the above plus inherited violations and history."
       ),
   },
-  async ({ nodeId, depth, profile }) => {
+  async ({ nodeId, tokenBudget, profile }) => {
     try {
-      const data = await client.getContext(nodeId, depth, profile);
+      const data = await client.getContext(nodeId, tokenBudget, profile);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     } catch (e) {
       return { content: [{ type: "text", text: String(e) }], isError: true };

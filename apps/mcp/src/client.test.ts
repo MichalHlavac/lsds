@@ -41,15 +41,28 @@ describe("createLsdsClient", () => {
     vi.stubGlobal("fetch", fetch);
 
     const client = createLsdsClient(mockConfig);
-    await client.getContext("00000000-0000-0000-0000-000000000001", 2);
+    await client.getContext("00000000-0000-0000-0000-000000000001");
 
     expect(fetch).toHaveBeenCalledOnce();
     const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
-      "http://localhost:3001/agent/v1/context/00000000-0000-0000-0000-000000000001?depth=2"
+      "http://localhost:3001/agent/v1/context/00000000-0000-0000-0000-000000000001"
     );
     expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe(
       "test-tenant"
+    );
+  });
+
+  it("getContext forwards tokenBudget as ?tokenBudget query param", async () => {
+    const fetch = mockFetch({ data: { root: { id: "abc" } } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.getContext("00000000-0000-0000-0000-000000000001", 8000, "ANALYTICAL");
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://localhost:3001/agent/v1/context/00000000-0000-0000-0000-000000000001?tokenBudget=8000&profile=ANALYTICAL"
     );
   });
 
