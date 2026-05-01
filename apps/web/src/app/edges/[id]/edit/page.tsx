@@ -7,9 +7,7 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, type EdgeRow } from "../../../../lib/api";
-import { UpdateEdgeSchema } from "../../../../lib/schemas";
-
-type FieldErrors = Record<string, string | undefined>;
+import { EdgeForm, type EdgeFormValues } from "../../../../components/EdgeForm";
 
 export default function EditEdgePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -17,23 +15,14 @@ export default function EditEdgePage({ params }: { params: Promise<{ id: string 
   const [edge, setEdge] = useState<EdgeRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [type, setType] = useState("");
-  const [traversalWeight, setTraversalWeight] = useState("1");
-  const [attributesJson, setAttributesJson] = useState("{}");
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   useEffect(() => {
     api.edges
       .get(id)
       .then((res) => {
-        const e = res.data;
-        setEdge(e);
-        setType(e.type);
-        setTraversalWeight(String(e.traversalWeight));
-        setAttributesJson(JSON.stringify(e.attributes, null, 2));
+        setEdge(res.data);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -42,44 +31,22 @@ export default function EditEdgePage({ params }: { params: Promise<{ id: string 
       });
   }, [id]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(data: EdgeFormValues) {
+    if (!edge) return;
     setServerError(null);
-    setErrors({});
-
-    let attributes: Record<string, unknown> | undefined;
-    try {
-      attributes = JSON.parse(attributesJson) as Record<string, unknown>;
-    } catch {
-      setErrors({ attributes: "Invalid JSON" });
-      return;
-    }
-
-    const weight = parseFloat(traversalWeight);
-    const result = UpdateEdgeSchema.safeParse({
-      type: type || undefined,
-      traversalWeight: isNaN(weight) ? undefined : weight,
-      attributes,
-    });
-    if (!result.success) {
-      const fe: FieldErrors = {};
-      for (const issue of result.error.issues) {
-        fe[String(issue.path[0] ?? "root")] = issue.message;
-      }
-      setErrors(fe);
-      return;
-    }
-
     setSubmitting(true);
     const previous = edge;
-    if (edge) setEdge({ ...edge, ...result.data });
-
+    setEdge({ ...edge, type: data.type || edge.type, traversalWeight: data.traversalWeight, attributes: data.attributes });
     try {
-      const res = await api.edges.update(id, result.data);
+      const res = await api.edges.update(id, {
+        type: data.type || undefined,
+        traversalWeight: data.traversalWeight,
+        attributes: data.attributes,
+      });
       setEdge(res.data);
       router.push(`/edges/${id}`);
     } catch (err: unknown) {
-      if (previous) setEdge(previous);
+      setEdge(previous);
       const e = err as { status?: number; body?: { error?: string; issues?: string[] } };
       if (e.status === 422 && e.body) {
         setServerError(e.body.issues?.join("; ") ?? e.body.error ?? "Validation error");
@@ -103,84 +70,16 @@ export default function EditEdgePage({ params }: { params: Promise<{ id: string 
       </div>
       <h1 className="text-2xl font-bold mb-1">Edit Edge</h1>
       <p className="text-sm text-gray-500 mb-6 font-mono">{edge.id}</p>
-
-      {serverError && (
-        <div className="mb-4 rounded border border-red-700 bg-red-950/60 px-3 py-2 text-sm text-red-300">
-          {serverError}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">
-            Type
-            <span className="ml-2 text-xs text-gray-500">(freetext — no catalog yet)</span>
-          </label>
-          <input
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
-          />
-          {errors.type && <p className="mt-1 text-xs text-red-400">{errors.type}</p>}
-        </div>
-
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Traversal Weight</label>
-          <input
-            type="number"
-            step="0.1"
-            min="0.1"
-            value={traversalWeight}
-            onChange={(e) => setTraversalWeight(e.target.value)}
-            className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
-          />
-          {errors.traversalWeight && (
-            <p className="mt-1 text-xs text-red-400">{errors.traversalWeight}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Attributes (JSON)</label>
-          <textarea
-            value={attributesJson}
-            onChange={(e) => setAttributesJson(e.target.value)}
-            rows={6}
-            className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-mono text-gray-100 focus:border-blue-500 focus:outline-none"
-          />
-          {errors.attributes && <p className="mt-1 text-xs text-red-400">{errors.attributes}</p>}
-        </div>
-
-        <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-3 text-xs text-gray-500 space-y-1">
-          <div>
-            <span className="text-gray-400">Source:</span>{" "}
-            <span className="font-mono">{edge.sourceId}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Target:</span>{" "}
-            <span className="font-mono">{edge.targetId}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Layer:</span> {edge.layer}
-          </div>
-          <div className="text-gray-600">Source, target, and layer are set at creation time.</div>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Link
-            href={`/edges/${id}`}
-            className="px-4 py-2 rounded text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="px-4 py-2 rounded text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-60"
-          >
-            {submitting ? "Saving…" : "Save changes"}
-          </button>
-        </div>
-      </form>
+      <EdgeForm
+        defaultValues={{ type: edge.type, traversalWeight: edge.traversalWeight, attributes: edge.attributes }}
+        onSubmit={handleSubmit}
+        isLoading={submitting}
+        cancelHref={`/edges/${id}`}
+        submitLabel="Save changes"
+        loadingLabel="Saving…"
+        serverError={serverError}
+        readOnlyInfo={{ sourceId: edge.sourceId, targetId: edge.targetId, layer: edge.layer }}
+      />
     </div>
   );
 }
