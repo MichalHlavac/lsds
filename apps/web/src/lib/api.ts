@@ -75,6 +75,7 @@ export interface ApiErrorBody {
 }
 
 export interface NodeListParams {
+  q?: string;
   type?: string;
   layer?: Layer;
   lifecycleStatus?: LifecycleStatus;
@@ -83,6 +84,7 @@ export interface NodeListParams {
 }
 
 export interface EdgeListParams {
+  q?: string;
   sourceId?: string;
   targetId?: string;
   type?: string;

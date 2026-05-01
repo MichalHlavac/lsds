@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { GlobalSearch } from "./GlobalSearch";
 
 const LAYERS = ["L1", "L2", "L3", "L4", "L5", "L6"] as const;
 
@@ -28,6 +29,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 export function Sidebar() {
   return (
     <nav className="w-56 shrink-0 bg-gray-950 border-r border-gray-800 min-h-screen p-4 flex flex-col gap-6">
+      <GlobalSearch />
       <div>
         <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
           Layers
