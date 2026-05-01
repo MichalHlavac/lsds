@@ -57,23 +57,6 @@ export function LifecycleControls({
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   const transition = NEXT_TRANSITION[currentStatus];
-  if (!transition) return null;
-
-  const label = TRANSITION_LABEL[transition];
-  const targetStatus = TARGET_STATUS[transition];
-  const isPurge = transition === "purge";
-
-  function openDialog() {
-    setInlineError(null);
-    setShowDialog(true);
-  }
-
-  function closeDialog() {
-    if (pending) return;
-    setShowDialog(false);
-    setInlineError(null);
-    requestAnimationFrame(() => triggerRef.current?.focus());
-  }
 
   // Focus the cancel button when dialog opens
   useEffect(() => {
@@ -95,6 +78,24 @@ export function LifecycleControls({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [showDialog, pending]);
+
+  if (!transition) return null;
+
+  const label = TRANSITION_LABEL[transition];
+  const targetStatus = TARGET_STATUS[transition];
+  const isPurge = transition === "purge";
+
+  function openDialog() {
+    setInlineError(null);
+    setShowDialog(true);
+  }
+
+  function closeDialog() {
+    if (pending) return;
+    setShowDialog(false);
+    setInlineError(null);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  }
 
   async function handleConfirm() {
     setPending(true);
