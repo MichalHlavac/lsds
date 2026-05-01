@@ -7,7 +7,9 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, type NodeRow } from "../../../../lib/api";
-import { NodeForm, type NodeFormValues } from "../../../../components/NodeForm";
+import { UpdateNodeSchema } from "../../../../lib/schemas";
+
+type FieldErrors = Record<string, string | undefined>;
 
 export default function EditNodePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -15,14 +17,23 @@ export default function EditNodePage({ params }: { params: Promise<{ id: string 
   const [node, setNode] = useState<NodeRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+
+  const [name, setName] = useState("");
+  const [version, setVersion] = useState("");
+  const [attributesJson, setAttributesJson] = useState("{}");
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     api.nodes
       .get(id)
       .then((res) => {
-        setNode(res.data);
+        const n = res.data;
+        setNode(n);
+        setName(n.name);
+        setVersion(n.version);
+        setAttributesJson(JSON.stringify(n.attributes, null, 2));
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -31,22 +42,42 @@ export default function EditNodePage({ params }: { params: Promise<{ id: string 
       });
   }, [id]);
 
-  async function handleSubmit(data: NodeFormValues) {
-    if (!node) return;
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setServerError(null);
-    setSubmitting(true);
-    const previous = node;
-    setNode({ ...node, name: data.name || node.name, version: data.version || node.version, attributes: data.attributes });
+    setErrors({});
+
+    let attributes: Record<string, unknown> | undefined;
     try {
-      const res = await api.nodes.update(id, {
-        name: data.name || undefined,
-        version: data.version || undefined,
-        attributes: data.attributes,
-      });
+      attributes = JSON.parse(attributesJson) as Record<string, unknown>;
+    } catch {
+      setErrors({ attributes: "Invalid JSON" });
+      return;
+    }
+
+    const result = UpdateNodeSchema.safeParse({
+      name: name || undefined,
+      version: version || undefined,
+      attributes,
+    });
+    if (!result.success) {
+      const fe: FieldErrors = {};
+      for (const issue of result.error.issues) {
+        fe[String(issue.path[0] ?? "root")] = issue.message;
+      }
+      setErrors(fe);
+      return;
+    }
+
+    setSubmitting(true);
+    if (node) setNode({ ...node, ...result.data });
+
+    try {
+      const res = await api.nodes.update(id, result.data);
       setNode(res.data);
       router.push(`/nodes/${id}`);
     } catch (err: unknown) {
-      setNode(previous);
+      if (node) setNode(node);
       const e = err as { status?: number; body?: { error?: string; issues?: string[] } };
       if (e.status === 422 && e.body) {
         setServerError(e.body.issues?.join("; ") ?? e.body.error ?? "Validation error");
@@ -57,8 +88,25 @@ export default function EditNodePage({ params }: { params: Promise<{ id: string 
     }
   }
 
-  if (loading) return <div className="text-gray-500">Loading…</div>;
-  if (loadError) return <div className="text-red-400 font-mono text-sm">{loadError}</div>;
+  if (loading) {
+    return (
+      <div role="status" aria-live="polite" className="text-gray-500">
+        Loading…
+      </div>
+    );
+  }
+  if (loadError) {
+    return (
+      <div className="space-y-3">
+        <div role="alert" className="text-red-400 font-mono text-sm">
+          {loadError}
+        </div>
+        <Link href="/nodes" className="text-sm text-gray-500 hover:text-gray-300">
+          ← Back to nodes
+        </Link>
+      </div>
+    );
+  }
   if (!node) return null;
 
   return (
@@ -70,16 +118,102 @@ export default function EditNodePage({ params }: { params: Promise<{ id: string 
       </div>
       <h1 className="text-2xl font-bold mb-1">Edit Node</h1>
       <p className="text-sm text-gray-500 mb-6 font-mono">{node.id}</p>
-      <NodeForm
-        defaultValues={{ name: node.name, version: node.version, attributes: node.attributes }}
-        onSubmit={handleSubmit}
-        isLoading={submitting}
-        cancelHref={`/nodes/${id}`}
-        submitLabel="Save changes"
-        loadingLabel="Saving…"
-        serverError={serverError}
-        readOnlyInfo={{ type: node.type, layer: node.layer }}
-      />
+
+      {serverError && (
+        <div
+          role="alert"
+          className="mb-4 rounded border border-red-700 bg-red-950/60 px-3 py-2 text-sm text-red-300"
+        >
+          {serverError}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div>
+          <label htmlFor="edit-name" className="block text-sm text-gray-400 mb-1">
+            Name
+          </label>
+          <input
+            id="edit-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            aria-describedby={errors.name ? "edit-name-error" : undefined}
+            aria-invalid={!!errors.name}
+            className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+          />
+          {errors.name && (
+            <p id="edit-name-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.name}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="edit-version" className="block text-sm text-gray-400 mb-1">
+            Version
+          </label>
+          <input
+            id="edit-version"
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+            aria-describedby={errors.version ? "edit-version-error" : undefined}
+            aria-invalid={!!errors.version}
+            className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+          />
+          {errors.version && (
+            <p id="edit-version-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.version}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="edit-attributes" className="block text-sm text-gray-400 mb-1">
+            Attributes (JSON)
+          </label>
+          <textarea
+            id="edit-attributes"
+            value={attributesJson}
+            onChange={(e) => setAttributesJson(e.target.value)}
+            rows={6}
+            aria-describedby={errors.attributes ? "edit-attributes-error" : undefined}
+            aria-invalid={!!errors.attributes}
+            className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-mono text-gray-100 focus:border-blue-500 focus:outline-none"
+          />
+          {errors.attributes && (
+            <p id="edit-attributes-error" role="alert" className="mt-1 text-xs text-red-400">
+              {errors.attributes}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded border border-gray-800 bg-gray-900/50 px-4 py-3 text-xs text-gray-500 space-y-1">
+          <div>
+            <span className="text-gray-400">Type:</span> {node.type}
+          </div>
+          <div>
+            <span className="text-gray-400">Layer:</span> {node.layer}
+          </div>
+          <div className="text-gray-600">Type and layer are set at creation time.</div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Link
+            href={`/nodes/${id}`}
+            className="px-4 py-2 rounded text-sm text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={submitting}
+            aria-busy={submitting}
+            className="px-4 py-2 rounded text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-60"
+          >
+            {submitting ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
