@@ -57,6 +57,8 @@ services:
   web:
     build:
       context: .
+      args:
+        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
     command: node apps/web/.next/standalone/apps/web/server.js
     restart: unless-stopped
     environment:
@@ -64,6 +66,7 @@ services:
       PORT: ${WEB_PORT:-3000}
       HOSTNAME: "0.0.0.0"
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}

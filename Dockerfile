@@ -20,6 +20,10 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9 --activate
 COPY --from=deps /app /app
 COPY . .
+# NEXT_PUBLIC_* vars are baked into the client bundle at Next.js build time.
+# Pass --build-arg NEXT_PUBLIC_TENANT_ID=<uuid> (or set in docker-compose build.args).
+ARG NEXT_PUBLIC_TENANT_ID=""
+ENV NEXT_PUBLIC_TENANT_ID=${NEXT_PUBLIC_TENANT_ID}
 RUN pnpm build
 
 FROM node:${NODE_VERSION} AS runtime
