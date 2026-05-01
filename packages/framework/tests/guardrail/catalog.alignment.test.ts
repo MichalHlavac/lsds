@@ -245,6 +245,31 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.scope.triggers).toContain("PERIODIC");
   });
 
+  it("GR-L3-008 reads ArchitectureSystem.quality_attributes as a field array (not a relationship walk)", () => {
+    // ArchitectureSystem.qualityAttributes is a field array (`min(1)` enforced
+    // by the Zod schema). The catalog rule provides DESCRIPTIVE coverage on
+    // PERIODIC scans for nodes that bypass Zod (e.g. legacy/imported data).
+    // Earlier drafts walked a `satisfies` relationship that does not exist in
+    // the registry — guard against that drift by pinning the field-level
+    // condition and the absence of any relationship walk.
+    const rule = getGuardrailOrThrow("GR-L3-008");
+    expect(rule.scope.object_type).toBe("ArchitectureSystem");
+    expect(rule.condition).toContain("object.quality_attributes");
+    expect(rule.condition).toContain(">= 1");
+    // Negative: drift guard — `satisfies` is not a registered relationship
+    // type, and field-level rules must not pretend to walk edges.
+    expect(rule.condition).not.toContain("type='satisfies'");
+    expect(rule.condition).not.toContain("object.relationships");
+    expect(rule.condition).not.toContain("type='realizes'");
+    expect(rule.condition).not.toContain("type='has-quality-attr'");
+    // Negative: drift guard — must not switch to camelCase or shortened names
+    // (catalog conditions are snake_case even though the schema is camelCase).
+    expect(rule.condition).not.toContain("object.qualityAttributes");
+    expect(rule.condition).not.toMatch(/object\.quality\b/);
+    // Scope must remain field-level (no relationship_type implies edge eval).
+    expect(rule.scope.relationship_type).toBeUndefined();
+  });
+
   it("GR-L2-005 is DESCRIPTIVE+WARNING with PERIODIC trigger (CTO ratification, LSDS-102)", () => {
     // Past-tense check on DomainEvent name is non-blocking style guidance, so
     // PRESCRIPTIVE+WARNING was downgraded to DESCRIPTIVE+WARNING. PERIODIC

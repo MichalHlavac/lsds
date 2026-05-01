@@ -471,8 +471,7 @@ const L3_RULES: GuardrailRule[] = [
       object_type: "ArchitectureSystem",
       triggers: ["CREATE", "UPDATE", "PERIODIC"],
     },
-    condition:
-      "object.relationships.filter(type='satisfies', target_type='QualityAttribute').length >= 1",
+    condition: "object.quality_attributes.length >= 1",
     rationale:
       "A system that doesn't declare any quality attributes can't be evaluated for fitness; ops, perf, and security review have nothing to test against.",
     remediation:
