@@ -15,6 +15,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.get("/", async (c) => {
     const tenantId = getTenantId(c);
+    const q = c.req.query("q");
     const sourceId = c.req.query("sourceId");
     const targetId = c.req.query("targetId");
     const type = c.req.query("type");
@@ -24,6 +25,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const rows = await sql<EdgeRow[]>`
       SELECT * FROM edges
       WHERE tenant_id = ${tenantId}
+        ${q ? sql`AND type ILIKE ${"%" + q + "%"}` : sql``}
         ${sourceId ? sql`AND source_id = ${sourceId}` : sql``}
         ${targetId ? sql`AND target_id = ${targetId}` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
