@@ -4,8 +4,9 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
-import type { NodeRow } from "../db/types.js";
+import type { NodeHistoryRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
+import { recordNodeHistory } from "../db/history.js";
 import {
   CreateNodeSchema,
   UpdateNodeSchema,
@@ -73,6 +74,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       )
       RETURNING *
     `;
+    await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
     return c.json({ data: row }, 201);
   });
 
@@ -95,6 +97,11 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const { id } = c.req.param();
     const body = UpdateNodeSchema.parse(await c.req.json());
 
+    const [previous] = await sql<NodeRow[]>`
+      SELECT * FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}
+    `;
+    if (!previous) return c.json({ error: "not found" }, 404);
+
     const [row] = await sql<NodeRow[]>`
       UPDATE nodes SET
         ${body.name !== undefined ? sql`name = ${body.name},` : sql``}
@@ -107,6 +114,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     `;
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateNode(tenantId, id);
+    await recordNodeHistory(sql, tenantId, id, "UPDATE", previous, row);
     return c.json({ data: row });
   });
 
@@ -114,8 +122,16 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
     const body = LifecycleTransitionSchema.parse(await c.req.json());
+
+    const [previous] = await sql<NodeRow[]>`
+      SELECT * FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}
+    `;
+
     try {
       const row = await lifecycle.transitionNode(tenantId, id, body.transition);
+      if (previous) {
+        await recordNodeHistory(sql, tenantId, id, "LIFECYCLE_TRANSITION", previous, row);
+      }
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {
@@ -181,6 +197,32 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const result = { outbound: outboundNodes, inbound: inboundNodes };
     cache.traversals.set(cacheKey, result);
     return c.json({ data: result });
+  });
+
+  app.get("/:id/history", async (c) => {
+    const tenantId = getTenantId(c);
+    const { id } = c.req.param();
+    const limit = Math.min(Number(c.req.query("limit") ?? 20), 500);
+    const offset = Number(c.req.query("offset") ?? 0);
+
+    const [node] = await sql<{ id: string }[]>`
+      SELECT id FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}
+    `;
+    if (!node) return c.json({ error: "not found" }, 404);
+
+    const [{ total }] = await sql<{ total: string }[]>`
+      SELECT COUNT(*) AS total FROM node_history
+      WHERE node_id = ${id} AND tenant_id = ${tenantId}
+    `;
+
+    const rows = await sql<NodeHistoryRow[]>`
+      SELECT * FROM node_history
+      WHERE node_id = ${id} AND tenant_id = ${tenantId}
+      ORDER BY changed_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    return c.json({ data: rows, total: Number(total) });
   });
 
   return app;

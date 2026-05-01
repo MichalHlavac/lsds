@@ -5,8 +5,9 @@ import { Hono } from "hono";
 import { validateRelationshipEdge } from "@lsds/framework";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
-import type { EdgeRow, NodeRow } from "../db/types.js";
+import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
+import { recordEdgeHistory } from "../db/history.js";
 import {
   CreateEdgeSchema,
   UpdateEdgeSchema,
@@ -94,6 +95,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       RETURNING *
     `;
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
+    await recordEdgeHistory(sql, tenantId, row.id, "CREATE", null, row);
     return c.json({ data: row }, 201);
   });
 
@@ -116,6 +118,11 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const { id } = c.req.param();
     const body = UpdateEdgeSchema.parse(await c.req.json());
 
+    const [previous] = await sql<EdgeRow[]>`
+      SELECT * FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}
+    `;
+    if (!previous) return c.json({ error: "not found" }, 404);
+
     const [row] = await sql<EdgeRow[]>`
       UPDATE edges SET
         ${body.type !== undefined ? sql`type = ${body.type},` : sql``}
@@ -127,6 +134,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     `;
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
+    await recordEdgeHistory(sql, tenantId, id, "UPDATE", previous, row);
     return c.json({ data: row });
   });
 
@@ -134,8 +142,16 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
     const body = LifecycleTransitionSchema.parse(await c.req.json());
+
+    const [previous] = await sql<EdgeRow[]>`
+      SELECT * FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}
+    `;
+
     try {
       const row = await lifecycle.transitionEdge(tenantId, id, body.transition);
+      if (previous) {
+        await recordEdgeHistory(sql, tenantId, id, "LIFECYCLE_TRANSITION", previous, row);
+      }
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {
@@ -165,6 +181,32 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
     return c.json({ data: { id } });
+  });
+
+  app.get("/:id/history", async (c) => {
+    const tenantId = getTenantId(c);
+    const { id } = c.req.param();
+    const limit = Math.min(Number(c.req.query("limit") ?? 20), 500);
+    const offset = Number(c.req.query("offset") ?? 0);
+
+    const [edge] = await sql<{ id: string }[]>`
+      SELECT id FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}
+    `;
+    if (!edge) return c.json({ error: "not found" }, 404);
+
+    const [{ total }] = await sql<{ total: string }[]>`
+      SELECT COUNT(*) AS total FROM edge_history
+      WHERE edge_id = ${id} AND tenant_id = ${tenantId}
+    `;
+
+    const rows = await sql<EdgeHistoryRow[]>`
+      SELECT * FROM edge_history
+      WHERE edge_id = ${id} AND tenant_id = ${tenantId}
+      ORDER BY changed_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+
+    return c.json({ data: rows, total: Number(total) });
   });
 
   return app;
