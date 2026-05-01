@@ -8,9 +8,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc -p ../../packages/shared && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@lsds/shared": "workspace:^",
     "next": "^15.5.15",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

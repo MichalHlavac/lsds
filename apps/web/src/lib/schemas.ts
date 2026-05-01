@@ -2,15 +2,16 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { z } from "zod";
+import { LayerSchema, LifecycleStatusSchema } from "@lsds/shared";
 
-export const LayerEnum = z.enum(["L1", "L2", "L3", "L4", "L5", "L6"]);
+export const LayerEnum = LayerSchema;
 
 export const CreateNodeSchema = z.object({
   type: z.string().min(1, "Type is required"),
-  layer: LayerEnum,
+  layer: LayerSchema,
   name: z.string().min(1, "Name is required"),
   version: z.string().optional().default("0.1.0"),
-  lifecycleStatus: z.enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"]).optional().default("ACTIVE"),
+  lifecycleStatus: LifecycleStatusSchema.optional().default("ACTIVE"),
   attributes: z.record(z.unknown()).optional().default({}),
 });
 export type CreateNodeInput = z.infer<typeof CreateNodeSchema>;

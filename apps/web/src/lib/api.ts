@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-export type Layer = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
-export type LifecycleStatus = "ACTIVE" | "DEPRECATED" | "ARCHIVED" | "PURGE";
+import type { Layer, LifecycleStatus, Severity } from "@lsds/shared";
+export type { Layer, LifecycleStatus, Severity };
 export type LifecycleTransition = "deprecate" | "archive" | "purge";
-export type Severity = "ERROR" | "WARN" | "INFO";
 
 export interface NodeRow {
   id: string;
