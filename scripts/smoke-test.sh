@@ -68,7 +68,7 @@ echo "    /nonexistent → 404 OK"
 
 # POST a node
 echo "==> POST /v1/nodes..."
-NODE_PAYLOAD='{"type":"Service","label":"smoke-test-node","attributes":{}}'
+NODE_PAYLOAD='{"type":"Service","name":"smoke-test-node","layer":"L4","attributes":{}}'
 CREATE_RESP=$(curl -sf -X POST "$BASE_URL/v1/nodes" \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: $TENANT_ID" \
