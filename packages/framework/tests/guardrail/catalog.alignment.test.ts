@@ -893,3 +893,247 @@ describe("GR-L2 Domain Layer guardrail drift guards (GR-L2-002..004, 006..008)",
   });
 });
 
+describe("GR-L3 architecture-layer guardrail drift guards (GR-L3-001..007)", () => {
+  describe("GR-L3-001 ArchitectureComponent must declare technology", () => {
+    it("scope targets ArchitectureComponent on CREATE/UPDATE (kap. 4 attribute)", () => {
+      const rule = getGuardrailOrThrow("GR-L3-001");
+      expect(rule.scope.object_type).toBe("ArchitectureComponent");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads object.technology with non-empty length check", () => {
+      const rule = getGuardrailOrThrow("GR-L3-001");
+      expect(rule.condition).toContain("object.technology");
+      expect(rule.condition).toContain("!= null");
+      expect(rule.condition).toContain("object.technology.length > 0");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L3-001");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to alternative tech-stack field names", () => {
+      const rule = getGuardrailOrThrow("GR-L3-001");
+      expect(rule.condition).not.toMatch(/object\.tech\b/);
+      expect(rule.condition).not.toContain("object.tech_stack");
+      expect(rule.condition).not.toContain("object.stack");
+      expect(rule.condition).not.toContain("object.runtime");
+      expect(rule.condition).not.toContain("object.platform");
+      expect(rule.condition).not.toContain("object.technologyRef");
+    });
+  });
+
+  describe("GR-L3-002 ADR must list ≥ 1 alternatives_considered", () => {
+    it("scope targets ADR on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L3-002");
+      expect(rule.scope.object_type).toBe("ADR");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads object.alternatives_considered with >= 1 cardinality", () => {
+      const rule = getGuardrailOrThrow("GR-L3-002");
+      expect(rule.condition).toContain("object.alternatives_considered.length");
+      expect(rule.condition).toContain(">= 1");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L3-002");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to shortened or camelCase alternative names", () => {
+      const rule = getGuardrailOrThrow("GR-L3-002");
+      // Catalog conditions are snake_case; schema is camelCase (kap. 4 §
+      // L3/ADR.alternativesConsidered) but the runtime view stays snake_case.
+      expect(rule.condition).not.toContain("object.alternativesConsidered");
+      expect(rule.condition).not.toMatch(/object\.alternatives\b/);
+      expect(rule.condition).not.toContain("object.options");
+      expect(rule.condition).not.toContain("object.considered_options");
+      expect(rule.condition).not.toContain("object.choices");
+    });
+  });
+
+  describe("GR-L3-003 SUPERSEDED ADR must declare a supersedes relationship", () => {
+    it("scope targets ADR with relationship_type='supersedes'", () => {
+      const rule = getGuardrailOrThrow("GR-L3-003");
+      expect(rule.scope.object_type).toBe("ADR");
+      expect(rule.scope.relationship_type).toBe("supersedes");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition pairs status='SUPERSEDED' with at least one supersedes edge", () => {
+      const rule = getGuardrailOrThrow("GR-L3-003");
+      expect(rule.condition).toContain("object.status == 'SUPERSEDED'");
+      expect(rule.condition).toContain("type='supersedes'");
+      expect(rule.condition).toContain(">= 1");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-L3-003");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("does not drift to invented succession edge names", () => {
+      const rule = getGuardrailOrThrow("GR-L3-003");
+      // The canonical edge is `supersedes` (kap. 2.2). Synonyms must not slip in.
+      expect(rule.condition).not.toContain("type='replaces'");
+      expect(rule.condition).not.toContain("type='replaced-by'");
+      expect(rule.condition).not.toContain("type='succeeds'");
+      expect(rule.condition).not.toContain("type='followed-by'");
+      expect(rule.condition).not.toContain("type='superseded-by'");
+    });
+  });
+
+  describe("GR-L3-004 ExternalSystem CRITICAL without fallback_strategy", () => {
+    it("scope targets ExternalSystem on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L3-004");
+      expect(rule.scope.object_type).toBe("ExternalSystem");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition pairs criticality=='CRITICAL' with non-null fallback_strategy", () => {
+      const rule = getGuardrailOrThrow("GR-L3-004");
+      expect(rule.condition).toContain("object.criticality == 'CRITICAL'");
+      expect(rule.condition).toContain("object.fallback_strategy");
+      expect(rule.condition).toContain("!= null");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L3-004");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to alternative fallback field names", () => {
+      const rule = getGuardrailOrThrow("GR-L3-004");
+      expect(rule.condition).not.toContain("object.fallbackStrategy");
+      expect(rule.condition).not.toMatch(/object\.fallback\b/);
+      expect(rule.condition).not.toContain("object.failover");
+      expect(rule.condition).not.toContain("object.degraded_mode");
+      expect(rule.condition).not.toContain("object.contingency");
+    });
+  });
+
+  describe("GR-L3-005 ExternalSystem CRITICAL/HIGH without sla_reference", () => {
+    it("scope targets ExternalSystem on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L3-005");
+      expect(rule.scope.object_type).toBe("ExternalSystem");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition gates both CRITICAL and HIGH on non-null sla_reference", () => {
+      const rule = getGuardrailOrThrow("GR-L3-005");
+      expect(rule.condition).toContain("'CRITICAL'");
+      expect(rule.condition).toContain("'HIGH'");
+      expect(rule.condition).toContain("object.sla_reference");
+      expect(rule.condition).toContain("!= null");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L3-005");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to camelCase or shortened SLA field names", () => {
+      const rule = getGuardrailOrThrow("GR-L3-005");
+      expect(rule.condition).not.toContain("object.slaReference");
+      expect(rule.condition).not.toMatch(/object\.sla\b/);
+      expect(rule.condition).not.toContain("object.sla_url");
+      expect(rule.condition).not.toContain("object.contract_reference");
+      expect(rule.condition).not.toContain("object.sla_doc");
+    });
+  });
+
+  describe("GR-L3-006 ArchitectureComponent without traces-to BoundedContext", () => {
+    it("scope targets ArchitectureComponent with relationship_type='traces-to'", () => {
+      const rule = getGuardrailOrThrow("GR-L3-006");
+      expect(rule.scope.object_type).toBe("ArchitectureComponent");
+      expect(rule.scope.relationship_type).toBe("traces-to");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+
+    it("condition walks traces-to with target_type='BoundedContext' (>=1)", () => {
+      const rule = getGuardrailOrThrow("GR-L3-006");
+      expect(rule.condition).toContain("type='traces-to'");
+      expect(rule.condition).toContain("target_type='BoundedContext'");
+      expect(rule.condition).toContain(">= 1");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+WARNING with propagation UPWARD", () => {
+      const rule = getGuardrailOrThrow("GR-L3-006");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      expect(rule.propagation).toBe("UPWARD");
+    });
+
+    it("does not drift to invented context-binding edge names or target types", () => {
+      const rule = getGuardrailOrThrow("GR-L3-006");
+      // The canonical edge is `traces-to` (kap. 2.2). Domain-binding synonyms
+      // are easy to reach for but not in the catalog.
+      expect(rule.condition).not.toContain("type='in-context'");
+      expect(rule.condition).not.toContain("type='owned-by'");
+      expect(rule.condition).not.toContain("type='realizes'");
+      expect(rule.condition).not.toContain("type='maps-to'");
+      expect(rule.condition).not.toContain("target_type='Context'");
+      expect(rule.condition).not.toContain("target_type='Domain'");
+      expect(rule.condition).not.toContain("target_type='DomainEntity'");
+    });
+  });
+
+  describe("GR-L3-007 Cyclic depends-on between ArchitectureComponents", () => {
+    it("scope targets ArchitectureComponent with relationship_type='depends-on'", () => {
+      const rule = getGuardrailOrThrow("GR-L3-007");
+      expect(rule.scope.object_type).toBe("ArchitectureComponent");
+      expect(rule.scope.relationship_type).toBe("depends-on");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition uses no_cycle_in over the depends-on edge", () => {
+      const rule = getGuardrailOrThrow("GR-L3-007");
+      expect(rule.condition).toContain("no_cycle_in(ArchitectureComponent");
+      expect(rule.condition).toContain("relationship='depends-on'");
+    });
+
+    it("classification is STRUCTURAL+DESCRIPTIVE+ERROR with propagation LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-L3-007");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("does not drift to alternative dependency edge names", () => {
+      const rule = getGuardrailOrThrow("GR-L3-007");
+      // The canonical edge is `depends-on` (kap. 2.2). Synonyms break the
+      // cycle scan because they walk the wrong graph.
+      expect(rule.condition).not.toContain("relationship='uses'");
+      expect(rule.condition).not.toContain("relationship='requires'");
+      expect(rule.condition).not.toContain("relationship='calls'");
+      expect(rule.condition).not.toContain("relationship='consumes'");
+      expect(rule.condition).not.toContain("relationship='depends_on'");
+    });
+  });
+});
+
