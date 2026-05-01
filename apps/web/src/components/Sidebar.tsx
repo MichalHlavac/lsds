@@ -10,10 +10,11 @@ const LAYERS = ["L1", "L2", "L3", "L4", "L5", "L6"] as const;
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   const pathname = usePathname();
-  const active = pathname === href;
+  const active = pathname === href || pathname.startsWith(href + "/");
   return (
     <Link
       href={href}
+      aria-current={active ? "page" : undefined}
       className={`block px-3 py-1.5 rounded text-sm transition-colors ${
         active
           ? "bg-gray-700 text-white"
@@ -27,12 +28,18 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 
 export function Sidebar() {
   return (
-    <nav className="w-56 shrink-0 bg-gray-950 border-r border-gray-800 min-h-screen p-4 flex flex-col gap-6">
+    <nav
+      aria-label="Main navigation"
+      className="w-56 shrink-0 bg-gray-950 border-r border-gray-800 min-h-screen p-4 flex flex-col gap-6"
+    >
       <div>
-        <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+        <p
+          id="nav-layers-label"
+          className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+        >
           Layers
         </p>
-        <ul className="space-y-0.5">
+        <ul aria-labelledby="nav-layers-label" className="space-y-0.5">
           {LAYERS.map((layer) => (
             <li key={layer}>
               <NavLink href={`/layers/${layer.toLowerCase()}`}>{layer}</NavLink>
@@ -41,10 +48,13 @@ export function Sidebar() {
         </ul>
       </div>
       <div>
-        <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+        <p
+          id="nav-graph-label"
+          className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500"
+        >
           Graph
         </p>
-        <ul className="space-y-0.5">
+        <ul aria-labelledby="nav-graph-label" className="space-y-0.5">
           <li>
             <NavLink href="/nodes">Nodes</NavLink>
           </li>

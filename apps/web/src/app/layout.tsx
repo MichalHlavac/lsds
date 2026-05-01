@@ -18,8 +18,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="flex bg-gray-950 text-gray-100 min-h-screen">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-gray-800 focus:px-4 focus:py-2 focus:text-sm focus:text-white focus:ring-2 focus:ring-blue-500"
+        >
+          Skip to content
+        </a>
         <Sidebar />
-        <main className="flex-1 p-8">{children}</main>
+        <main id="main-content" className="flex-1 p-8" tabIndex={-1}>
+          {children}
+        </main>
       </body>
     </html>
   );

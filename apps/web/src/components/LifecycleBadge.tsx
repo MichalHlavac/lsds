@@ -13,6 +13,7 @@ const STYLES: Record<LifecycleStatus, string> = {
 export function LifecycleBadge({ status }: { status: LifecycleStatus }) {
   return (
     <span
+      aria-label={`Lifecycle status: ${status}`}
       className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${STYLES[status]}`}
     >
       {status}
