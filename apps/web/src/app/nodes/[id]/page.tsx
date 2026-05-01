@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type NodeRow } from "../../../lib/api";
 import { LifecycleBadge } from "../../../components/LifecycleBadge";
+import { LifecycleControls } from "../../../components/LifecycleControls";
 
 function fmt(d: string | null): string {
   if (!d) return "—";
@@ -45,6 +46,13 @@ export default function NodeDetailPage({ params }: { params: { id: string } }) {
       <div className="flex items-center gap-3 mb-6">
         <h1 className="text-2xl font-bold">{node.name}</h1>
         <LifecycleBadge status={node.lifecycleStatus} />
+        <LifecycleControls
+          entityId={node.id}
+          entityType="node"
+          entityName={node.name}
+          currentStatus={node.lifecycleStatus}
+          onSuccess={(updated) => setNode(updated as NodeRow)}
+        />
       </div>
 
       <div className="rounded-lg border border-gray-800 bg-gray-900 divide-y divide-gray-800">

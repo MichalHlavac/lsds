@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, type EdgeRow } from "../../../lib/api";
 import { LifecycleBadge } from "../../../components/LifecycleBadge";
+import { LifecycleControls } from "../../../components/LifecycleControls";
 
 function fmt(d: string | null): string {
   if (!d) return "—";
@@ -45,6 +46,13 @@ export default function EdgeDetailPage({ params }: { params: { id: string } }) {
       <div className="flex items-center gap-3 mb-6">
         <h1 className="text-2xl font-bold font-mono">{edge.type}</h1>
         <LifecycleBadge status={edge.lifecycleStatus} />
+        <LifecycleControls
+          entityId={edge.id}
+          entityType="edge"
+          entityName={edge.id}
+          currentStatus={edge.lifecycleStatus}
+          onSuccess={(updated) => setEdge(updated as EdgeRow)}
+        />
       </div>
 
       <div className="rounded-lg border border-gray-800 bg-gray-900 divide-y divide-gray-800">
