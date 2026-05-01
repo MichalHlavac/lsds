@@ -83,7 +83,14 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       targetLayer: targetNode.layer,
     });
     if (validationIssues.length > 0) {
-      return c.json({ error: "invalid edge", issues: validationIssues }, 422);
+      return c.json({
+        error: "invalid edge",
+        violations: validationIssues.map((i) => ({
+          ruleKey: "GR-XL-003",
+          severity: "ERROR",
+          message: i.message,
+        })),
+      }, 422);
     }
 
     const [row] = await sql<EdgeRow[]>`
