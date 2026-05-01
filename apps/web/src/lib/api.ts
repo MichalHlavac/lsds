@@ -111,6 +111,8 @@ export interface NodeListParams {
   lifecycleStatus?: LifecycleStatus;
   limit?: number;
   offset?: number;
+  sortBy?: string;
+  order?: "asc" | "desc";
 }
 
 export interface EdgeListParams {
@@ -120,6 +122,8 @@ export interface EdgeListParams {
   type?: string;
   limit?: number;
   offset?: number;
+  sortBy?: string;
+  order?: "asc" | "desc";
 }
 
 export interface HealthResponse {
