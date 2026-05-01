@@ -50,10 +50,16 @@ HEALTH=$(curl -sf "$BASE_URL/health")
 echo "    /health: $HEALTH"
 echo "$HEALTH" | grep -q '"status":"ok"' || { echo "ERROR: unexpected health response"; exit 1; }
 
-# CLI version check (via docker compose exec)
+# CLI version check (must succeed — CLI is embedded in the API image)
 echo "==> Checking CLI version..."
-CLI_VERSION=$($COMPOSE exec -T api node apps/cli/dist/index.js --version 2>/dev/null || echo "cli-unavailable")
+CLI_VERSION=$($COMPOSE exec -T api node apps/cli/dist/index.js --version)
 echo "    lsds --version: $CLI_VERSION"
+[[ -n "$CLI_VERSION" ]] || { echo "ERROR: CLI --version returned empty output"; exit 1; }
+
+# Diagnostics bundle (DATABASE_URL is available in the api service environment)
+echo "==> Running lsds diagnostics bundle..."
+$COMPOSE exec -T api node apps/cli/dist/index.js diagnostics bundle -o /tmp
+echo "    lsds diagnostics bundle OK"
 
 # 404 for unknown route
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/nonexistent")

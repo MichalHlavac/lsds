@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
+import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { fileURLToPath, URL } from "node:url";
 import { runDiagnosticsBundle } from "./commands/diagnostics-bundle.js";
 import { runBackup } from "./commands/backup.js";
 import { runRestore } from "./commands/restore.js";
@@ -15,10 +17,18 @@ const { values, positionals } = parseArgs({
     days: { type: "string", short: "d", default: "7" },
     "log-dir": { type: "string", default: "/var/log/lsds" },
     help: { type: "boolean", short: "h", default: false },
+    version: { type: "boolean", short: "V", default: false },
   },
 });
 
 const [command, subcommand] = positionals;
+
+if (values.version) {
+  const pkgPath = new URL("../package.json", import.meta.url);
+  const { version } = JSON.parse(readFileSync(fileURLToPath(pkgPath), "utf8")) as { version: string };
+  console.log(`lsds/${version}`);
+  process.exit(0);
+}
 
 if (values.help || !command) {
   console.log(`

@@ -43,6 +43,11 @@ COPY --from=build --chown=lsds:lsds /app/apps/web/.next/standalone ./apps/web/.n
 COPY --from=build --chown=lsds:lsds /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build --chown=lsds:lsds /app/apps/web/public ./apps/web/public
 
+# CLI tool (diagnostics sidecar — LSDS-152)
+COPY --from=build --chown=lsds:lsds /app/apps/cli/dist ./apps/cli/dist
+COPY --from=build --chown=lsds:lsds /app/apps/cli/package.json ./apps/cli/package.json
+COPY --from=build --chown=lsds:lsds /app/apps/cli/node_modules ./apps/cli/node_modules
+
 USER lsds
 
 EXPOSE 3001
