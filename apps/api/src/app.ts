@@ -18,6 +18,7 @@ import { lifecycleRouter } from "./routes/lifecycle.js";
 import { usersRouter, teamsRouter } from "./routes/users.js";
 import { agentRouter } from "./agent/index.js";
 import { architectRouter } from "./agent/architect.js";
+import { migrationRouter } from "./agent/migration.js";
 import { snapshotsRouter } from "./routes/snapshots.js";
 import { layersRouter } from "./routes/layers.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
@@ -51,6 +52,7 @@ v1.route("/layers", layersRouter(sql));
 app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle));
 app.route("/agent/v1/architect", architectRouter(sql));
+app.route("/agent/v1/migration", migrationRouter(sql));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();

@@ -119,3 +119,22 @@ export interface GuardrailRow {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface MigrationDraftRow {
+  id: string;
+  tenantId: string;
+  sessionId: string;
+  sourceRef: string;
+  proposedType: string;
+  proposedLayer: Layer;
+  proposedName: string;
+  proposedAttrs: Record<string, unknown>;
+  confidence: Record<string, "HIGH" | "MEDIUM" | "LOW">;
+  owner: string;
+  reviewFlags: string[];
+  status: "pending" | "approved" | "rejected";
+  reviewedAt: Date | null;
+  committedNodeId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
