@@ -3,30 +3,33 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type NodeRow, type Layer, type LifecycleStatus } from "../../lib/api";
-import { LifecycleBadge } from "../../components/LifecycleBadge";
+import { LAYER_IDS } from "@lsds/shared";
+import { api, type NodeRow, type Layer, type LifecycleStatus } from "../../../lib/api";
+import { LifecycleBadge } from "../../../components/LifecycleBadge";
 
-const LAYERS: Layer[] = ["L1", "L2", "L3", "L4", "L5", "L6"];
 const STATUSES: LifecycleStatus[] = ["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"];
 const LIMIT = 50;
 
-export default function NodesPage() {
+export default function LayerDetailPage({ params }: { params: Promise<{ layer: string }> }) {
+  const { layer: slug } = use(params);
+  const layer = slug.toUpperCase() as Layer;
+  const isValid = (LAYER_IDS as readonly string[]).includes(layer);
+
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
-  const [layer, setLayer] = useState<Layer | "">("");
   const [nodeType, setNodeType] = useState("");
   const [status, setStatus] = useState<LifecycleStatus | "">("");
 
   useEffect(() => {
+    if (!isValid) return;
     setLoading(true);
     setError(null);
-    api.nodes
-      .list({
-        layer: layer || undefined,
+    api.layers
+      .getNodes(layer, {
         type: nodeType || undefined,
         lifecycleStatus: status || undefined,
         limit: LIMIT,
@@ -40,10 +43,17 @@ export default function NodesPage() {
         setError(err instanceof Error ? err.message : "Failed to load nodes");
         setLoading(false);
       });
-  }, [layer, nodeType, status, offset]);
+  }, [layer, isValid, nodeType, status, offset]);
+
+  if (!isValid) {
+    return (
+      <div className="max-w-6xl">
+        <p className="text-red-400">Invalid layer: {slug}</p>
+      </div>
+    );
+  }
 
   function reset() {
-    setLayer("");
     setNodeType("");
     setStatus("");
     setOffset(0);
@@ -51,27 +61,14 @@ export default function NodesPage() {
 
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-bold mb-6">Nodes</h1>
+      <div className="mb-6">
+        <Link href="/layers" className="text-xs text-gray-500 hover:text-gray-300 mb-2 block">
+          ← Layers
+        </Link>
+        <h1 className="text-2xl font-bold">Layer {layer}</h1>
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="block text-xs text-gray-400 mb-1">Layer</label>
-          <select
-            value={layer}
-            onChange={(e) => {
-              setLayer(e.target.value as Layer | "");
-              setOffset(0);
-            }}
-            className="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-gray-500"
-          >
-            <option value="">All layers</option>
-            {LAYERS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </div>
         <div>
           <label className="block text-xs text-gray-400 mb-1">Type</label>
           <input
@@ -116,7 +113,6 @@ export default function NodesPage() {
             <tr className="border-b border-gray-800 bg-gray-900">
               <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Name</th>
               <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Type</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Layer</th>
               <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Version</th>
               <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Status</th>
               <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Created</th>
@@ -125,22 +121,22 @@ export default function NodesPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                   Loading…
                 </td>
               </tr>
             )}
             {error && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-red-400 font-mono text-xs">
+                <td colSpan={5} className="px-4 py-8 text-center text-red-400 font-mono text-xs">
                   {error}
                 </td>
               </tr>
             )}
             {!loading && !error && nodes.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                  No nodes found
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  No nodes in this layer
                 </td>
               </tr>
             )}
@@ -160,14 +156,6 @@ export default function NodesPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-2.5 text-gray-300 font-mono text-xs">{node.type}</td>
-                  <td className="px-4 py-2.5">
-                    <Link
-                      href={`/layers/${node.layer.toLowerCase()}`}
-                      className="text-blue-400 hover:text-blue-300 font-mono"
-                    >
-                      {node.layer}
-                    </Link>
-                  </td>
                   <td className="px-4 py-2.5 text-gray-300 font-mono text-xs">{node.version}</td>
                   <td className="px-4 py-2.5">
                     <LifecycleBadge status={node.lifecycleStatus} />
