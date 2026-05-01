@@ -7,6 +7,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { type Layer } from "../lib/api";
 import { CreateEdgeSchema, UpdateEdgeSchema } from "../lib/schemas";
+import { NodeCombobox } from "./NodeCombobox";
 
 const LAYERS: Layer[] = ["L1", "L2", "L3", "L4", "L5", "L6"];
 
@@ -130,23 +131,23 @@ export function EdgeForm({
       {!readOnlyInfo && (
         <>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Source Node ID</label>
-            <input
+            <label className="block text-sm text-gray-400 mb-1">Source Node</label>
+            <NodeCombobox
               value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
-              placeholder="UUID"
-              className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-mono text-gray-100 focus:border-blue-500 focus:outline-none"
+              onChange={setSourceId}
+              placeholder="Search source node…"
+              error={errors.sourceId}
             />
             {errors.sourceId && <p className="mt-1 text-xs text-red-400">{errors.sourceId}</p>}
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Target Node ID</label>
-            <input
+            <label className="block text-sm text-gray-400 mb-1">Target Node</label>
+            <NodeCombobox
               value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-              placeholder="UUID"
-              className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm font-mono text-gray-100 focus:border-blue-500 focus:outline-none"
+              onChange={setTargetId}
+              placeholder="Search target node…"
+              error={errors.targetId}
             />
             {errors.targetId && <p className="mt-1 text-xs text-red-400">{errors.targetId}</p>}
           </div>
