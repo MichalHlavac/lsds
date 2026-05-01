@@ -74,6 +74,18 @@ export interface ApiErrorBody {
   message?: string;
 }
 
+export interface LayerSummary {
+  layer: Layer;
+  nodeCount: number;
+}
+
+export interface LayerNodeListParams {
+  type?: string;
+  lifecycleStatus?: LifecycleStatus;
+  limit?: number;
+  offset?: number;
+}
+
 export interface NodeListParams {
   type?: string;
   layer?: Layer;
@@ -223,6 +235,12 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ transition }),
       }),
+  },
+
+  layers: {
+    list: () => request<{ data: LayerSummary[] }>("/v1/layers"),
+    getNodes: (layer: Layer, params?: LayerNodeListParams) =>
+      request<{ data: NodeRow[] }>(`/v1/layers/${layer}`, { params: params as Params }),
   },
 
   violations: {

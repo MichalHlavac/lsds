@@ -3,31 +3,33 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type NodeRow, type Layer, type LifecycleStatus } from "../../lib/api";
-import { LifecycleBadge } from "../../components/LifecycleBadge";
+import { LAYER_IDS } from "@lsds/shared";
+import { api, type NodeRow, type Layer, type LifecycleStatus } from "../../../lib/api";
+import { LifecycleBadge } from "../../../components/LifecycleBadge";
 
-const LAYERS: Layer[] = ["L1", "L2", "L3", "L4", "L5", "L6"];
 const STATUSES: LifecycleStatus[] = ["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"];
 const LIMIT = 50;
 
-export default function NodesPage() {
+export default function LayerDetailPage({ params }: { params: Promise<{ layer: string }> }) {
+  const { layer: slug } = use(params);
+  const layer = slug.toUpperCase() as Layer;
+  const isValid = (LAYER_IDS as readonly string[]).includes(layer);
+
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
-  const [layer, setLayer] = useState<Layer | "">("");
   const [nodeType, setNodeType] = useState("");
   const [status, setStatus] = useState<LifecycleStatus | "">("");
-  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    if (!isValid) return;
     setLoading(true);
     setError(null);
-    api.nodes
-      .list({
-        layer: layer || undefined,
+    api.layers
+      .getNodes(layer, {
         type: nodeType || undefined,
         lifecycleStatus: status || undefined,
         limit: LIMIT,
@@ -41,10 +43,17 @@ export default function NodesPage() {
         setError(err instanceof Error ? err.message : "Failed to load nodes");
         setLoading(false);
       });
-  }, [layer, nodeType, status, offset, retryCount]);
+  }, [layer, isValid, nodeType, status, offset]);
+
+  if (!isValid) {
+    return (
+      <div className="max-w-6xl">
+        <p className="text-red-400">Invalid layer: {slug}</p>
+      </div>
+    );
+  }
 
   function reset() {
-    setLayer("");
     setNodeType("");
     setStatus("");
     setOffset(0);
@@ -52,44 +61,17 @@ export default function NodesPage() {
 
   return (
     <div className="max-w-6xl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Nodes</h1>
-        <Link
-          href="/nodes/new"
-          className="px-3 py-1.5 text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors"
-        >
-          + New Node
+      <div className="mb-6">
+        <Link href="/layers" className="text-xs text-gray-500 hover:text-gray-300 mb-2 block">
+          ← Layers
         </Link>
+        <h1 className="text-2xl font-bold">Layer {layer}</h1>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3 items-end">
         <div>
-          <label htmlFor="filter-layer" className="block text-xs text-gray-400 mb-1">
-            Layer
-          </label>
-          <select
-            id="filter-layer"
-            value={layer}
-            onChange={(e) => {
-              setLayer(e.target.value as Layer | "");
-              setOffset(0);
-            }}
-            className="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-gray-500"
-          >
-            <option value="">All layers</option>
-            {LAYERS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="filter-type" className="block text-xs text-gray-400 mb-1">
-            Type
-          </label>
+          <label className="block text-xs text-gray-400 mb-1">Type</label>
           <input
-            id="filter-type"
             type="text"
             placeholder="e.g. Service"
             value={nodeType}
@@ -100,11 +82,8 @@ export default function NodesPage() {
           />
         </div>
         <div>
-          <label htmlFor="filter-status" className="block text-xs text-gray-400 mb-1">
-            Status
-          </label>
+          <label className="block text-xs text-gray-400 mb-1">Status</label>
           <select
-            id="filter-status"
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as LifecycleStatus | "");
@@ -121,76 +100,43 @@ export default function NodesPage() {
           </select>
         </div>
         <button
-          type="button"
           onClick={reset}
           className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded hover:border-gray-500 transition-colors"
-          aria-label="Reset filters"
         >
           Reset
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-800 overflow-x-auto">
+      <div className="rounded-lg border border-gray-800 overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-800 bg-gray-900">
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Name
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Type
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Layer
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Version
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Status
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Created
-              </th>
+              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Name</th>
+              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Type</th>
+              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Version</th>
+              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Status</th>
+              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Created</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-8 text-center text-gray-500"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span className="inline-block animate-pulse">Loading…</span>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  Loading…
                 </td>
               </tr>
             )}
-            {!loading && error && (
+            {error && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center" role="alert">
-                  <p className="text-red-400 font-mono text-xs mb-3">{error}</p>
-                  <button
-                    type="button"
-                    onClick={() => setRetryCount((c) => c + 1)}
-                    className="text-sm text-gray-400 hover:text-gray-100 underline"
-                  >
-                    Retry
-                  </button>
+                <td colSpan={5} className="px-4 py-8 text-center text-red-400 font-mono text-xs">
+                  {error}
                 </td>
               </tr>
             )}
             {!loading && !error && nodes.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center">
-                  <p className="text-gray-500 mb-2">No nodes found.</p>
-                  <Link
-                    href="/nodes/new"
-                    className="text-sm text-blue-400 hover:text-blue-300"
-                  >
-                    Create your first node →
-                  </Link>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                  No nodes in this layer
                 </td>
               </tr>
             )}
@@ -210,14 +156,6 @@ export default function NodesPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-2.5 text-gray-300 font-mono text-xs">{node.type}</td>
-                  <td className="px-4 py-2.5">
-                    <Link
-                      href={`/layers/${node.layer.toLowerCase()}`}
-                      className="text-blue-400 hover:text-blue-300 font-mono"
-                    >
-                      {node.layer}
-                    </Link>
-                  </td>
                   <td className="px-4 py-2.5 text-gray-300 font-mono text-xs">{node.version}</td>
                   <td className="px-4 py-2.5">
                     <LifecycleBadge status={node.lifecycleStatus} />
@@ -233,22 +171,18 @@ export default function NodesPage() {
 
       <div className="mt-4 flex items-center gap-3">
         <button
-          type="button"
           onClick={() => setOffset(Math.max(0, offset - LIMIT))}
           disabled={offset === 0}
-          aria-label="Previous page"
           className="px-3 py-1.5 text-sm border border-gray-700 rounded text-gray-400 hover:text-gray-100 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           ← Prev
         </button>
-        <span className="text-sm text-gray-500" aria-live="polite">
+        <span className="text-sm text-gray-500">
           {nodes.length > 0 ? `${offset + 1}–${offset + nodes.length}` : "0 results"}
         </span>
         <button
-          type="button"
           onClick={() => setOffset(offset + LIMIT)}
           disabled={nodes.length < LIMIT}
-          aria-label="Next page"
           className="px-3 py-1.5 text-sm border border-gray-700 rounded text-gray-400 hover:text-gray-100 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Next →
