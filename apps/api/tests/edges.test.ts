@@ -96,7 +96,94 @@ describe("POST /v1/edges", () => {
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error).toBe("invalid edge");
-    expect(Array.isArray(body.issues)).toBe(true);
+    expect(Array.isArray(body.violations)).toBe(true);
+    expect(body.violations.length).toBeGreaterThan(0);
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
+    expect(body.violations[0].severity).toBe("ERROR");
+  });
+
+  // ── GR-XL-003 cross-layer negative-path tests ─────────────────────────────
+  // Each test exercises a relationship type that is tightly layer-constrained
+  // and verifies the prescriptive engine rejects it synchronously with a 422
+  // violations array (as required by the v2 acceptance criteria).
+
+  it("GR-XL-003: context-integration requires L2↔L2 — rejects L1→L3", async () => {
+    const src = await createNode("L1", "biz-goal");
+    const tgt = await createNode("L3", "arch-component");
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "context-integration", layer: "L1" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toBe("invalid edge");
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
+  });
+
+  it("GR-XL-003: calls requires L4/L5 → L4 — rejects L1→L6", async () => {
+    const src = await createNode("L1", "biz-cap");
+    const tgt = await createNode("L6", "infra");
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "calls", layer: "L1" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
+  });
+
+  it("GR-XL-003: deploys-to requires L4/L5 → L6 — rejects L1→L2", async () => {
+    const src = await createNode("L1", "req");
+    const tgt = await createNode("L2", "bounded-ctx");
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "deploys-to", layer: "L1" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
+  });
+
+  it("GR-XL-003: publishes requires L4↔L4 — rejects L2→L5", async () => {
+    const src = await createNode("L2", "domain-event");
+    const tgt = await createNode("L5", "code-module");
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "publishes", layer: "L2" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
+  });
+
+  it("GR-XL-003: covers requires L6 source — rejects L1→L4", async () => {
+    const src = await createNode("L1", "biz-goal");
+    const tgt = await createNode("L4", "svc");
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "covers", layer: "L1" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
+  });
+
+  it("GR-XL-003: realizes ordinal constraint (source must be >= target) — rejects L1→L6", async () => {
+    const src = await createNode("L1", "biz-goal");
+    const tgt = await createNode("L6", "infra");
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "realizes", layer: "L1" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
   });
 
   it("returns 400 for non-UUID sourceId", async () => {
