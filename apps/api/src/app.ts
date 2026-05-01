@@ -40,7 +40,7 @@ v1.route("/query", queryRouter(sql));
 v1.route("/snapshots", snapshotsRouter(sql));
 
 app.route("/v1", v1);
-app.route("/agent/v1", agentRouter(sql, cache, adapter, guardrails, lifecycle));
+app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
