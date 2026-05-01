@@ -705,3 +705,191 @@ describe("GR-XL cross-layer guardrail drift guards (GR-XL-001..011)", () => {
   });
 });
 
+describe("GR-L2 Domain Layer guardrail drift guards (GR-L2-002..004, 006..008)", () => {
+  describe("GR-L2-002 BoundedContext must trace to BusinessCapability", () => {
+    it("walks the canonical `traces-to` edge to BusinessCapability", () => {
+      const rule = getGuardrailOrThrow("GR-L2-002");
+      expect(rule.scope.object_type).toBe("BoundedContext");
+      expect(rule.condition).toContain("type='traces-to'");
+      expect(rule.condition).toContain("target_type='BusinessCapability'");
+      expect(rule.condition).toContain(">= 1");
+      expect(rule.scope.relationship_type).toBe("traces-to");
+    });
+
+    it("does not use synonyms for the strategic-alignment edge", () => {
+      const rule = getGuardrailOrThrow("GR-L2-002");
+      expect(rule.condition).not.toContain("type='supports'");
+      expect(rule.condition).not.toContain("type='realises'");
+      expect(rule.condition).not.toContain("type='realizes'");
+      expect(rule.condition).not.toContain("type='aligned-with'");
+      expect(rule.condition).not.toContain("type='part-of'");
+      expect(rule.condition).not.toContain("target_type='Capability'");
+    });
+
+    it("propagation is UPWARD (orphan context surfaces on capability dependents)", () => {
+      const rule = getGuardrailOrThrow("GR-L2-002");
+      expect(rule.propagation).toBe("UPWARD");
+    });
+
+    it("origin is STRUCTURAL, evaluation is PRESCRIPTIVE, severity is ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-L2-002");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+    });
+  });
+
+  describe("GR-L2-003 DomainEntity must declare ≥ 1 invariant", () => {
+    it("reads the canonical `invariants` array on DomainEntity", () => {
+      const rule = getGuardrailOrThrow("GR-L2-003");
+      expect(rule.scope.object_type).toBe("DomainEntity");
+      expect(rule.condition).toContain("object.invariants");
+      expect(rule.condition).toContain(">= 1");
+    });
+
+    it("does not use synonyms for entity invariants", () => {
+      const rule = getGuardrailOrThrow("GR-L2-003");
+      expect(rule.condition).not.toContain("object.rules");
+      expect(rule.condition).not.toContain("object.constraints");
+      expect(rule.condition).not.toContain("object.businessRules");
+      expect(rule.condition).not.toContain("object.business_rules");
+      expect(rule.condition).not.toContain("object.guarantees");
+    });
+
+    it("remediation references invariant authoring or downgrade to ValueObject", () => {
+      const rule = getGuardrailOrThrow("GR-L2-003");
+      expect(rule.remediation.toLowerCase()).toMatch(/invariant/);
+      expect(rule.remediation).toContain("ValueObject");
+    });
+
+    it("propagation is NONE; origin STRUCTURAL; evaluation PRESCRIPTIVE; severity ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-L2-003");
+      expect(rule.propagation).toBe("NONE");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+    });
+  });
+
+  describe("GR-L2-004 Aggregate must declare transaction_boundary", () => {
+    it("reads the canonical `transaction_boundary` attribute (snake_case)", () => {
+      const rule = getGuardrailOrThrow("GR-L2-004");
+      expect(rule.scope.object_type).toBe("Aggregate");
+      expect(rule.condition).toContain("object.transaction_boundary");
+      expect(rule.condition).toContain("!= null");
+    });
+
+    it("does not use camelCase or alternative boundary names", () => {
+      const rule = getGuardrailOrThrow("GR-L2-004");
+      expect(rule.condition).not.toContain("transactionBoundary");
+      expect(rule.condition).not.toContain("object.boundary");
+      expect(rule.condition).not.toContain("object.consistency_boundary");
+      expect(rule.condition).not.toContain("object.aggregate_boundary");
+      expect(rule.condition).not.toContain("object.tx_boundary");
+    });
+
+    it("remediation references transaction_boundary explicitly", () => {
+      const rule = getGuardrailOrThrow("GR-L2-004");
+      expect(rule.remediation).toContain("transaction_boundary");
+    });
+
+    it("propagation is NONE; origin STRUCTURAL; evaluation PRESCRIPTIVE; severity ERROR", () => {
+      const rule = getGuardrailOrThrow("GR-L2-004");
+      expect(rule.propagation).toBe("NONE");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+    });
+  });
+
+  describe("GR-L2-006 cyclic context-integration between BoundedContexts", () => {
+    it("scopes the canonical `context-integration` relationship type (kap. 2.2 + A7)", () => {
+      const rule = getGuardrailOrThrow("GR-L2-006");
+      expect(rule.scope.object_type).toBe("BoundedContext");
+      expect(rule.scope.relationship_type).toBe("context-integration");
+      expect(rule.condition).toContain("BoundedContext");
+      expect(rule.condition).toContain("context-integration");
+    });
+
+    it("uses no_cycle_in semantics, not generic graph-walk synonyms", () => {
+      const rule = getGuardrailOrThrow("GR-L2-006");
+      expect(rule.condition).toContain("no_cycle_in");
+      expect(rule.condition).not.toContain("has_cycle");
+      expect(rule.condition).not.toContain("acyclic");
+      expect(rule.condition).not.toContain("relationship='upstream-downstream'");
+      expect(rule.condition).not.toContain("relationship='conformist-to'");
+    });
+
+    it("propagation is LATERAL (cycle hits both sides of the integration seam)", () => {
+      const rule = getGuardrailOrThrow("GR-L2-006");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("triggers include PERIODIC + UPDATE; severity ERROR; evaluation DESCRIPTIVE", () => {
+      const rule = getGuardrailOrThrow("GR-L2-006");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+    });
+  });
+
+  describe("GR-L2-007 conformist pattern targeting a CORE BoundedContext", () => {
+    it("references the CONFORMIST pattern and a CORE classification target", () => {
+      const rule = getGuardrailOrThrow("GR-L2-007");
+      expect(rule.scope.object_type).toBe("BoundedContext");
+      expect(rule.condition.toLowerCase()).toMatch(/conformist/);
+      expect(rule.condition).toContain("target.classification='CORE'");
+    });
+
+    it("does not match SUPPORTING/GENERIC classifications (rule is CORE-specific)", () => {
+      const rule = getGuardrailOrThrow("GR-L2-007");
+      expect(rule.condition).not.toContain("target.classification='SUPPORTING'");
+      expect(rule.condition).not.toContain("target.classification='GENERIC'");
+      expect(rule.condition).not.toContain("classification='Core'");
+      expect(rule.condition).not.toContain("classification='core'");
+    });
+
+    it("remediation suggests Anti-Corruption Layer or Partnership", () => {
+      const rule = getGuardrailOrThrow("GR-L2-007");
+      expect(rule.remediation).toMatch(/ACL|Anti-Corruption|partnership/i);
+    });
+
+    it("origin is SEMANTIC; evaluation DESCRIPTIVE; severity WARNING; propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L2-007");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      expect(rule.propagation).toBe("NONE");
+    });
+  });
+
+  describe("GR-L2-008 same LanguageTerm defined differently across contexts", () => {
+    it("scopes LanguageTerm and uses duplicate_term_with_diverging_definitions semantics", () => {
+      const rule = getGuardrailOrThrow("GR-L2-008");
+      expect(rule.scope.object_type).toBe("LanguageTerm");
+      expect(rule.condition).toContain("duplicate_term_with_diverging_definitions");
+    });
+
+    it("does not collapse to a single-context name-uniqueness check", () => {
+      const rule = getGuardrailOrThrow("GR-L2-008");
+      expect(rule.condition).not.toContain("unique_name");
+      expect(rule.condition).not.toContain("object.duplicates");
+      expect(rule.condition).not.toMatch(/object\.name\s*==/);
+    });
+
+    it("propagation is LATERAL (divergence affects both contexts symmetrically)", () => {
+      const rule = getGuardrailOrThrow("GR-L2-008");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("origin SEMANTIC; evaluation DESCRIPTIVE; severity INFO (translation-map signal, not a defect)", () => {
+      const rule = getGuardrailOrThrow("GR-L2-008");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("INFO");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+  });
+});
+
