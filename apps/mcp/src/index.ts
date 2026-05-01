@@ -558,6 +558,95 @@ server.tool(
   }
 );
 
+// ── Migration Agent tools ────────────────────────────────────────────────────
+
+server.tool(
+  "lsds_migration_propose",
+  "Stage a proposed TKN (type/name/attributes/relationships) for human review before it is written to the live knowledge graph. Assigns per-attribute confidence levels (HIGH/MEDIUM/LOW); LOW-confidence attributes are automatically flagged for review. Owner is required — objects without an owner are rejected.",
+  {
+    sessionId: z.string().uuid().describe("Client-generated UUID grouping proposals from one migration run"),
+    sourceRef: z.string().min(1).describe("Where the object was discovered, e.g. 'confluence:PAGE-123' or 'file:docs/arch.md'"),
+    proposedType: z.string().min(1).describe("Node type to create, e.g. 'Service', 'BoundedContext'"),
+    proposedLayer: z
+      .enum(["L1", "L2", "L3", "L4", "L5", "L6"])
+      .describe("Architecture layer"),
+    proposedName: z.string().min(1).describe("Human-readable name for the node"),
+    proposedAttrs: z
+      .record(z.unknown())
+      .optional()
+      .describe("Proposed JSONB attributes for the node"),
+    confidence: z
+      .record(z.enum(["HIGH", "MEDIUM", "LOW"]))
+      .optional()
+      .describe("Per-attribute confidence level, e.g. {\"owner\": \"HIGH\", \"version\": \"LOW\"}"),
+    owner: z.string().min(1).describe("Owner identifier — required, never empty"),
+  },
+  async (params) => {
+    try {
+      const data = await client.migrationPropose(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_migration_session",
+  "List all draft proposals for a migration session with status counts. Shows total, pending, approved, rejected, and the number flagged for human review (LOW-confidence attributes). Call this after proposing objects to show the human what needs review.",
+  {
+    sessionId: z.string().uuid().describe("Session UUID used in lsds_migration_propose"),
+  },
+  async ({ sessionId }) => {
+    try {
+      const data = await client.migrationSession(sessionId);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_migration_commit",
+  "Commit all approved drafts in a migration session to the live nodes table. Only drafts with status 'approved' are written; pending and rejected drafts are skipped. Returns the count of committed nodes and their IDs. Always call lsds_migration_session first to verify approvals.",
+  {
+    sessionId: z.string().uuid().describe("Session UUID to commit"),
+  },
+  async ({ sessionId }) => {
+    try {
+      const data = await client.migrationCommit(sessionId);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_migration_review_draft",
+  "Approve or reject a migration draft, or override its proposed attributes before approval. Only pending drafts can be reviewed. Use this to accept HIGH-confidence proposals or correct LOW-confidence attributes before committing.",
+  {
+    draftId: z.string().uuid().describe("UUID of the draft to review (from lsds_migration_session)"),
+    status: z
+      .enum(["approved", "rejected"])
+      .optional()
+      .describe("New status — omit to update attributes without changing status"),
+    proposedAttrs: z
+      .record(z.unknown())
+      .optional()
+      .describe("Override proposed attributes before approval (full replace)"),
+  },
+  async ({ draftId, status, proposedAttrs }) => {
+    try {
+      const data = await client.migrationReviewDraft(draftId, { status, proposedAttrs });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
