@@ -29,6 +29,9 @@ importers:
       hono:
         specifier: ^4.3.0
         version: 4.12.15
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
       postgres:
         specifier: ^3.4.4
         version: 3.4.9
