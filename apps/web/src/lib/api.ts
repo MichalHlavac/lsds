@@ -4,6 +4,17 @@
 import type { Layer, LifecycleStatus, Severity } from "@lsds/shared";
 export type { Layer, LifecycleStatus, Severity };
 export type LifecycleTransition = "deprecate" | "archive" | "purge";
+export type HistoryOp = "CREATE" | "UPDATE" | "LIFECYCLE_TRANSITION";
+
+export interface NodeHistoryEntry {
+  id: string;
+  nodeId: string;
+  changedAt: string;
+  changedBy: string | null;
+  op: HistoryOp;
+  previous: Record<string, unknown> | null;
+  current: Record<string, unknown>;
+}
 
 export interface NodeRow {
   id: string;
@@ -243,6 +254,10 @@ export const api = {
       request<{ data: BatchLifecycleResult }>("/v1/nodes/batch-lifecycle", {
         method: "POST",
         body: JSON.stringify({ ids, transition }),
+      }),
+    history: (id: string, params?: { limit?: number; offset?: number }) =>
+      request<{ data: NodeHistoryEntry[]; total: number }>(`/v1/nodes/${id}/history`, {
+        params: params as Params,
       }),
   },
 
