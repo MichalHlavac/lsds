@@ -3,18 +3,39 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, type EdgeRow } from "../../lib/api";
 import { LifecycleBadge } from "../../components/LifecycleBadge";
 
 const LIMIT = 50;
 
+const EDGE_SORT_FIELDS = ["type", "layer", "traversalWeight", "lifecycleStatus"] as const;
+type EdgeSortField = (typeof EDGE_SORT_FIELDS)[number];
+type SortOrder = "asc" | "desc";
+
+function isEdgeSortField(v: string | null): v is EdgeSortField {
+  return EDGE_SORT_FIELDS.includes(v as EdgeSortField);
+}
+
 function truncId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 8)}…` : id;
 }
 
 export default function EdgesPage() {
+  return (
+    <Suspense>
+      <EdgesPageInner />
+    </Suspense>
+  );
+}
+
+function EdgesPageInner() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [edges, setEdges] = useState<EdgeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +44,14 @@ export default function EdgesPage() {
   const [targetId, setTargetId] = useState("");
   const [edgeType, setEdgeType] = useState("");
   const [retryCount, setRetryCount] = useState(0);
+  const [sortBy, setSortBy] = useState<EdgeSortField | "">(() => {
+    const sb = searchParams.get("sortBy");
+    return isEdgeSortField(sb) ? sb : "";
+  });
+  const [sortOrder, setSortOrder] = useState<SortOrder | "">(() => {
+    const o = searchParams.get("order");
+    return o === "asc" || o === "desc" ? o : "";
+  });
 
   useEffect(() => {
     setLoading(true);
@@ -34,6 +63,8 @@ export default function EdgesPage() {
         type: edgeType || undefined,
         limit: LIMIT,
         offset,
+        sortBy: sortBy || undefined,
+        order: sortOrder || undefined,
       })
       .then((res) => {
         setEdges(res.data);
@@ -43,13 +74,45 @@ export default function EdgesPage() {
         setError(err instanceof Error ? err.message : "Failed to load edges");
         setLoading(false);
       });
-  }, [sourceId, targetId, edgeType, offset, retryCount]);
+  }, [sourceId, targetId, edgeType, offset, sortBy, sortOrder, retryCount]);
+
+  function handleSort(field: EdgeSortField) {
+    let newSortBy: EdgeSortField | "" = field;
+    let newOrder: SortOrder | "" = "asc";
+
+    if (sortBy === field) {
+      if (sortOrder === "asc") {
+        newOrder = "desc";
+      } else {
+        newSortBy = "";
+        newOrder = "";
+      }
+    }
+
+    setSortBy(newSortBy);
+    setSortOrder(newOrder);
+    setOffset(0);
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (newSortBy) {
+      params.set("sortBy", newSortBy);
+      params.set("order", newOrder);
+    } else {
+      params.delete("sortBy");
+      params.delete("order");
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
 
   function reset() {
     setSourceId("");
     setTargetId("");
     setEdgeType("");
     setOffset(0);
+    setSortBy("");
+    setSortOrder("");
+    router.replace(pathname);
   }
 
   return (
@@ -106,21 +169,37 @@ export default function EdgesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-800 bg-gray-900">
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Type
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Layer
-              </th>
+              <SortHeader
+                label="Type"
+                field="type"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label="Layer"
+                field="layer"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
               <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
                 Source → Target
               </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Weight
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Status
-              </th>
+              <SortHeader
+                label="Weight"
+                field="traversalWeight"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label="Status"
+                field="lifecycleStatus"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
             </tr>
           </thead>
           <tbody>
@@ -154,10 +233,7 @@ export default function EdgesPage() {
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center">
                   <p className="text-gray-500 mb-2">No edges found.</p>
-                  <Link
-                    href="/edges/new"
-                    className="text-sm text-blue-400 hover:text-blue-300"
-                  >
+                  <Link href="/edges/new" className="text-sm text-blue-400 hover:text-blue-300">
                     Create your first edge →
                   </Link>
                 </td>
@@ -234,6 +310,40 @@ export default function EdgesPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  field,
+  current,
+  order,
+  onSort,
+}: {
+  label: string;
+  field: EdgeSortField;
+  current: EdgeSortField | "";
+  order: SortOrder | "";
+  onSort: (f: EdgeSortField) => void;
+}) {
+  const active = current === field;
+  return (
+    <th
+      scope="col"
+      className="text-left px-4 py-2.5 text-gray-400 font-medium"
+      aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={`inline-flex items-center gap-1 hover:text-gray-100 transition-colors${active ? " text-gray-100" : ""}`}
+      >
+        {label}
+        <span className={`text-xs select-none ${active ? "text-blue-400" : "text-gray-600"}`}>
+          {active ? (order === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
   );
 }
 

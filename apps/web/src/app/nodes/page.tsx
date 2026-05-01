@@ -3,7 +3,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   api,
@@ -29,7 +30,27 @@ interface BulkResult {
   failed: BatchFailedItem[];
 }
 
+const NODE_SORT_FIELDS = ["name", "type", "layer", "lifecycleStatus", "createdAt"] as const;
+type NodeSortField = (typeof NODE_SORT_FIELDS)[number];
+type SortOrder = "asc" | "desc";
+
+function isNodeSortField(v: string | null): v is NodeSortField {
+  return NODE_SORT_FIELDS.includes(v as NodeSortField);
+}
+
 export default function NodesPage() {
+  return (
+    <Suspense>
+      <NodesPageInner />
+    </Suspense>
+  );
+}
+
+function NodesPageInner() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [nodes, setNodes] = useState<NodeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +59,14 @@ export default function NodesPage() {
   const [nodeType, setNodeType] = useState("");
   const [status, setStatus] = useState<LifecycleStatus | "">("");
   const [retryCount, setRetryCount] = useState(0);
+  const [sortBy, setSortBy] = useState<NodeSortField | "">(() => {
+    const sb = searchParams.get("sortBy");
+    return isNodeSortField(sb) ? sb : "";
+  });
+  const [sortOrder, setSortOrder] = useState<SortOrder | "">(() => {
+    const o = searchParams.get("order");
+    return o === "asc" || o === "desc" ? o : "";
+  });
 
   // Selection state
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -60,6 +89,8 @@ export default function NodesPage() {
         lifecycleStatus: status || undefined,
         limit: LIMIT,
         offset,
+        sortBy: sortBy || undefined,
+        order: sortOrder || undefined,
       })
       .then((res) => {
         setNodes(res.data);
@@ -69,13 +100,45 @@ export default function NodesPage() {
         setError(err instanceof Error ? err.message : "Failed to load nodes");
         setLoading(false);
       });
-  }, [layer, nodeType, status, offset, retryCount]);
+  }, [layer, nodeType, status, offset, sortBy, sortOrder, retryCount]);
+
+  function handleSort(field: NodeSortField) {
+    let newSortBy: NodeSortField | "" = field;
+    let newOrder: SortOrder | "" = "asc";
+
+    if (sortBy === field) {
+      if (sortOrder === "asc") {
+        newOrder = "desc";
+      } else {
+        newSortBy = "";
+        newOrder = "";
+      }
+    }
+
+    setSortBy(newSortBy);
+    setSortOrder(newOrder);
+    setOffset(0);
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (newSortBy) {
+      params.set("sortBy", newSortBy);
+      params.set("order", newOrder);
+    } else {
+      params.delete("sortBy");
+      params.delete("order");
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
 
   function reset() {
     setLayer("");
     setNodeType("");
     setStatus("");
     setOffset(0);
+    setSortBy("");
+    setSortOrder("");
+    router.replace(pathname);
   }
 
   const allSelected = nodes.length > 0 && nodes.every((n) => selected.has(n.id));
@@ -288,24 +351,44 @@ export default function NodesPage() {
                   className="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-950"
                 />
               </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Name
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Type
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Layer
-              </th>
+              <SortHeader
+                label="Name"
+                field="name"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label="Type"
+                field="type"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label="Layer"
+                field="layer"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
               <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
                 Version
               </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Status
-              </th>
-              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
-                Created
-              </th>
+              <SortHeader
+                label="Status"
+                field="lifecycleStatus"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
+              <SortHeader
+                label="Created"
+                field="createdAt"
+                current={sortBy}
+                order={sortOrder}
+                onSort={handleSort}
+              />
             </tr>
           </thead>
           <tbody>
@@ -339,10 +422,7 @@ export default function NodesPage() {
               <tr>
                 <td colSpan={colSpan} className="px-4 py-10 text-center">
                   <p className="text-gray-500 mb-2">No nodes found.</p>
-                  <Link
-                    href="/nodes/new"
-                    className="text-sm text-blue-400 hover:text-blue-300"
-                  >
+                  <Link href="/nodes/new" className="text-sm text-blue-400 hover:text-blue-300">
                     Create your first node →
                   </Link>
                 </td>
@@ -509,5 +589,39 @@ export default function NodesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  field,
+  current,
+  order,
+  onSort,
+}: {
+  label: string;
+  field: NodeSortField;
+  current: NodeSortField | "";
+  order: SortOrder | "";
+  onSort: (f: NodeSortField) => void;
+}) {
+  const active = current === field;
+  return (
+    <th
+      scope="col"
+      className="text-left px-4 py-2.5 text-gray-400 font-medium"
+      aria-sort={active ? (order === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={`inline-flex items-center gap-1 hover:text-gray-100 transition-colors${active ? " text-gray-100" : ""}`}
+      >
+        {label}
+        <span className={`text-xs select-none ${active ? "text-blue-400" : "text-gray-600"}`}>
+          {active ? (order === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
   );
 }
