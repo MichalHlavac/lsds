@@ -103,5 +103,34 @@ describe("diagnostics bundle", () => {
     const raw = await readGzipBytes(bundlePath);
     expect(raw.includes(Buffer.from("db-skipped.txt"))).toBe(true);
     expect(raw.includes(Buffer.from("DATABASE_URL not set"))).toBe(true);
+    // Skip note must call out topology so support reviewers know the gap.
+    expect(raw.includes(Buffer.from("topology"))).toBe(true);
   });
+
+  it("omits topology.json when DATABASE_URL is unset", async () => {
+    const bundlePath = await runDiagnosticsBundle({
+      outDir,
+      days: 7,
+      logDir,
+      databaseUrl: undefined,
+    });
+
+    const raw = await readGzipBytes(bundlePath);
+    expect(raw.includes(Buffer.from("topology.json"))).toBe(false);
+  });
+
+  it("writes db-error.txt and omits topology.json on bad DATABASE_URL", async () => {
+    // 127.0.0.1:1 always refuses TCP — connect fails fast.
+    const bundlePath = await runDiagnosticsBundle({
+      outDir,
+      days: 7,
+      logDir,
+      databaseUrl: "postgres://lsds:lsds@127.0.0.1:1/lsds",
+    });
+
+    const raw = await readGzipBytes(bundlePath);
+    expect(raw.includes(Buffer.from("db-error.txt"))).toBe(true);
+    expect(raw.includes(Buffer.from("topology.json"))).toBe(false);
+    expect(raw.includes(Buffer.from("schema-snapshot.json"))).toBe(false);
+  }, 15_000);
 });
