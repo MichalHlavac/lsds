@@ -68,10 +68,40 @@ export interface LifecycleErrorBody {
   allowed: string[];
 }
 
+export interface BatchFailedItem {
+  id: string;
+  error: string;
+  currentStatus?: string;
+  requestedTransition?: string;
+  allowed?: string[];
+}
+
+export interface BatchLifecycleResult {
+  succeeded: NodeRow[];
+  failed: BatchFailedItem[];
+}
+
+export interface BatchResolveResult {
+  succeeded: ViolationRow[];
+  failed: { id: string; error: string }[];
+}
+
 export interface ApiErrorBody {
   error?: string;
   issues?: string[];
   message?: string;
+}
+
+export interface LayerSummary {
+  layer: Layer;
+  nodeCount: number;
+}
+
+export interface LayerNodeListParams {
+  type?: string;
+  lifecycleStatus?: LifecycleStatus;
+  limit?: number;
+  offset?: number;
 }
 
 export interface NodeListParams {
@@ -205,6 +235,11 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ transition }),
       }),
+    batchLifecycle: (ids: string[], transition: LifecycleTransition) =>
+      request<{ data: BatchLifecycleResult }>("/v1/nodes/batch-lifecycle", {
+        method: "POST",
+        body: JSON.stringify({ ids, transition }),
+      }),
   },
 
   edges: {
@@ -228,6 +263,12 @@ export const api = {
       }),
   },
 
+  layers: {
+    list: () => request<{ data: LayerSummary[] }>("/v1/layers"),
+    getNodes: (layer: Layer, params?: LayerNodeListParams) =>
+      request<{ data: NodeRow[] }>(`/v1/layers/${layer}`, { params: params as Params }),
+  },
+
   violations: {
     list: (params?: ViolationListParams) =>
       request<{ data: ViolationRow[] }>("/v1/violations", {
@@ -242,5 +283,10 @@ export const api = {
     get: (id: string) => request<{ data: ViolationRow }>(`/v1/violations/${id}`),
     resolve: (id: string) =>
       request<{ data: ViolationRow }>(`/v1/violations/${id}/resolve`, { method: "POST" }),
+    batchResolve: (ids: string[]) =>
+      request<{ data: BatchResolveResult }>("/v1/violations/batch-resolve", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      }),
   },
 };

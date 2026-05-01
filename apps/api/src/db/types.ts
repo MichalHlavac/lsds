@@ -84,6 +84,30 @@ export interface TeamRow {
   updatedAt: Date;
 }
 
+export type HistoryOp = "CREATE" | "UPDATE" | "LIFECYCLE_TRANSITION";
+
+export interface NodeHistoryRow {
+  id: string;
+  nodeId: string;
+  tenantId: string;
+  changedAt: Date;
+  changedBy: string | null;
+  op: HistoryOp;
+  previous: Record<string, unknown> | null;
+  current: Record<string, unknown>;
+}
+
+export interface EdgeHistoryRow {
+  id: string;
+  edgeId: string;
+  tenantId: string;
+  changedAt: Date;
+  changedBy: string | null;
+  op: HistoryOp;
+  previous: Record<string, unknown> | null;
+  current: Record<string, unknown>;
+}
+
 export interface GuardrailRow {
   id: string;
   tenantId: string;
