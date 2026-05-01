@@ -20,6 +20,7 @@ export default function NodesPage() {
   const [layer, setLayer] = useState<Layer | "">("");
   const [nodeType, setNodeType] = useState("");
   const [status, setStatus] = useState<LifecycleStatus | "">("");
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -40,7 +41,7 @@ export default function NodesPage() {
         setError(err instanceof Error ? err.message : "Failed to load nodes");
         setLoading(false);
       });
-  }, [layer, nodeType, status, offset]);
+  }, [layer, nodeType, status, offset, retryCount]);
 
   function reset() {
     setLayer("");
@@ -51,12 +52,23 @@ export default function NodesPage() {
 
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-bold mb-6">Nodes</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">Nodes</h1>
+        <Link
+          href="/nodes/new"
+          className="px-3 py-1.5 text-sm font-medium bg-blue-700 hover:bg-blue-600 text-white rounded transition-colors"
+        >
+          + New Node
+        </Link>
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Layer</label>
+          <label htmlFor="filter-layer" className="block text-xs text-gray-400 mb-1">
+            Layer
+          </label>
           <select
+            id="filter-layer"
             value={layer}
             onChange={(e) => {
               setLayer(e.target.value as Layer | "");
@@ -73,8 +85,11 @@ export default function NodesPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Type</label>
+          <label htmlFor="filter-type" className="block text-xs text-gray-400 mb-1">
+            Type
+          </label>
           <input
+            id="filter-type"
             type="text"
             placeholder="e.g. Service"
             value={nodeType}
@@ -85,8 +100,11 @@ export default function NodesPage() {
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Status</label>
+          <label htmlFor="filter-status" className="block text-xs text-gray-400 mb-1">
+            Status
+          </label>
           <select
+            id="filter-status"
             value={status}
             onChange={(e) => {
               setStatus(e.target.value as LifecycleStatus | "");
@@ -103,44 +121,76 @@ export default function NodesPage() {
           </select>
         </div>
         <button
+          type="button"
           onClick={reset}
           className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded hover:border-gray-500 transition-colors"
+          aria-label="Reset filters"
         >
           Reset
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-800 overflow-hidden">
+      <div className="rounded-lg border border-gray-800 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-800 bg-gray-900">
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Name</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Type</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Layer</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Version</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Status</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Created</th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Name
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Type
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Layer
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Version
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Status
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Created
+              </th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                  Loading…
+                <td
+                  colSpan={6}
+                  className="px-4 py-8 text-center text-gray-500"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="inline-block animate-pulse">Loading…</span>
                 </td>
               </tr>
             )}
-            {error && (
+            {!loading && error && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-red-400 font-mono text-xs">
-                  {error}
+                <td colSpan={6} className="px-4 py-8 text-center" role="alert">
+                  <p className="text-red-400 font-mono text-xs mb-3">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRetryCount((c) => c + 1)}
+                    className="text-sm text-gray-400 hover:text-gray-100 underline"
+                  >
+                    Retry
+                  </button>
                 </td>
               </tr>
             )}
             {!loading && !error && nodes.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                  No nodes found
+                <td colSpan={6} className="px-4 py-10 text-center">
+                  <p className="text-gray-500 mb-2">No nodes found.</p>
+                  <Link
+                    href="/nodes/new"
+                    className="text-sm text-blue-400 hover:text-blue-300"
+                  >
+                    Create your first node →
+                  </Link>
                 </td>
               </tr>
             )}
@@ -176,18 +226,22 @@ export default function NodesPage() {
 
       <div className="mt-4 flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setOffset(Math.max(0, offset - LIMIT))}
           disabled={offset === 0}
+          aria-label="Previous page"
           className="px-3 py-1.5 text-sm border border-gray-700 rounded text-gray-400 hover:text-gray-100 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           ← Prev
         </button>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-gray-500" aria-live="polite">
           {nodes.length > 0 ? `${offset + 1}–${offset + nodes.length}` : "0 results"}
         </span>
         <button
+          type="button"
           onClick={() => setOffset(offset + LIMIT)}
           disabled={nodes.length < LIMIT}
+          aria-label="Next page"
           className="px-3 py-1.5 text-sm border border-gray-700 rounded text-gray-400 hover:text-gray-100 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Next →
