@@ -7,6 +7,11 @@ import { LayerSchema, LifecycleStatusSchema, SeveritySchema } from "@lsds/shared
 const LayerEnum = LayerSchema;
 const LifecycleEnum = LifecycleStatusSchema;
 const SeverityEnum = SeveritySchema;
+// Severity values are uppercase-only (ERROR | WARN | INFO). Coerce input for DX.
+const SeverityInput = z.preprocess(
+  (v) => (typeof v === "string" ? v.toUpperCase() : v),
+  SeverityEnum,
+);
 
 export const CreateNodeSchema = z.object({
   type: z.string().min(1),
@@ -45,7 +50,7 @@ export const CreateViolationSchema = z.object({
   nodeId: z.string().uuid().optional(),
   edgeId: z.string().uuid().optional(),
   ruleKey: z.string().min(1),
-  severity: SeverityEnum,
+  severity: SeverityInput,
   message: z.string().min(1),
   attributes: z.record(z.unknown()).optional().default({}),
 });
@@ -59,14 +64,14 @@ export const TraverseSchema = z.object({
 export const CreateGuardrailSchema = z.object({
   ruleKey: z.string().min(1),
   description: z.string().optional().default(""),
-  severity: SeverityEnum,
+  severity: SeverityInput,
   enabled: z.boolean().optional().default(true),
   config: z.record(z.unknown()).optional().default({}),
 });
 
 export const UpdateGuardrailSchema = z.object({
   description: z.string().optional(),
-  severity: SeverityEnum.optional(),
+  severity: SeverityInput.optional(),
   enabled: z.boolean().optional(),
   config: z.record(z.unknown()).optional(),
 });

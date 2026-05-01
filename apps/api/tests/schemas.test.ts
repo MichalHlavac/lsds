@@ -220,6 +220,17 @@ describe("CreateViolationSchema", () => {
     }
   });
 
+  it("coerces lowercase severity to uppercase", () => {
+    expect(CreateViolationSchema.parse({ ...valid, severity: "error" }).severity).toBe("ERROR");
+    expect(CreateViolationSchema.parse({ ...valid, severity: "warn" }).severity).toBe("WARN");
+    expect(CreateViolationSchema.parse({ ...valid, severity: "info" }).severity).toBe("INFO");
+  });
+
+  it("coerces mixed-case severity to uppercase", () => {
+    expect(CreateViolationSchema.parse({ ...valid, severity: "Error" }).severity).toBe("ERROR");
+    expect(CreateViolationSchema.parse({ ...valid, severity: "Warn" }).severity).toBe("WARN");
+  });
+
   it("rejects empty ruleKey", () => {
     expect(() => CreateViolationSchema.parse({ ...valid, ruleKey: "" })).toThrow();
   });
@@ -328,6 +339,17 @@ describe("CreateGuardrailSchema", () => {
       expect(() => CreateGuardrailSchema.parse({ ...valid, severity })).not.toThrow();
     }
   });
+
+  it("coerces lowercase severity to uppercase", () => {
+    expect(CreateGuardrailSchema.parse({ ...valid, severity: "error" }).severity).toBe("ERROR");
+    expect(CreateGuardrailSchema.parse({ ...valid, severity: "warn" }).severity).toBe("WARN");
+    expect(CreateGuardrailSchema.parse({ ...valid, severity: "info" }).severity).toBe("INFO");
+  });
+
+  it("coerces mixed-case severity to uppercase", () => {
+    expect(CreateGuardrailSchema.parse({ ...valid, severity: "Error" }).severity).toBe("ERROR");
+    expect(CreateGuardrailSchema.parse({ ...valid, severity: "Warn" }).severity).toBe("WARN");
+  });
 });
 
 // ── UpdateGuardrailSchema ─────────────────────────────────────────────────────
@@ -349,6 +371,12 @@ describe("UpdateGuardrailSchema", () => {
 
   it("rejects invalid severity", () => {
     expect(() => UpdateGuardrailSchema.parse({ severity: "DEBUG" })).toThrow();
+  });
+
+  it("coerces lowercase severity to uppercase", () => {
+    expect(UpdateGuardrailSchema.parse({ severity: "error" }).severity).toBe("ERROR");
+    expect(UpdateGuardrailSchema.parse({ severity: "warn" }).severity).toBe("WARN");
+    expect(UpdateGuardrailSchema.parse({ severity: "info" }).severity).toBe("INFO");
   });
 });
 
