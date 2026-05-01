@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Layer, LifecycleStatus, Severity } from "@lsds/shared";
-export type { Layer, LifecycleStatus, Severity };
+export type LifecycleStatus = "ACTIVE" | "DEPRECATED" | "ARCHIVED" | "PURGE";
+export type Layer = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
+export type Severity = "ERROR" | "WARN" | "INFO";
 export type UserRole = "admin" | "editor" | "viewer";
 
 export interface NodeRow {
@@ -84,28 +85,23 @@ export interface TeamRow {
   updatedAt: Date;
 }
 
-export type HistoryOp = "CREATE" | "UPDATE" | "LIFECYCLE_TRANSITION";
-
-export interface NodeHistoryRow {
+export interface MigrationDraftRow {
   id: string;
-  nodeId: string;
   tenantId: string;
-  changedAt: Date;
-  changedBy: string | null;
-  op: HistoryOp;
-  previous: Record<string, unknown> | null;
-  current: Record<string, unknown>;
-}
-
-export interface EdgeHistoryRow {
-  id: string;
-  edgeId: string;
-  tenantId: string;
-  changedAt: Date;
-  changedBy: string | null;
-  op: HistoryOp;
-  previous: Record<string, unknown> | null;
-  current: Record<string, unknown>;
+  sessionId: string;
+  sourceRef: string;
+  proposedType: string;
+  proposedLayer: Layer;
+  proposedName: string;
+  proposedAttrs: Record<string, unknown>;
+  confidence: Record<string, "HIGH" | "MEDIUM" | "LOW">;
+  owner: string;
+  reviewFlags: string[];
+  status: "pending" | "approved" | "rejected";
+  reviewedAt: Date | null;
+  committedNodeId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface GuardrailRow {

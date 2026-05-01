@@ -18,9 +18,8 @@ import { lifecycleRouter } from "./routes/lifecycle.js";
 import { usersRouter, teamsRouter } from "./routes/users.js";
 import { agentRouter } from "./agent/index.js";
 import { architectRouter } from "./agent/architect.js";
+import { migrationRouter } from "./agent/migration.js";
 import { snapshotsRouter } from "./routes/snapshots.js";
-import { layersRouter } from "./routes/layers.js";
-import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
 const guardrails = new GuardrailsRegistry(sql);
@@ -28,12 +27,7 @@ const lifecycle = new LifecycleService(sql, cache);
 
 export const app = new Hono();
 
-app.get("/health", (c) =>
-  c.json({ status: "ok", ts: new Date().toISOString(), oidc: oidcEnabled })
-);
-
-app.use("/v1/*", oidcMiddleware);
-app.use("/agent/*", oidcMiddleware);
+app.get("/health", (c) => c.json({ status: "ok", ts: new Date().toISOString() }));
 
 const v1 = new Hono();
 v1.route("/nodes", nodesRouter(sql, cache, lifecycle));
@@ -46,11 +40,11 @@ v1.route("/users", usersRouter(sql));
 v1.route("/teams", teamsRouter(sql));
 v1.route("/query", queryRouter(sql));
 v1.route("/snapshots", snapshotsRouter(sql));
-v1.route("/layers", layersRouter(sql));
 
 app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle));
 app.route("/agent/v1/architect", architectRouter(sql));
+app.route("/agent/v1/migration", migrationRouter(sql));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
