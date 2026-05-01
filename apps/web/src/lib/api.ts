@@ -4,6 +4,7 @@
 export type Layer = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
 export type LifecycleStatus = "ACTIVE" | "DEPRECATED" | "ARCHIVED" | "PURGE";
 export type LifecycleTransition = "deprecate" | "archive" | "purge";
+export type Severity = "ERROR" | "WARN" | "INFO";
 
 export interface NodeRow {
   id: string;
@@ -36,6 +37,29 @@ export interface EdgeRow {
   deprecatedAt: string | null;
   archivedAt: string | null;
   purgeAfter: string | null;
+}
+
+export interface ViolationRow {
+  id: string;
+  tenantId: string;
+  nodeId: string | null;
+  edgeId: string | null;
+  ruleKey: string;
+  severity: Severity;
+  message: string;
+  attributes: Record<string, unknown>;
+  resolved: boolean;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ViolationListParams {
+  nodeId?: string;
+  ruleKey?: string;
+  resolved?: boolean;
+  limit?: number;
+  offset?: number;
 }
 
 export interface LifecycleErrorBody {
@@ -144,5 +168,21 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ transition }),
       }),
+  },
+
+  violations: {
+    list: (params?: ViolationListParams) =>
+      request<{ data: ViolationRow[] }>("/v1/violations", {
+        params: {
+          nodeId: params?.nodeId,
+          ruleKey: params?.ruleKey,
+          resolved: params?.resolved !== undefined ? String(params.resolved) : undefined,
+          limit: params?.limit,
+          offset: params?.offset,
+        },
+      }),
+    get: (id: string) => request<{ data: ViolationRow }>(`/v1/violations/${id}`),
+    resolve: (id: string) =>
+      request<{ data: ViolationRow }>(`/v1/violations/${id}/resolve`, { method: "POST" }),
   },
 };

@@ -53,6 +53,16 @@ export function Sidebar() {
           </li>
         </ul>
       </div>
+      <div>
+        <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Compliance
+        </p>
+        <ul className="space-y-0.5">
+          <li>
+            <NavLink href="/violations">Violations</NavLink>
+          </li>
+        </ul>
+      </div>
     </nav>
   );
 }
