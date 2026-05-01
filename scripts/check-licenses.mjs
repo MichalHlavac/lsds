@@ -25,6 +25,11 @@ const ALLOWED = new Set([
   'CC-BY-4.0',
   'Python-2.0',
   'WTFPL',
+  // LGPL-3.0-or-later: acceptable for on-prem distribution. The only current consumer is
+  // @img/sharp-libvips-darwin-arm64 (optional native binary, transitive via Next.js image
+  // optimisation). It is dynamically loaded and user-substitutable — LGPL's copyleft clause
+  // does not extend to the rest of the codebase. Reviewed and approved by CTO for v1.
+  'LGPL-3.0-or-later',
 ]);
 
 /** Copyleft pattern: GPL-*, AGPL-* (any version). LGPL excluded per spec — evaluated as unknown. */
