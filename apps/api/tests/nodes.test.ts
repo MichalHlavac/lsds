@@ -94,6 +94,57 @@ describe("GET /v1/nodes", () => {
     const { data } = await res.json();
     expect(data.every((n: any) => n.type === "Database")).toBe(true);
   });
+
+  it("?q= filters nodes by name substring (case-insensitive)", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "Authentication Service" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Database", layer: "L3", name: "Postgres" }),
+    });
+
+    const res = await app.request("/v1/nodes?q=auth", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.length).toBe(1);
+    expect(data[0].name).toBe("Authentication Service");
+  });
+
+  it("?q= filters nodes by type substring", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "ServiceMesh", layer: "L4", name: "istio" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Database", layer: "L3", name: "pg" }),
+    });
+
+    const res = await app.request("/v1/nodes?q=Mesh", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.length).toBe(1);
+    expect(data[0].type).toBe("ServiceMesh");
+  });
+
+  it("?q= returns empty array when nothing matches", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "foo" }),
+    });
+
+    const res = await app.request("/v1/nodes?q=zzznomatch", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data).toEqual([]);
+  });
 });
 
 // ── GET /v1/nodes ?sortBy / ?order ────────────────────────────────────────────

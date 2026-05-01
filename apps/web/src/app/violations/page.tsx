@@ -19,6 +19,7 @@ export default function ViolationsPage() {
   const [ruleKey, setRuleKey] = useState("");
   const [severity, setSeverity] = useState<Severity | "">("");
   const [resolved, setResolved] = useState<"" | "false" | "true">("");
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -41,7 +42,7 @@ export default function ViolationsPage() {
         setError(err instanceof Error ? err.message : "Failed to load violations");
         setLoading(false);
       });
-  }, [ruleKey, severity, resolved, offset]);
+  }, [ruleKey, severity, resolved, offset, retryCount]);
 
   function reset() {
     setRuleKey("");
@@ -56,8 +57,11 @@ export default function ViolationsPage() {
 
       <div className="mb-4 flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Rule Key</label>
+          <label htmlFor="filter-rule" className="block text-xs text-gray-400 mb-1">
+            Rule Key
+          </label>
           <input
+            id="filter-rule"
             type="text"
             placeholder="e.g. no-orphan-node"
             value={ruleKey}
@@ -68,8 +72,11 @@ export default function ViolationsPage() {
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Severity</label>
+          <label htmlFor="filter-severity" className="block text-xs text-gray-400 mb-1">
+            Severity
+          </label>
           <select
+            id="filter-severity"
             value={severity}
             onChange={(e) => {
               setSeverity(e.target.value as Severity | "");
@@ -86,8 +93,11 @@ export default function ViolationsPage() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Status</label>
+          <label htmlFor="filter-resolved" className="block text-xs text-gray-400 mb-1">
+            Status
+          </label>
           <select
+            id="filter-resolved"
             value={resolved}
             onChange={(e) => {
               setResolved(e.target.value as "" | "false" | "true");
@@ -101,44 +111,74 @@ export default function ViolationsPage() {
           </select>
         </div>
         <button
+          type="button"
           onClick={reset}
+          aria-label="Reset filters"
           className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded hover:border-gray-500 transition-colors"
         >
           Reset
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-800 overflow-hidden">
+      <div className="rounded-lg border border-gray-800 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-800 bg-gray-900">
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Severity</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Rule</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Message</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Node</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Status</th>
-              <th className="text-left px-4 py-2.5 text-gray-400 font-medium">Created</th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Severity
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Rule
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Message
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Node
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Status
+              </th>
+              <th scope="col" className="text-left px-4 py-2.5 text-gray-400 font-medium">
+                Created
+              </th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                  Loading…
+                <td
+                  colSpan={6}
+                  className="px-4 py-8 text-center text-gray-500"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="inline-block animate-pulse">Loading…</span>
                 </td>
               </tr>
             )}
-            {error && (
+            {!loading && error && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-red-400 font-mono text-xs">
-                  {error}
+                <td colSpan={6} className="px-4 py-8 text-center" role="alert">
+                  <p className="text-red-400 font-mono text-xs mb-3">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRetryCount((c) => c + 1)}
+                    className="text-sm text-gray-400 hover:text-gray-100 underline"
+                  >
+                    Retry
+                  </button>
                 </td>
               </tr>
             )}
             {!loading && !error && violations.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                  No violations found.
+                <td colSpan={6} className="px-4 py-10 text-center">
+                  <p className="text-gray-500">
+                    {ruleKey || severity || resolved
+                      ? "No violations match the current filters."
+                      : "No violations — the graph is clean."}
+                  </p>
                 </td>
               </tr>
             )}
@@ -170,7 +210,9 @@ export default function ViolationsPage() {
                         {v.nodeId.slice(0, 8)}…
                       </Link>
                     ) : (
-                      <span className="text-gray-600">—</span>
+                      <span className="text-gray-600" aria-label="No node">
+                        —
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">
@@ -195,18 +237,24 @@ export default function ViolationsPage() {
 
       <div className="mt-4 flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setOffset(Math.max(0, offset - LIMIT))}
           disabled={offset === 0}
+          aria-label="Previous page"
           className="px-3 py-1.5 text-sm border border-gray-700 rounded text-gray-400 hover:text-gray-100 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           ← Prev
         </button>
-        <span className="text-sm text-gray-500">
-          {violations.length > 0 ? `${offset + 1}–${offset + violations.length}` : "0 results"}
+        <span className="text-sm text-gray-500" aria-live="polite">
+          {violations.length > 0
+            ? `${offset + 1}–${offset + violations.length}`
+            : "0 results"}
         </span>
         <button
+          type="button"
           onClick={() => setOffset(offset + LIMIT)}
           disabled={violations.length < LIMIT}
+          aria-label="Next page"
           className="px-3 py-1.5 text-sm border border-gray-700 rounded text-gray-400 hover:text-gray-100 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Next →

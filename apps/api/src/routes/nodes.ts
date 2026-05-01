@@ -21,6 +21,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.get("/", async (c) => {
     const tenantId = getTenantId(c);
+    const q = c.req.query("q");
     const type = c.req.query("type");
     const layer = c.req.query("layer");
     const lifecycleStatus = c.req.query("lifecycleStatus");
@@ -51,6 +52,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const rows = await sql<NodeRow[]>`
       SELECT * FROM nodes
       WHERE tenant_id = ${tenantId}
+        ${q ? sql`AND (name ILIKE ${"%" + q + "%"} OR type ILIKE ${"%" + q + "%"})` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
         ${layer ? sql`AND layer = ${layer}` : sql``}
         ${lifecycleStatus ? sql`AND lifecycle_status = ${lifecycleStatus}` : sql``}

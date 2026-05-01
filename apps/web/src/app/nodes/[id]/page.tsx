@@ -33,8 +33,25 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
       });
   }, [id]);
 
-  if (loading) return <div className="text-gray-500">Loading…</div>;
-  if (error) return <div className="text-red-400 font-mono text-sm">{error}</div>;
+  if (loading) {
+    return (
+      <div role="status" aria-live="polite" className="text-gray-500">
+        Loading…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <div role="alert" className="text-red-400 font-mono text-sm">
+          {error}
+        </div>
+        <Link href="/nodes" className="text-sm text-gray-500 hover:text-gray-300">
+          ← Back to nodes
+        </Link>
+      </div>
+    );
+  }
   if (!node) return null;
 
   return (
