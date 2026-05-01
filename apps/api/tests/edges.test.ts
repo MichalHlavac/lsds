@@ -180,6 +180,23 @@ describe("POST /v1/edges", () => {
     expect(body.violations[0].ruleKey).toBe("GR-XL-003");
   });
 
+  it("returns 409 when the same edge already exists", async () => {
+    const src = await createNode("L4", "dup-src");
+    const tgt = await createNode("L4", "dup-tgt");
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+    });
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/already exists/);
+  });
+
   it("returns 400 for non-UUID sourceId", async () => {
     const res = await app.request("/v1/edges", {
       method: "POST",
@@ -192,6 +209,78 @@ describe("POST /v1/edges", () => {
       }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+// ── PUT /v1/edges (upsert) ────────────────────────────────────────────────────
+
+describe("PUT /v1/edges", () => {
+  it("creates a new edge and returns 201 when it does not exist", async () => {
+    const src = await createNode("L4", "put-src");
+    const tgt = await createNode("L4", "put-tgt");
+    const res = await app.request("/v1/edges", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.type).toBe("contains");
+    expect(typeof data.id).toBe("string");
+  });
+
+  it("returns 200 with the same ID on a second PUT for the same key", async () => {
+    const src = await createNode("L4", "put-src2");
+    const tgt = await createNode("L4", "put-tgt2");
+    const first = await app.request("/v1/edges", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4", traversalWeight: 1.0 }),
+    });
+    const { data: created } = await first.json();
+
+    const second = await app.request("/v1/edges", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4", traversalWeight: 2.5 }),
+    });
+    expect(second.status).toBe(200);
+    const { data: updated } = await second.json();
+    expect(updated.id).toBe(created.id);
+    expect(updated.traversalWeight).toBe(2.5);
+  });
+
+  it("is safe to call many times — edge count stays at 1", async () => {
+    const src = await createNode("L4", "idem-src");
+    const tgt = await createNode("L4", "idem-tgt");
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/edges", {
+        method: "PUT",
+        headers: h(),
+        body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+      });
+    }
+    const listRes = await app.request(`/v1/edges?sourceId=${src.id}`, { headers: h() });
+    const { data } = await listRes.json();
+    expect(data).toHaveLength(1);
+  });
+
+  it("GR-XL-003: returns 422 violations array for invalid cross-layer edge", async () => {
+    // context-integration requires L2↔L2; L1→L3 violates source layer and ordinal
+    const src = await createNode("L1", "put-biz-goal");
+    const tgt = await createNode("L3", "put-arch-cmp");
+    const res = await app.request("/v1/edges", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "context-integration", layer: "L1" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toBe("invalid edge");
+    expect(Array.isArray(body.violations)).toBe(true);
+    expect(body.violations[0].ruleKey).toBe("GR-XL-003");
+    expect(body.violations[0].severity).toBe("ERROR");
+    expect(typeof body.violations[0].message).toBe("string");
   });
 });
 

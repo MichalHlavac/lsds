@@ -93,17 +93,79 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       }, 422);
     }
 
+    try {
+      const [row] = await sql<EdgeRow[]>`
+        INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
+        VALUES (
+          ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
+          ${body.layer}, ${body.traversalWeight}, ${jsonb(sql, body.attributes)}
+        )
+        RETURNING *
+      `;
+      cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
+      await recordEdgeHistory(sql, tenantId, row.id, "CREATE", null, row);
+      return c.json({ data: row }, 201);
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code === "23505") {
+        return c.json({ error: "edge already exists with this source, target, and type; use PUT to upsert" }, 409);
+      }
+      throw err;
+    }
+  });
+
+  app.put("/", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = CreateEdgeSchema.parse(await c.req.json());
+
+    const [sourceNode] = await sql<NodeRow[]>`
+      SELECT id, layer FROM nodes WHERE id = ${body.sourceId} AND tenant_id = ${tenantId}
+    `;
+    if (!sourceNode) return c.json({ error: "source node not found" }, 404);
+
+    const [targetNode] = await sql<NodeRow[]>`
+      SELECT id, layer FROM nodes WHERE id = ${body.targetId} AND tenant_id = ${tenantId}
+    `;
+    if (!targetNode) return c.json({ error: "target node not found" }, 404);
+
+    const validationIssues = validateRelationshipEdge({
+      type: body.type,
+      sourceLayer: sourceNode.layer,
+      targetLayer: targetNode.layer,
+    });
+    if (validationIssues.length > 0) {
+      return c.json({
+        error: "invalid edge",
+        violations: validationIssues.map((i) => ({
+          ruleKey: "GR-XL-003",
+          severity: "ERROR",
+          message: i.message,
+        })),
+      }, 422);
+    }
+
+    const [previous] = await sql<EdgeRow[]>`
+      SELECT * FROM edges
+      WHERE tenant_id = ${tenantId} AND source_id = ${body.sourceId} AND target_id = ${body.targetId} AND type = ${body.type}
+    `;
+
     const [row] = await sql<EdgeRow[]>`
       INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
       VALUES (
         ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
         ${body.layer}, ${body.traversalWeight}, ${jsonb(sql, body.attributes)}
       )
+      ON CONFLICT (tenant_id, source_id, target_id, type)
+      DO UPDATE SET
+        layer = EXCLUDED.layer,
+        traversal_weight = EXCLUDED.traversal_weight,
+        attributes = EXCLUDED.attributes,
+        updated_at = now()
       RETURNING *
     `;
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
-    await recordEdgeHistory(sql, tenantId, row.id, "CREATE", null, row);
-    return c.json({ data: row }, 201);
+    const op = previous ? "UPDATE" : "CREATE";
+    await recordEdgeHistory(sql, tenantId, row.id, op, previous ?? null, row);
+    return c.json({ data: row }, previous ? 200 : 201);
   });
 
   app.get("/:id", async (c) => {

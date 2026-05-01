@@ -66,16 +66,51 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateNodeSchema.parse(await c.req.json());
+    try {
+      const [row] = await sql<NodeRow[]>`
+        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
+        VALUES (
+          ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
+          ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
+        )
+        RETURNING *
+      `;
+      await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
+      return c.json({ data: row }, 201);
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code === "23505") {
+        return c.json({ error: "node already exists with this type, layer, and name; use PUT to upsert" }, 409);
+      }
+      throw err;
+    }
+  });
+
+  app.put("/", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = CreateNodeSchema.parse(await c.req.json());
+
+    const [previous] = await sql<NodeRow[]>`
+      SELECT * FROM nodes
+      WHERE tenant_id = ${tenantId} AND type = ${body.type} AND layer = ${body.layer} AND name = ${body.name}
+    `;
+
     const [row] = await sql<NodeRow[]>`
       INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
       VALUES (
         ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
         ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
       )
+      ON CONFLICT (tenant_id, type, layer, name)
+      DO UPDATE SET
+        version = EXCLUDED.version,
+        attributes = EXCLUDED.attributes,
+        updated_at = now()
       RETURNING *
     `;
-    await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
-    return c.json({ data: row }, 201);
+
+    const op = previous ? "UPDATE" : "CREATE";
+    await recordNodeHistory(sql, tenantId, row.id, op, previous ?? null, row);
+    return c.json({ data: row }, previous ? 200 : 201);
   });
 
   app.get("/:id", async (c) => {

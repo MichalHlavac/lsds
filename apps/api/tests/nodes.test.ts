@@ -316,6 +316,83 @@ describe("DELETE /v1/nodes/:id", () => {
   });
 });
 
+// ── PUT /v1/nodes (upsert) ────────────────────────────────────────────────────
+
+describe("PUT /v1/nodes", () => {
+  it("creates a new node and returns 201 when it does not exist", async () => {
+    const res = await app.request("/v1/nodes", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "upsert-svc", attributes: { owner: "team-a" } }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.name).toBe("upsert-svc");
+    expect(typeof data.id).toBe("string");
+  });
+
+  it("returns 200 with the same ID on a second PUT for the same key", async () => {
+    const first = await app.request("/v1/nodes", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "stable-svc" }),
+    });
+    const { data: created } = await first.json();
+
+    const second = await app.request("/v1/nodes", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "stable-svc", attributes: { updated: true } }),
+    });
+    expect(second.status).toBe(200);
+    const { data: updated } = await second.json();
+    expect(updated.id).toBe(created.id);
+    expect(updated.attributes).toEqual({ updated: true });
+  });
+
+  it("is safe to call many times — node count stays at 1", async () => {
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/nodes", {
+        method: "PUT",
+        headers: h(),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: "idempotent-svc" }),
+      });
+    }
+    const listRes = await app.request("/v1/nodes?type=Service", { headers: h() });
+    const { data } = await listRes.json();
+    const matches = data.filter((n: any) => n.name === "idempotent-svc");
+    expect(matches).toHaveLength(1);
+  });
+
+  it("returns 400 for a missing required field", async () => {
+    const res = await app.request("/v1/nodes", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({ layer: "L4", name: "x" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── POST /v1/nodes duplicate → 409 ───────────────────────────────────────────
+
+describe("POST /v1/nodes duplicate", () => {
+  it("returns 409 when a node with the same type+layer+name already exists", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "duplicate-svc" }),
+    });
+    const res = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "duplicate-svc" }),
+    });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/already exists/);
+  });
+});
+
 // ── GET /v1/nodes/:id/neighbors ───────────────────────────────────────────────
 
 describe("GET /v1/nodes/:id/neighbors", () => {
