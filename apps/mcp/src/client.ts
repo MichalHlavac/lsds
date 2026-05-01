@@ -181,29 +181,6 @@ export function createLsdsClient(config: LsdsClientConfig) {
 
     transitionEdgeLifecycle: (edgeId: string, transition: string) =>
       lifecyclePatch(config, `/v1/edges/${edgeId}/lifecycle`, transition),
-
-    // ── Migration Agent ────────────────────────────────────────────────────────
-    migrationPropose: (body: {
-      sessionId: string;
-      sourceRef: string;
-      proposedType: string;
-      proposedLayer: string;
-      proposedName: string;
-      proposedAttrs?: Record<string, unknown>;
-      confidence?: Record<string, "HIGH" | "MEDIUM" | "LOW">;
-      owner: string;
-    }) => req("POST", "/agent/v1/migration/propose", body),
-
-    migrationSession: (sessionId: string) =>
-      req("GET", `/agent/v1/migration/sessions/${encodeURIComponent(sessionId)}`),
-
-    migrationCommit: (sessionId: string) =>
-      req("POST", `/agent/v1/migration/sessions/${encodeURIComponent(sessionId)}/commit`),
-
-    migrationReviewDraft: (
-      draftId: string,
-      body: { status?: "approved" | "rejected"; proposedAttrs?: Record<string, unknown> }
-    ) => req("PATCH", `/agent/v1/migration/drafts/${encodeURIComponent(draftId)}`, body),
   };
 }
 

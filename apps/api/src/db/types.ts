@@ -85,24 +85,6 @@ export interface TeamRow {
   updatedAt: Date;
 }
 
-export interface MigrationDraftRow {
-  id: string;
-  tenantId: string;
-  sessionId: string;
-  sourceRef: string;
-  proposedType: string;
-  proposedLayer: Layer;
-  proposedName: string;
-  proposedAttrs: Record<string, unknown>;
-  confidence: Record<string, "HIGH" | "MEDIUM" | "LOW">;
-  owner: string;
-  reviewFlags: string[];
-  status: "pending" | "approved" | "rejected";
-  reviewedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface GuardrailRow {
   id: string;
   tenantId: string;
