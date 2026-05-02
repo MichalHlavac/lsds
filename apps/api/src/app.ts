@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
 import { sql } from "./db/client.js";
@@ -28,6 +29,18 @@ const guardrails = new GuardrailsRegistry(sql);
 const lifecycle = new LifecycleService(sql, cache);
 
 export const app = new Hono();
+
+const corsOrigin = process.env["CORS_ORIGIN"] ?? "http://localhost:3000";
+app.use(
+  "*",
+  cors({
+    origin: corsOrigin.includes(",") ? corsOrigin.split(",").map((o) => o.trim()) : corsOrigin,
+    allowHeaders: ["Authorization", "Content-Type", "X-Tenant-Id"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
+    maxAge: 600,
+  })
+);
 
 app.get("/health", (c) =>
   c.json({ status: "ok", ts: new Date().toISOString(), oidc: oidcEnabled })
