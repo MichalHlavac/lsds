@@ -798,7 +798,6 @@ const L6_RULES: GuardrailRule[] = [
     scope: {
       object_type: "Alert",
       triggers: ["CREATE", "UPDATE"],
-      relationship_type: "runbook_reference",
     },
     condition: "object.runbook_reference != null",
     rationale:

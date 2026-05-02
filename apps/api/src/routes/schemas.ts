@@ -102,6 +102,11 @@ export const BatchIdsSchema = z.object({
   ids: z.array(z.string().uuid()).min(1),
 });
 
+export const BatchLifecycleSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1).max(100),
+  transition: z.enum(["deprecate", "archive", "purge"]),
+});
+
 // POST /agent/v1/architect/analyze — bulk drift scan input.
 // All fields optional; defaults yield a full-graph scan over non-archived nodes.
 export const AgentAnalyzeSchema = z.object({

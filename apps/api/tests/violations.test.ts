@@ -243,6 +243,92 @@ describe("POST /v1/violations/:id/resolve", () => {
   });
 });
 
+// ── POST /v1/violations/batch-resolve ────────────────────────────────────────
+
+describe("POST /v1/violations/batch-resolve", () => {
+  it("resolves all violations and returns 200 when all succeed", async () => {
+    const node = await createNode();
+    const v1 = await createViolation(node.id);
+    const v2 = await createViolation(node.id);
+
+    const res = await app.request("/v1/violations/batch-resolve", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [v1.id, v2.id] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(2);
+    expect(data.failed).toHaveLength(0);
+    expect(data.succeeded.every((v: any) => v.resolved === true)).toBe(true);
+  });
+
+  it("returns 207 for partial success (one unresolved, one already resolved)", async () => {
+    const node = await createNode();
+    const fresh = await createViolation(node.id);
+    const alreadyResolved = await createViolation(node.id);
+    await app.request(`/v1/violations/${alreadyResolved.id}/resolve`, {
+      method: "POST",
+      headers: h(),
+    });
+
+    const res = await app.request("/v1/violations/batch-resolve", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [fresh.id, alreadyResolved.id] }),
+    });
+    expect(res.status).toBe(207);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(1);
+    expect(data.succeeded[0].id).toBe(fresh.id);
+    expect(data.failed).toHaveLength(1);
+    expect(data.failed[0].id).toBe(alreadyResolved.id);
+    expect(data.failed[0].error).toMatch(/already resolved/);
+  });
+
+  it("returns 404 when all violations are already resolved or not found", async () => {
+    const node = await createNode();
+    const v = await createViolation(node.id);
+    await app.request(`/v1/violations/${v.id}/resolve`, { method: "POST", headers: h() });
+
+    const res = await app.request("/v1/violations/batch-resolve", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [v.id] }),
+    });
+    expect(res.status).toBe(404);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(0);
+    expect(data.failed).toHaveLength(1);
+  });
+
+  it("returns 400 for an empty ids array", async () => {
+    const res = await app.request("/v1/violations/batch-resolve", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("non-existent IDs appear in failed", async () => {
+    const { randomUUID } = await import("node:crypto");
+    const node = await createNode();
+    const v = await createViolation(node.id);
+    const missingId = randomUUID();
+
+    const res = await app.request("/v1/violations/batch-resolve", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [v.id, missingId] }),
+    });
+    expect(res.status).toBe(207);
+    const { data } = await res.json();
+    expect(data.succeeded).toHaveLength(1);
+    expect(data.failed[0].id).toBe(missingId);
+  });
+});
+
 // ── DELETE /v1/violations/:id ─────────────────────────────────────────────────
 
 describe("DELETE /v1/violations/:id", () => {

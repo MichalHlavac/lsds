@@ -11,6 +11,7 @@ import {
   CreateNodeSchema,
   UpdateNodeSchema,
   LifecycleTransitionSchema,
+  BatchLifecycleSchema,
   NODE_SORT_FIELDS,
   SORT_ORDER_VALUES,
   type NodeSortField,
@@ -50,32 +51,113 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const sortCol = sortByRaw ? sortColMap[sortByRaw as NodeSortField] : sql`created_at`;
     const sortDir = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc" ? sql`DESC` : sql`ASC`;
 
-    const rows = await sql<NodeRow[]>`
-      SELECT * FROM nodes
+    const whereClause = sql`
       WHERE tenant_id = ${tenantId}
         ${q ? sql`AND (name ILIKE ${"%" + q + "%"} OR type ILIKE ${"%" + q + "%"})` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
         ${layer ? sql`AND layer = ${layer}` : sql``}
         ${lifecycleStatus ? sql`AND lifecycle_status = ${lifecycleStatus}` : sql``}
-      ORDER BY ${sortCol} ${sortDir}
-      LIMIT ${limit} OFFSET ${offset}
     `;
-    return c.json({ data: rows });
+
+    const [rows, [{ count }]] = await Promise.all([
+      sql<NodeRow[]>`SELECT * FROM nodes ${whereClause} ORDER BY ${sortCol} ${sortDir} LIMIT ${limit} OFFSET ${offset}`,
+      sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM nodes ${whereClause}`,
+    ]);
+    return c.json({ data: rows, total: Number(count) });
   });
 
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateNodeSchema.parse(await c.req.json());
+    try {
+      const [row] = await sql<NodeRow[]>`
+        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
+        VALUES (
+          ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
+          ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
+        )
+        RETURNING *
+      `;
+      await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
+      return c.json({ data: row }, 201);
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code === "23505") {
+        return c.json({ error: "node already exists with this type, layer, and name; use PUT to upsert" }, 409);
+      }
+      throw err;
+    }
+  });
+
+  app.put("/", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = CreateNodeSchema.parse(await c.req.json());
+
+    const [previous] = await sql<NodeRow[]>`
+      SELECT * FROM nodes
+      WHERE tenant_id = ${tenantId} AND type = ${body.type} AND layer = ${body.layer} AND name = ${body.name}
+    `;
+
     const [row] = await sql<NodeRow[]>`
       INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
       VALUES (
         ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
         ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
       )
+      ON CONFLICT (tenant_id, type, layer, name)
+      DO UPDATE SET
+        version = EXCLUDED.version,
+        attributes = EXCLUDED.attributes,
+        updated_at = now()
       RETURNING *
     `;
-    await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
-    return c.json({ data: row }, 201);
+
+    const op = previous ? "UPDATE" : "CREATE";
+    await recordNodeHistory(sql, tenantId, row.id, op, previous ?? null, row);
+    return c.json({ data: row }, previous ? 200 : 201);
+  });
+
+  app.post("/batch-lifecycle", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = BatchLifecycleSchema.parse(await c.req.json());
+
+    const results = await Promise.allSettled(
+      body.ids.map((id) => lifecycle.transitionNode(tenantId, id, body.transition))
+    );
+
+    const succeeded: NodeRow[] = [];
+    const failed: Array<{
+      id: string;
+      error: string;
+      currentStatus?: string;
+      requestedTransition?: string;
+      allowed?: string[];
+    }> = [];
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const id = body.ids[i];
+      if (result.status === "fulfilled") {
+        succeeded.push(result.value);
+      } else {
+        const e = result.reason;
+        if (e instanceof LifecycleTransitionError) {
+          failed.push({
+            id,
+            error: e.message,
+            currentStatus: e.currentStatus,
+            requestedTransition: e.requestedTransition,
+            allowed: e.allowed,
+          });
+        } else if (e instanceof Error && e.message === "node not found") {
+          failed.push({ id, error: "not found" });
+        } else {
+          failed.push({ id, error: String(e instanceof Error ? e.message : e) });
+        }
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : succeeded.length === 0 ? 422 : 207;
+    return c.json({ data: { succeeded, failed } }, status as 200 | 207 | 422);
   });
 
   app.get("/:id", async (c) => {
