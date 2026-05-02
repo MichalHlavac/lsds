@@ -389,20 +389,35 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.condition).not.toContain("object.infra_ref");
   });
 
-  it("GR-L6-002 condition checks Alert.runbook_reference and uses `runbook_reference` relationship_type", () => {
-    // Positive: rule reads the canonical field name and the scope declares the
-    // correct relationship_type so the traversal engine filters correctly.
+  it("GR-L6-002 reads Alert.runbook_reference as a field (not a relationship walk)", () => {
+    // Alert.runbookReference is a typed scalar reference (`RunbookRef`) on the
+    // Zod schema, not a registered edge. The rule is field-level — it asserts
+    // the foreign-key attribute is present on the Alert. Earlier drafts pinned
+    // a fake `runbook_reference` relationship_type on the scope which implied
+    // edge-level evaluation and would have silently no-op'd in any traversal-
+    // backed evaluator (it is not in the relationship registry — kap. 2.2).
+    // This test pins the field-level shape and guards against re-introducing
+    // an invented edge name.
     const rule = getGuardrailOrThrow("GR-L6-002");
     expect(rule.scope.object_type).toBe("Alert");
     expect(rule.condition).toContain("object.runbook_reference");
-    expect(rule.scope.relationship_type).toBe("runbook_reference");
+    expect(rule.condition).toContain("!= null");
     expect(rule.origin).toBe("STRUCTURAL");
     expect(rule.evaluation).toBe("PRESCRIPTIVE");
     expect(rule.severity).toBe("ERROR");
-    // Negative: drift guard — must not use invented edge names or alternate field names.
+    // Scope must remain field-level (no relationship_type implies edge eval).
+    expect(rule.scope.relationship_type).toBeUndefined();
+    // Negative: drift guard — must not invent edge names for what is a field,
+    // and must not switch to camelCase or alternative field names.
     expect(rule.condition).not.toContain("type='has-runbook'");
     expect(rule.condition).not.toContain("type='runbook-for'");
+    expect(rule.condition).not.toContain("type='runbook_reference'");
+    expect(rule.condition).not.toContain("type='references-runbook'");
+    expect(rule.condition).not.toContain("object.runbookReference");
     expect(rule.condition).not.toContain("object.runbook_url");
+    // Word-boundary guard: catch `object.runbook` as a bare attribute, but
+    // tolerate the canonical `object.runbook_reference` substring.
+    expect(rule.condition).not.toMatch(/object\.runbook(?!_reference)/);
   });
 
   it("GR-L6-003 condition detects P1 Runbook with last_tested > 90 days", () => {

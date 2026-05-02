@@ -235,7 +235,7 @@ export const api = {
 
   nodes: {
     list: (params?: NodeListParams, fetchOpts?: { signal?: AbortSignal }) =>
-      request<{ data: NodeRow[] }>("/v1/nodes", { params: params as Params, signal: fetchOpts?.signal }),
+      request<{ data: NodeRow[]; total: number }>("/v1/nodes", { params: params as Params, signal: fetchOpts?.signal }),
     get: (id: string) => request<{ data: NodeRow }>(`/v1/nodes/${id}`),
     create: (payload: CreateNodePayload) =>
       request<{ data: NodeRow }>("/v1/nodes", {
@@ -265,7 +265,7 @@ export const api = {
 
   edges: {
     list: (params?: EdgeListParams, fetchOpts?: { signal?: AbortSignal }) =>
-      request<{ data: EdgeRow[] }>("/v1/edges", { params: params as Params, signal: fetchOpts?.signal }),
+      request<{ data: EdgeRow[]; total: number }>("/v1/edges", { params: params as Params, signal: fetchOpts?.signal }),
     get: (id: string) => request<{ data: EdgeRow }>(`/v1/edges/${id}`),
     create: (payload: CreateEdgePayload) =>
       request<{ data: EdgeRow }>("/v1/edges", {
