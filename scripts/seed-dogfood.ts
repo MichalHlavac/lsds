@@ -75,6 +75,7 @@ async function createViolationIfNotExists(
     ruleKey: string;
     severity: "ERROR" | "WARN" | "INFO";
     message: string;
+    resolved?: boolean;
     attributes?: Record<string, unknown>;
   },
 ): Promise<void> {
@@ -83,13 +84,26 @@ async function createViolationIfNotExists(
     throw new Error(`Unknown node name: "${violation.nodeName}"`);
   }
 
+  const label = `"${violation.nodeName ?? "(edge)"}"`;
+
   const qp = new URLSearchParams({ ruleKey: violation.ruleKey });
   if (nodeId) qp.set("nodeId", nodeId);
   const check = await fetch(`${API_URL}/v1/violations?${qp}`, { headers });
   if (!check.ok) throw new Error(`GET /v1/violations failed (${check.status})`);
-  const { data } = (await check.json()) as { data: unknown[] };
+  const { data } = (await check.json()) as { data: { id: string; resolved: boolean }[] };
+
   if (data.length > 0) {
-    console.log(`  [skipped] ${violation.ruleKey} on "${violation.nodeName ?? "(edge)"}"`);
+    const existing = data[0];
+    if (violation.resolved && !existing.resolved) {
+      const resolveRes = await fetch(`${API_URL}/v1/violations/${existing.id}/resolve`, { method: "POST", headers });
+      if (!resolveRes.ok) {
+        const body = await resolveRes.text();
+        throw new Error(`POST /v1/violations/${existing.id}/resolve failed (${resolveRes.status}): ${body}`);
+      }
+      console.log(`  [resolved] ${violation.ruleKey} on ${label}`);
+    } else {
+      console.log(`  [skipped]  ${violation.ruleKey} on ${label}`);
+    }
     return;
   }
 
@@ -108,7 +122,17 @@ async function createViolationIfNotExists(
     const body = await res.text();
     throw new Error(`POST /v1/violations failed (${res.status}): ${body}`);
   }
-  console.log(`  [created] ${violation.ruleKey} (${violation.severity}) on "${violation.nodeName ?? "(edge)"}"`);
+  const { data: created } = (await res.json()) as { data: { id: string } };
+  console.log(`  [created]  ${violation.ruleKey} (${violation.severity}) on ${label}`);
+
+  if (violation.resolved) {
+    const resolveRes = await fetch(`${API_URL}/v1/violations/${created.id}/resolve`, { method: "POST", headers });
+    if (!resolveRes.ok) {
+      const body = await resolveRes.text();
+      throw new Error(`POST /v1/violations/${created.id}/resolve failed (${resolveRes.status}): ${body}`);
+    }
+    console.log(`  [resolved] ${violation.ruleKey} on ${label}`);
+  }
 }
 
 // ── seed data ─────────────────────────────────────────────────────────────────
@@ -292,6 +316,7 @@ type SeedViolation = {
   ruleKey: string;
   severity: "ERROR" | "WARN" | "INFO";
   message: string;
+  resolved?: boolean;
   attributes?: Record<string, unknown>;
 };
 
@@ -368,6 +393,7 @@ const VIOLATIONS: SeedViolation[] = [
     severity: "INFO",
     message:
       "Term 'Node' is defined differently in Framework Core and Core Application — document the divergence in the context map.",
+    resolved: true,
     attributes: { term: "Node", contexts: ["Framework Core", "Core Application"] },
   },
 
