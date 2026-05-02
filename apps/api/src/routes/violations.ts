@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { ViolationRow } from "../db/types.js";
-import { CreateViolationSchema } from "./schemas.js";
+import { CreateViolationSchema, BatchIdsSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
 
 async function lookupEdgeEndpoints(
@@ -77,6 +77,28 @@ export function violationsRouter(sql: Sql): Hono {
       RETURNING *
     `;
     return c.json({ data: row }, 201);
+  });
+
+  app.post("/batch-resolve", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = BatchIdsSchema.parse(await c.req.json());
+
+    const resolved = await sql<ViolationRow[]>`
+      UPDATE violations
+      SET resolved = TRUE, resolved_at = now(), updated_at = now()
+      WHERE id = ANY(${body.ids})
+        AND tenant_id = ${tenantId}
+        AND resolved = FALSE
+      RETURNING *
+    `;
+
+    const resolvedIds = new Set(resolved.map((r) => r.id));
+    const failed = body.ids
+      .filter((id) => !resolvedIds.has(id))
+      .map((id) => ({ id, error: "not found or already resolved" }));
+
+    const status = failed.length === 0 ? 200 : resolved.length === 0 ? 404 : 207;
+    return c.json({ data: { succeeded: resolved, failed } }, status as 200 | 207 | 404);
   });
 
   app.get("/:id", async (c) => {

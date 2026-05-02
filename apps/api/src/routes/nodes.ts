@@ -11,6 +11,7 @@ import {
   CreateNodeSchema,
   UpdateNodeSchema,
   LifecycleTransitionSchema,
+  BatchLifecycleSchema,
   NODE_SORT_FIELDS,
   SORT_ORDER_VALUES,
   type NodeSortField,
@@ -111,6 +112,50 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const op = previous ? "UPDATE" : "CREATE";
     await recordNodeHistory(sql, tenantId, row.id, op, previous ?? null, row);
     return c.json({ data: row }, previous ? 200 : 201);
+  });
+
+  app.post("/batch-lifecycle", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = BatchLifecycleSchema.parse(await c.req.json());
+
+    const results = await Promise.allSettled(
+      body.ids.map((id) => lifecycle.transitionNode(tenantId, id, body.transition))
+    );
+
+    const succeeded: NodeRow[] = [];
+    const failed: Array<{
+      id: string;
+      error: string;
+      currentStatus?: string;
+      requestedTransition?: string;
+      allowed?: string[];
+    }> = [];
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const id = body.ids[i];
+      if (result.status === "fulfilled") {
+        succeeded.push(result.value);
+      } else {
+        const e = result.reason;
+        if (e instanceof LifecycleTransitionError) {
+          failed.push({
+            id,
+            error: e.message,
+            currentStatus: e.currentStatus,
+            requestedTransition: e.requestedTransition,
+            allowed: e.allowed,
+          });
+        } else if (e instanceof Error && e.message === "node not found") {
+          failed.push({ id, error: "not found" });
+        } else {
+          failed.push({ id, error: String(e instanceof Error ? e.message : e) });
+        }
+      }
+    }
+
+    const status = failed.length === 0 ? 200 : succeeded.length === 0 ? 422 : 207;
+    return c.json({ data: { succeeded, failed } }, status as 200 | 207 | 422);
   });
 
   app.get("/:id", async (c) => {
