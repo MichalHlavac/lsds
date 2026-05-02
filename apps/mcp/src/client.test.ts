@@ -244,4 +244,93 @@ describe("createLsdsClient", () => {
       client.transitionEdgeLifecycle("00000000-0000-0000-0000-000000000021", "archive")
     ).rejects.toThrow("not found");
   });
+
+  it("upsertNode sends PUT to /v1/nodes with body", async () => {
+    const node = { id: "abc", type: "Service", layer: "L4", name: "auth-svc" };
+    const fetch = mockFetch({ data: node }, 200);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.upsertNode({ type: "Service", layer: "L4", name: "auth-svc" });
+
+    expect(result).toEqual(node);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/nodes");
+    expect(opts.method).toBe("PUT");
+    expect(JSON.parse(opts.body as string)).toMatchObject({ type: "Service", layer: "L4", name: "auth-svc" });
+  });
+
+  it("upsertEdge sends PUT to /v1/edges with body", async () => {
+    const edge = { id: "e1", sourceId: "s1", targetId: "t1", type: "DEPENDS_ON" };
+    const fetch = mockFetch({ data: edge }, 200);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.upsertEdge({
+      sourceId: "00000000-0000-0000-0000-000000000001",
+      targetId: "00000000-0000-0000-0000-000000000002",
+      type: "DEPENDS_ON",
+      layer: "L4",
+    });
+
+    expect(result).toEqual(edge);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/edges");
+    expect(opts.method).toBe("PUT");
+  });
+
+  it("queryEdges sends GET to /v1/edges with sourceId query param", async () => {
+    const fetch = mockFetch({ data: [] });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.queryEdges({ sourceId: "00000000-0000-0000-0000-000000000001", type: "DEPENDS_ON" });
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://localhost:3001/v1/edges?sourceId=00000000-0000-0000-0000-000000000001&type=DEPENDS_ON"
+    );
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("queryEdges sends GET to /v1/edges with no params", async () => {
+    const fetch = mockFetch({ data: [] });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.queryEdges({});
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/edges");
+  });
+
+  it("getViolations sends GET to /v1/violations with filters", async () => {
+    const fetch = mockFetch({ data: [] });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.getViolations({
+      nodeId: "00000000-0000-0000-0000-000000000001",
+      resolved: false,
+      limit: 10,
+    });
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://localhost:3001/v1/violations?nodeId=00000000-0000-0000-0000-000000000001&resolved=false&limit=10"
+    );
+    expect(opts.method).toBe("GET");
+  });
+
+  it("getViolations sends GET to /v1/violations with no params", async () => {
+    const fetch = mockFetch({ data: [] });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.getViolations({});
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/violations");
+  });
 });
