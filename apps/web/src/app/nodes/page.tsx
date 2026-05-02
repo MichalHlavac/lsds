@@ -3,7 +3,7 @@
 
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -56,6 +56,9 @@ function NodesPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [q, setQ] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [layer, setLayer] = useState<Layer | "">("");
   const [nodeType, setNodeType] = useState("");
   const [status, setStatus] = useState<LifecycleStatus | "">("");
@@ -80,11 +83,23 @@ function NodesPageInner() {
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setQ(searchInput);
+      setOffset(0);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchInput]);
+
+  useEffect(() => {
     setLoading(true);
     setError(null);
     setSelected(new Set());
     api.nodes
       .list({
+        q: q || undefined,
         layer: layer || undefined,
         type: nodeType || undefined,
         lifecycleStatus: status || undefined,
@@ -102,7 +117,7 @@ function NodesPageInner() {
         setError(err instanceof Error ? err.message : "Failed to load nodes");
         setLoading(false);
       });
-  }, [layer, nodeType, status, offset, sortBy, sortOrder, retryCount]);
+  }, [q, layer, nodeType, status, offset, sortBy, sortOrder, retryCount]);
 
   function handleSort(field: NodeSortField) {
     let newSortBy: NodeSortField | "" = field;
@@ -134,6 +149,9 @@ function NodesPageInner() {
   }
 
   function reset() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchInput("");
+    setQ("");
     setLayer("");
     setNodeType("");
     setStatus("");
@@ -229,6 +247,19 @@ function NodesPageInner() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3 items-end">
+        <div>
+          <label htmlFor="filter-search" className="block text-xs text-gray-400 mb-1">
+            Search
+          </label>
+          <input
+            id="filter-search"
+            type="search"
+            placeholder="Name or type…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-48"
+          />
+        </div>
         <div>
           <label htmlFor="filter-layer" className="block text-xs text-gray-400 mb-1">
             Layer

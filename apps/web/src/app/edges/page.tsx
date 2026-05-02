@@ -3,7 +3,7 @@
 
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, type EdgeRow } from "../../lib/api";
@@ -41,6 +41,9 @@ function EdgesPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [q, setQ] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sourceId, setSourceId] = useState("");
   const [targetId, setTargetId] = useState("");
   const [edgeType, setEdgeType] = useState("");
@@ -55,10 +58,22 @@ function EdgesPageInner() {
   });
 
   useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setQ(searchInput);
+      setOffset(0);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchInput]);
+
+  useEffect(() => {
     setLoading(true);
     setError(null);
     api.edges
       .list({
+        q: q || undefined,
         sourceId: sourceId || undefined,
         targetId: targetId || undefined,
         type: edgeType || undefined,
@@ -76,7 +91,7 @@ function EdgesPageInner() {
         setError(err instanceof Error ? err.message : "Failed to load edges");
         setLoading(false);
       });
-  }, [sourceId, targetId, edgeType, offset, sortBy, sortOrder, retryCount]);
+  }, [q, sourceId, targetId, edgeType, offset, sortBy, sortOrder, retryCount]);
 
   function handleSort(field: EdgeSortField) {
     let newSortBy: EdgeSortField | "" = field;
@@ -108,6 +123,9 @@ function EdgesPageInner() {
   }
 
   function reset() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchInput("");
+    setQ("");
     setSourceId("");
     setTargetId("");
     setEdgeType("");
@@ -130,6 +148,19 @@ function EdgesPageInner() {
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3 items-end">
+        <div>
+          <label htmlFor="filter-search" className="block text-xs text-gray-400 mb-1">
+            Search
+          </label>
+          <input
+            id="filter-search"
+            type="search"
+            placeholder="Edge type…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-48"
+          />
+        </div>
         <FilterInput
           id="filter-source"
           label="Source ID"
