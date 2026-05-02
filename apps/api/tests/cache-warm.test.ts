@@ -76,5 +76,8 @@ describe("warmCache", () => {
     const cache = new LsdsCache();
     await warmCache(sql, cache);
     delete process.env.CACHE_WARMUP_LIMIT;
+    expect(sql).toHaveBeenCalledTimes(2);
+    expect(cache.nodes.size).toBe(0);
+    expect(cache.edges.size).toBe(0);
   });
 });
