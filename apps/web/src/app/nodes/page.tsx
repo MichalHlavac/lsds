@@ -52,6 +52,7 @@ function NodesPageInner() {
   const searchParams = useSearchParams();
 
   const [nodes, setNodes] = useState<NodeRow[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
@@ -94,6 +95,7 @@ function NodesPageInner() {
       })
       .then((res) => {
         setNodes(res.data);
+        setTotal(res.total);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -486,7 +488,9 @@ function NodesPageInner() {
           ← Prev
         </button>
         <span className="text-sm text-gray-500" aria-live="polite">
-          {nodes.length > 0 ? `${offset + 1}–${offset + nodes.length}` : "0 results"}
+          {nodes.length > 0
+            ? `${offset + 1}–${offset + nodes.length}${total !== null ? ` of ${total}` : ""}`
+            : "0 results"}
         </span>
         <button
           type="button"
