@@ -37,6 +37,7 @@ function EdgesPageInner() {
   const searchParams = useSearchParams();
 
   const [edges, setEdges] = useState<EdgeRow[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
@@ -68,6 +69,7 @@ function EdgesPageInner() {
       })
       .then((res) => {
         setEdges(res.data);
+        setTotal(res.total);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -297,7 +299,9 @@ function EdgesPageInner() {
           ← Prev
         </button>
         <span className="text-sm text-gray-500" aria-live="polite">
-          {edges.length > 0 ? `${offset + 1}–${offset + edges.length}` : "0 results"}
+          {edges.length > 0
+            ? `${offset + 1}–${offset + edges.length}${total !== null ? ` of ${total}` : ""}`
+            : "0 results"}
         </span>
         <button
           type="button"

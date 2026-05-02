@@ -393,6 +393,71 @@ describe("POST /v1/nodes duplicate", () => {
   });
 });
 
+// ── GET /v1/nodes — total count ───────────────────────────────────────────────
+
+describe("GET /v1/nodes total count", () => {
+  it("returns total matching the number of nodes created", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "svc-1" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "svc-2" }),
+    });
+
+    const res = await app.request("/v1/nodes", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.total).toBe("number");
+    expect(body.total).toBe(2);
+  });
+
+  it("total is 0 for an empty tenant", async () => {
+    const res = await app.request("/v1/nodes", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(0);
+  });
+
+  it("total reflects active filter — ?type= excludes non-matching nodes", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Database", layer: "L3", name: "pg" }),
+    });
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "api" }),
+    });
+
+    const res = await app.request("/v1/nodes?type=Database", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(1);
+    expect(body.data.every((n: any) => n.type === "Database")).toBe(true);
+  });
+
+  it("total stays consistent with ?limit pagination — full count not page count", async () => {
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: `svc-page-${i}` }),
+      });
+    }
+
+    const res = await app.request("/v1/nodes?limit=1", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.total).toBe(3);
+  });
+});
+
 // ── GET /v1/nodes/:id/neighbors ───────────────────────────────────────────────
 
 describe("GET /v1/nodes/:id/neighbors", () => {

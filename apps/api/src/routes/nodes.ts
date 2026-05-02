@@ -51,17 +51,19 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const sortCol = sortByRaw ? sortColMap[sortByRaw as NodeSortField] : sql`created_at`;
     const sortDir = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc" ? sql`DESC` : sql`ASC`;
 
-    const rows = await sql<NodeRow[]>`
-      SELECT * FROM nodes
+    const whereClause = sql`
       WHERE tenant_id = ${tenantId}
         ${q ? sql`AND (name ILIKE ${"%" + q + "%"} OR type ILIKE ${"%" + q + "%"})` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
         ${layer ? sql`AND layer = ${layer}` : sql``}
         ${lifecycleStatus ? sql`AND lifecycle_status = ${lifecycleStatus}` : sql``}
-      ORDER BY ${sortCol} ${sortDir}
-      LIMIT ${limit} OFFSET ${offset}
     `;
-    return c.json({ data: rows });
+
+    const [rows, [{ count }]] = await Promise.all([
+      sql<NodeRow[]>`SELECT * FROM nodes ${whereClause} ORDER BY ${sortCol} ${sortDir} LIMIT ${limit} OFFSET ${offset}`,
+      sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM nodes ${whereClause}`,
+    ]);
+    return c.json({ data: rows, total: Number(count) });
   });
 
   app.post("/", async (c) => {
