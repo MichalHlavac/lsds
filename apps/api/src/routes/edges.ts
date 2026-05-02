@@ -50,17 +50,19 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const sortCol = sortByRaw ? sortColMap[sortByRaw as EdgeSortField] : sql`created_at`;
     const sortDir = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc" ? sql`DESC` : sql`ASC`;
 
-    const rows = await sql<EdgeRow[]>`
-      SELECT * FROM edges
+    const whereClause = sql`
       WHERE tenant_id = ${tenantId}
         ${q ? sql`AND type ILIKE ${"%" + q + "%"}` : sql``}
         ${sourceId ? sql`AND source_id = ${sourceId}` : sql``}
         ${targetId ? sql`AND target_id = ${targetId}` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
-      ORDER BY ${sortCol} ${sortDir}
-      LIMIT ${limit} OFFSET ${offset}
     `;
-    return c.json({ data: rows });
+
+    const [rows, [{ count }]] = await Promise.all([
+      sql<EdgeRow[]>`SELECT * FROM edges ${whereClause} ORDER BY ${sortCol} ${sortDir} LIMIT ${limit} OFFSET ${offset}`,
+      sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM edges ${whereClause}`,
+    ]);
+    return c.json({ data: rows, total: Number(count) });
   });
 
   app.post("/", async (c) => {

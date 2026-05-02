@@ -483,3 +483,80 @@ describe("DELETE /v1/edges/:id", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ── GET /v1/edges — total count ───────────────────────────────────────────────
+
+describe("GET /v1/edges total count", () => {
+  it("returns total matching the number of edges created", async () => {
+    const a = await createNode("L4", "a");
+    const b = await createNode("L4", "b");
+    const c = await createNode("L4", "c");
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: a.id, targetId: b.id, type: "contains", layer: "L4" }),
+    });
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: b.id, targetId: c.id, type: "contains", layer: "L4" }),
+    });
+
+    const res = await app.request("/v1/edges", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.total).toBe("number");
+    expect(body.total).toBe(2);
+  });
+
+  it("total is 0 for a tenant with no edges", async () => {
+    const res = await app.request("/v1/edges", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(0);
+  });
+
+  it("total reflects ?type= filter — excludes non-matching edges", async () => {
+    const a = await createNode("L4", "ta");
+    const b = await createNode("L4", "tb");
+    const c = await createNode("L4", "tc");
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: a.id, targetId: b.id, type: "contains", layer: "L4" }),
+    });
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: b.id, targetId: c.id, type: "depends-on", layer: "L4" }),
+    });
+
+    const res = await app.request("/v1/edges?type=contains", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(1);
+    expect(body.data.every((e: any) => e.type === "contains")).toBe(true);
+  });
+
+  it("total stays consistent with ?limit pagination — full count not page count", async () => {
+    const nodes = await Promise.all(
+      [0, 1, 2].map((i) => createNode("L4", `pn-${i}`))
+    );
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[0].id, targetId: nodes[1].id, type: "contains", layer: "L4" }),
+    });
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[1].id, targetId: nodes[2].id, type: "contains", layer: "L4" }),
+    });
+
+    const res = await app.request("/v1/edges?limit=1", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.total).toBe(2);
+  });
+});
