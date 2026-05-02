@@ -68,6 +68,49 @@ async function upsertEdge(edge: {
   console.log(`  [${verb}] edge ${edge.type} (${edge.sourceId} → ${edge.targetId})`);
 }
 
+async function createViolationIfNotExists(
+  idByName: Map<string, string>,
+  violation: {
+    nodeName?: string;
+    ruleKey: string;
+    severity: "ERROR" | "WARN" | "INFO";
+    message: string;
+    attributes?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const nodeId = violation.nodeName ? idByName.get(violation.nodeName) : undefined;
+  if (violation.nodeName && !nodeId) {
+    throw new Error(`Unknown node name: "${violation.nodeName}"`);
+  }
+
+  const qp = new URLSearchParams({ ruleKey: violation.ruleKey });
+  if (nodeId) qp.set("nodeId", nodeId);
+  const check = await fetch(`${API_URL}/v1/violations?${qp}`, { headers });
+  if (!check.ok) throw new Error(`GET /v1/violations failed (${check.status})`);
+  const { data } = (await check.json()) as { data: unknown[] };
+  if (data.length > 0) {
+    console.log(`  [skipped] ${violation.ruleKey} on "${violation.nodeName ?? "(edge)"}"`);
+    return;
+  }
+
+  const res = await fetch(`${API_URL}/v1/violations`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      nodeId,
+      ruleKey: violation.ruleKey,
+      severity: violation.severity,
+      message: violation.message,
+      attributes: violation.attributes ?? {},
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`POST /v1/violations failed (${res.status}): ${body}`);
+  }
+  console.log(`  [created] ${violation.ruleKey} (${violation.severity}) on "${violation.nodeName ?? "(edge)"}"`);
+}
+
 // ── seed data ─────────────────────────────────────────────────────────────────
 //
 // Layer semantics (kap. 4 of LSDS research):
@@ -244,6 +287,123 @@ const EDGES: SeedEdge[] = [
   { sourceName: "packages/framework",targetName: "packages/shared",    type: "depends-on", layer: "L5" },
 ];
 
+type SeedViolation = {
+  nodeName?: string;
+  ruleKey: string;
+  severity: "ERROR" | "WARN" | "INFO";
+  message: string;
+  attributes?: Record<string, unknown>;
+};
+
+const VIOLATIONS: SeedViolation[] = [
+  // ── L1 ────────────────────────────────────────────────────────────────────
+  {
+    nodeName: "Architecture Governance",
+    ruleKey: "GR-L1-001",
+    severity: "ERROR",
+    message:
+      "BusinessCapability has no traces-to relationship to any BusinessGoal — capability exists without strategic justification.",
+  },
+  {
+    nodeName: "Architecture Documentation",
+    ruleKey: "GR-L1-002",
+    severity: "ERROR",
+    message:
+      "BusinessGoal declares no success_metrics — cannot evaluate delivery or anchor downstream traceability.",
+  },
+  {
+    nodeName: "Architecture Documentation",
+    ruleKey: "GR-L1-006",
+    severity: "WARN",
+    message:
+      "BusinessGoal has no inbound traces-to from any BusinessCapability; goal will never be delivered without a supporting capability.",
+  },
+
+  // ── L2 ────────────────────────────────────────────────────────────────────
+  {
+    nodeName: "Framework Core",
+    ruleKey: "GR-L2-001",
+    severity: "ERROR",
+    message: "BoundedContext declares 0 ubiquitous_language terms — the language boundary is undefined.",
+    attributes: { found: 0, required: 3 },
+  },
+  {
+    nodeName: "CLI Tools",
+    ruleKey: "GR-L2-001",
+    severity: "ERROR",
+    message: "BoundedContext declares 0 ubiquitous_language terms — the language boundary is undefined.",
+    attributes: { found: 0, required: 3 },
+  },
+  {
+    nodeName: "MCP Integration",
+    ruleKey: "GR-L2-001",
+    severity: "ERROR",
+    message: "BoundedContext declares 0 ubiquitous_language terms — the language boundary is undefined.",
+    attributes: { found: 0, required: 3 },
+  },
+  {
+    nodeName: "CLI Tools",
+    ruleKey: "GR-L2-002",
+    severity: "ERROR",
+    message:
+      "BoundedContext has no traces-to relationship to any BusinessCapability — context lacks strategic justification.",
+  },
+  {
+    nodeName: "MCP Integration",
+    ruleKey: "GR-L2-002",
+    severity: "ERROR",
+    message:
+      "BoundedContext has no traces-to relationship to any BusinessCapability — context lacks strategic justification.",
+  },
+  {
+    nodeName: "MCP Integration",
+    ruleKey: "GR-L2-007",
+    severity: "WARN",
+    message:
+      "Context is configured as conformist-to Framework Core, which is classified CORE — consider an Anti-Corruption Layer to protect strategic model integrity.",
+  },
+  {
+    nodeName: "Core Application",
+    ruleKey: "GR-L2-008",
+    severity: "INFO",
+    message:
+      "Term 'Node' is defined differently in Framework Core and Core Application — document the divergence in the context map.",
+    attributes: { term: "Node", contexts: ["Framework Core", "Core Application"] },
+  },
+
+  // ── L3 ────────────────────────────────────────────────────────────────────
+  {
+    nodeName: "Lifecycle Engine",
+    ruleKey: "GR-L3-001",
+    severity: "ERROR",
+    message:
+      "ArchitectureComponent missing technology declaration — component cannot be evaluated for cost, ops, or security fitness.",
+  },
+  {
+    nodeName: "Semantic Guardrails Registry",
+    ruleKey: "GR-L3-001",
+    severity: "ERROR",
+    message:
+      "ArchitectureComponent missing technology declaration — component cannot be evaluated for cost, ops, or security fitness.",
+  },
+
+  // ── L5 ────────────────────────────────────────────────────────────────────
+  {
+    nodeName: "apps/web",
+    ruleKey: "GR-L5-006",
+    severity: "WARN",
+    message:
+      "Package has no validated-by Test relationship — no executable specification; regressions will go undetected.",
+  },
+  {
+    nodeName: "apps/cli",
+    ruleKey: "GR-L5-006",
+    severity: "WARN",
+    message:
+      "Package has no validated-by Test relationship — no executable specification; regressions will go undetected.",
+  },
+];
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -271,7 +431,15 @@ async function main() {
     await upsertEdge({ ...edge, sourceId, targetId });
   }
 
-  console.log(`\n✓ Seed complete — ${NODES.length} nodes, ${EDGES.length} edges`);
+  // Seed violations (idempotent: skips if ruleKey+nodeId pair already exists)
+  console.log("\n── Violations ────────────────────────────────────────────");
+  for (const v of VIOLATIONS) {
+    await createViolationIfNotExists(idByName, v);
+  }
+
+  console.log(
+    `\n✓ Seed complete — ${NODES.length} nodes, ${EDGES.length} edges, ${VIOLATIONS.length} violations`,
+  );
 }
 
 main().catch((err) => {
