@@ -458,21 +458,36 @@ describe("PATCH /v1/edges/:id", () => {
 
 describe("DELETE /v1/edges/:id", () => {
   it("deletes the edge and returns its id", async () => {
-    const src = await createNode("L4", "s");
-    const tgt = await createNode("L4", "t");
-    const createRes = await app.request("/v1/edges", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
-    });
-    const { data: created } = await createRes.json();
+    const orig = process.env.LIFECYCLE_RETENTION_DAYS;
+    process.env.LIFECYCLE_RETENTION_DAYS = "0";
+    try {
+      const src = await createNode("L4", "s");
+      const tgt = await createNode("L4", "t");
+      const createRes = await app.request("/v1/edges", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+      });
+      const { data: created } = await createRes.json();
 
-    const res = await app.request(`/v1/edges/${created.id}`, {
-      method: "DELETE",
-      headers: h(),
-    });
-    expect(res.status).toBe(200);
-    expect((await res.json()).data.id).toBe(created.id);
+      // lifecycle enforcement: must archive before purge
+      await app.request(`/v1/edges/${created.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+      });
+      await app.request(`/v1/edges/${created.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+      });
+
+      const res = await app.request(`/v1/edges/${created.id}`, {
+        method: "DELETE",
+        headers: h(),
+      });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.id).toBe(created.id);
+    } finally {
+      if (orig === undefined) delete process.env.LIFECYCLE_RETENTION_DAYS;
+      else process.env.LIFECYCLE_RETENTION_DAYS = orig;
+    }
   });
 
   it("returns 404 for a nonexistent edge ID", async () => {

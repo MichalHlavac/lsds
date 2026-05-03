@@ -288,23 +288,38 @@ describe("PATCH /v1/nodes/:id", () => {
 
 describe("DELETE /v1/nodes/:id", () => {
   it("deletes the node and returns its id", async () => {
-    const createRes = await app.request("/v1/nodes", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ type: "Service", layer: "L4", name: "doomed" }),
-    });
-    const { data: created } = await createRes.json();
+    const orig = process.env.LIFECYCLE_RETENTION_DAYS;
+    process.env.LIFECYCLE_RETENTION_DAYS = "0";
+    try {
+      const createRes = await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: "doomed" }),
+      });
+      const { data: created } = await createRes.json();
 
-    const delRes = await app.request(`/v1/nodes/${created.id}`, {
-      method: "DELETE",
-      headers: h(),
-    });
-    expect(delRes.status).toBe(200);
-    expect((await delRes.json()).data.id).toBe(created.id);
+      // lifecycle enforcement: must archive before purge
+      await app.request(`/v1/nodes/${created.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+      });
+      await app.request(`/v1/nodes/${created.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+      });
 
-    // confirm gone
-    const getRes = await app.request(`/v1/nodes/${created.id}`, { headers: h() });
-    expect(getRes.status).toBe(404);
+      const delRes = await app.request(`/v1/nodes/${created.id}`, {
+        method: "DELETE",
+        headers: h(),
+      });
+      expect(delRes.status).toBe(200);
+      expect((await delRes.json()).data.id).toBe(created.id);
+
+      // confirm gone
+      const getRes = await app.request(`/v1/nodes/${created.id}`, { headers: h() });
+      expect(getRes.status).toBe(404);
+    } finally {
+      if (orig === undefined) delete process.env.LIFECYCLE_RETENTION_DAYS;
+      else process.env.LIFECYCLE_RETENTION_DAYS = orig;
+    }
   });
 
   it("returns 404 for a nonexistent node ID", async () => {

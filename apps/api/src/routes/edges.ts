@@ -27,6 +27,8 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const sourceId = c.req.query("sourceId");
     const targetId = c.req.query("targetId");
     const type = c.req.query("type");
+    const lifecycleStatus = c.req.query("lifecycleStatus");
+    const includeArchived = c.req.query("includeArchived") === "true";
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
     const offset = Number(c.req.query("offset") ?? 0);
     const sortByRaw = c.req.query("sortBy");
@@ -56,6 +58,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         ${sourceId ? sql`AND source_id = ${sourceId}` : sql``}
         ${targetId ? sql`AND target_id = ${targetId}` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
+        ${lifecycleStatus ? sql`AND lifecycle_status = ${lifecycleStatus}` : !includeArchived ? sql`AND lifecycle_status != 'ARCHIVED'` : sql``}
     `;
 
     const [rows, [{ count }]] = await Promise.all([
@@ -194,6 +197,10 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     `;
     if (!previous) return c.json({ error: "not found" }, 404);
 
+    if (previous.lifecycleStatus === "DEPRECATED" && body.attributes !== undefined) {
+      return c.json({ error: "attributes are immutable on DEPRECATED edges" }, 422);
+    }
+
     const [row] = await sql<EdgeRow[]>`
       UPDATE edges SET
         ${body.type !== undefined ? sql`type = ${body.type},` : sql``}
@@ -246,11 +253,24 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
   app.delete("/:id", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const [row] = await sql<EdgeRow[]>`
-      DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId} RETURNING *
+
+    const [existing] = await sql<EdgeRow[]>`
+      SELECT * FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}
     `;
-    if (!row) return c.json({ error: "not found" }, 404);
-    cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
+    if (!existing) return c.json({ error: "not found" }, 404);
+    if (existing.lifecycleStatus !== "ARCHIVED") {
+      return c.json({ error: "edge must be ARCHIVED before it can be purged" }, 422);
+    }
+
+    const retentionDays = Number(process.env.LIFECYCLE_RETENTION_DAYS ?? 30);
+    const archivedAt = existing.archivedAt ? new Date(existing.archivedAt).getTime() : 0;
+    const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
+    if (Date.now() - archivedAt < retentionMs) {
+      return c.json({ error: `retention period of ${retentionDays} days has not elapsed since archival` }, 422);
+    }
+
+    await sql`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
+    cache.invalidateEdge(tenantId, existing.id, existing.sourceId, existing.targetId);
     return c.json({ data: { id } });
   });
 
