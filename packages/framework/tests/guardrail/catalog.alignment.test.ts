@@ -1177,3 +1177,437 @@ describe("GR-L3 architecture-layer guardrail drift guards (GR-L3-001..007)", () 
   });
 });
 
+describe("GR-L4 application-layer guardrail drift guards (GR-L4-001..005, 007)", () => {
+  describe("GR-L4-001 APIEndpoint must declare ≥ 1 error_response", () => {
+    it("scope targets APIEndpoint on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-001");
+      expect(rule.scope.object_type).toBe("APIEndpoint");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads object.error_responses with >= 1 cardinality", () => {
+      const rule = getGuardrailOrThrow("GR-L4-001");
+      expect(rule.condition).toContain("object.error_responses");
+      expect(rule.condition).toContain(".length");
+      expect(rule.condition).toContain(">= 1");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-001");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to camelCase or shortened error-list names", () => {
+      const rule = getGuardrailOrThrow("GR-L4-001");
+      // Catalog conditions are snake_case; schema is camelCase
+      // (APIEndpoint.errorResponses) but the runtime view stays snake_case.
+      expect(rule.condition).not.toContain("object.errorResponses");
+      expect(rule.condition).not.toContain("object.errors");
+      expect(rule.condition).not.toContain("object.error_codes");
+      expect(rule.condition).not.toContain("object.failure_responses");
+      expect(rule.condition).not.toContain("object.error_schemas");
+    });
+  });
+
+  describe("GR-L4-002 APIEndpoint must declare response_schema", () => {
+    it("scope targets APIEndpoint on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-002");
+      expect(rule.scope.object_type).toBe("APIEndpoint");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads object.response_schema with non-null check", () => {
+      const rule = getGuardrailOrThrow("GR-L4-002");
+      expect(rule.condition).toContain("object.response_schema");
+      expect(rule.condition).toContain("!= null");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-002");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to camelCase or alternative payload-schema names", () => {
+      const rule = getGuardrailOrThrow("GR-L4-002");
+      // Schema is APIEndpoint.responseSchema; the runtime view stays snake_case.
+      expect(rule.condition).not.toContain("object.responseSchema");
+      expect(rule.condition).not.toContain("object.response_payload");
+      expect(rule.condition).not.toContain("object.response_body");
+      expect(rule.condition).not.toContain("object.payload_schema");
+      expect(rule.condition).not.toContain("object.schema");
+    });
+  });
+
+  describe("GR-L4-003 EventContract must declare ordering and delivery guarantees", () => {
+    it("scope targets EventContract on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-003");
+      expect(rule.scope.object_type).toBe("EventContract");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads ordering_guarantee AND delivery_guarantee with non-null check", () => {
+      const rule = getGuardrailOrThrow("GR-L4-003");
+      expect(rule.condition).toContain("object.ordering_guarantee");
+      expect(rule.condition).toContain("object.delivery_guarantee");
+      expect(rule.condition).toContain("!= null");
+      // Both must be required — a single guarantee is not enough.
+      expect(rule.condition).toContain("&&");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-003");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to camelCase or alternative guarantee field names", () => {
+      const rule = getGuardrailOrThrow("GR-L4-003");
+      // Schema is camelCase (EventContract.orderingGuarantee /
+      // EventContract.deliveryGuarantee); runtime view stays snake_case.
+      expect(rule.condition).not.toContain("object.orderingGuarantee");
+      expect(rule.condition).not.toContain("object.deliveryGuarantee");
+      // Word-boundary guards: catch bare `object.ordering` / `object.delivery`
+      // but tolerate the canonical `_guarantee` suffix.
+      expect(rule.condition).not.toMatch(/object\.ordering(?!_guarantee)/);
+      expect(rule.condition).not.toMatch(/object\.delivery(?!_guarantee)/);
+      expect(rule.condition).not.toContain("object.ordering_semantics");
+      expect(rule.condition).not.toContain("object.delivery_semantics");
+      expect(rule.condition).not.toContain("object.guarantees");
+    });
+  });
+
+  describe("GR-L4-004 APIContract must declare version", () => {
+    it("scope targets APIContract on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-004");
+      expect(rule.scope.object_type).toBe("APIContract");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads object.version with non-null AND SemVer shape check", () => {
+      const rule = getGuardrailOrThrow("GR-L4-004");
+      expect(rule.condition).toContain("object.version");
+      expect(rule.condition).toContain("!= null");
+      // SemVer enforcement is part of the rule, not just presence.
+      expect(rule.condition).toContain("is_semver(object.version)");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-004");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to alternative version field or shape-check names", () => {
+      const rule = getGuardrailOrThrow("GR-L4-004");
+      // Synonyms (api_version, contract_version) and shape predicates
+      // (matches_semver/regex) have appeared in earlier drafts.
+      expect(rule.condition).not.toContain("object.api_version");
+      expect(rule.condition).not.toContain("object.contract_version");
+      expect(rule.condition).not.toContain("object.semver");
+      expect(rule.condition).not.toContain("matches_semver(");
+      expect(rule.condition).not.toContain("is_valid_semver(");
+      expect(rule.condition).not.toMatch(/object\.version\s*matches/);
+    });
+  });
+
+  describe("GR-L4-005 Service without realizes link to ArchitectureComponent", () => {
+    it("scope targets Service with relationship_type='realizes' on UPDATE/PERIODIC", () => {
+      const rule = getGuardrailOrThrow("GR-L4-005");
+      expect(rule.scope.object_type).toBe("Service");
+      expect(rule.scope.relationship_type).toBe("realizes");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+
+    it("condition walks realizes edge to ArchitectureComponent with >= 1 cardinality", () => {
+      const rule = getGuardrailOrThrow("GR-L4-005");
+      expect(rule.condition).toContain("type='realizes'");
+      expect(rule.condition).toContain("target_type='ArchitectureComponent'");
+      expect(rule.condition).toContain(">= 1");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+WARNING with propagation UPWARD", () => {
+      const rule = getGuardrailOrThrow("GR-L4-005");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      // UPWARD: a Service that doesn't realise any L3 component surfaces the
+      // missing link on the architectural ancestor (kap. 2.7 propagation).
+      expect(rule.propagation).toBe("UPWARD");
+    });
+
+    it("does not drift to invented realisation edge or target names", () => {
+      const rule = getGuardrailOrThrow("GR-L4-005");
+      // The canonical edge is `realizes` (kap. 2.2). Synonyms break the link.
+      expect(rule.condition).not.toContain("type='implements'");
+      expect(rule.condition).not.toContain("type='materialises'");
+      expect(rule.condition).not.toContain("type='materializes'");
+      expect(rule.condition).not.toContain("type='realises'");
+      expect(rule.condition).not.toContain("type='backs'");
+      expect(rule.condition).not.toContain("target_type='Component'");
+      expect(rule.condition).not.toContain("target_type='ArchComponent'");
+      expect(rule.condition).not.toContain("target_type='ArchitectureSystem'");
+    });
+  });
+
+  describe("GR-L4-007 Service with > N direct dependencies (god service)", () => {
+    it("scope targets Service with relationship_type='depends-on' on PERIODIC/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L4-007");
+      expect(rule.scope.object_type).toBe("Service");
+      expect(rule.scope.relationship_type).toBe("depends-on");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads configurable threshold config.l4.max_service_dependencies", () => {
+      const rule = getGuardrailOrThrow("GR-L4-007");
+      expect(rule.condition).toContain("type='depends-on'");
+      expect(rule.condition).toContain(".length");
+      // Threshold is configurable, not a hardcoded literal.
+      expect(rule.condition).toContain("config.l4.max_service_dependencies");
+      expect(rule.condition).toContain("<=");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+WARNING with propagation LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-L4-007");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      // LATERAL: the violation surfaces on dependency siblings (the integration
+      // hub affects everything it touches), not its strategic ancestors.
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("does not drift to alternative dependency edge or hardcoded thresholds", () => {
+      const rule = getGuardrailOrThrow("GR-L4-007");
+      // The canonical edge is `depends-on` (kap. 2.2); synonyms break the count.
+      expect(rule.condition).not.toContain("type='uses'");
+      expect(rule.condition).not.toContain("type='requires'");
+      expect(rule.condition).not.toContain("type='consumes'");
+      expect(rule.condition).not.toContain("type='calls'");
+      expect(rule.condition).not.toContain("type='depends_on'");
+      // Threshold must remain configurable — no naked numeric literal.
+      expect(rule.condition).not.toMatch(/<=\s*\d+\s*$/);
+      expect(rule.condition).not.toContain("config.max_service_dependencies");
+      expect(rule.condition).not.toContain("config.l4.max_dependencies");
+    });
+  });
+});
+
+describe("GR-L5 implementation-layer guardrail drift guards (GR-L5-001, 002, 004, 006, 007)", () => {
+  describe("GR-L5-001 TechnicalDebt must declare rationale", () => {
+    it("scope targets TechnicalDebt on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L5-001");
+      expect(rule.scope.object_type).toBe("TechnicalDebt");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads object.rationale with non-null AND length > 0", () => {
+      const rule = getGuardrailOrThrow("GR-L5-001");
+      expect(rule.condition).toContain("object.rationale");
+      expect(rule.condition).toContain("!= null");
+      expect(rule.condition).toContain("object.rationale.length > 0");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L5-001");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to common rationale synonyms", () => {
+      const rule = getGuardrailOrThrow("GR-L5-001");
+      // `reason`/`justification`/`why`/`description` are common synonyms but
+      // not the canonical kap. 4 field name on TechnicalDebt.
+      expect(rule.condition).not.toContain("object.reason");
+      expect(rule.condition).not.toContain("object.justification");
+      expect(rule.condition).not.toContain("object.why");
+      expect(rule.condition).not.toContain("object.description");
+      expect(rule.condition).not.toContain("object.notes");
+      expect(rule.condition).not.toContain("object.explanation");
+    });
+  });
+
+  describe("GR-L5-002 CodeModule must declare repository_reference", () => {
+    it("scope targets CodeModule on CREATE/UPDATE", () => {
+      const rule = getGuardrailOrThrow("GR-L5-002");
+      expect(rule.scope.object_type).toBe("CodeModule");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+    });
+
+    it("condition reads object.repository_reference with non-null check", () => {
+      const rule = getGuardrailOrThrow("GR-L5-002");
+      expect(rule.condition).toContain("object.repository_reference");
+      expect(rule.condition).toContain("!= null");
+    });
+
+    it("classification is STRUCTURAL+PRESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L5-002");
+      expect(rule.origin).toBe("STRUCTURAL");
+      expect(rule.evaluation).toBe("PRESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to camelCase or alternative repo-pointer names", () => {
+      const rule = getGuardrailOrThrow("GR-L5-002");
+      // Schema is CodeModule.repositoryReference (RepoRef = url + path); the
+      // runtime view stays snake_case.
+      expect(rule.condition).not.toContain("object.repositoryReference");
+      expect(rule.condition).not.toContain("object.repo_url");
+      // Word-boundary guard: catch bare `object.repo` / `object.repository`
+      // but tolerate the canonical `_reference` suffix.
+      expect(rule.condition).not.toMatch(/object\.repo(?!sitory_reference)/);
+      expect(rule.condition).not.toMatch(/object\.repository(?!_reference)/);
+      expect(rule.condition).not.toContain("object.source_url");
+      expect(rule.condition).not.toContain("object.git_ref");
+      expect(rule.condition).not.toContain("object.repository_url");
+    });
+  });
+
+  describe("GR-L5-004 ExternalDependency CRITICAL without security_audit_date", () => {
+    it("scope targets ExternalDependency on CREATE/UPDATE/PERIODIC", () => {
+      const rule = getGuardrailOrThrow("GR-L5-004");
+      expect(rule.scope.object_type).toBe("ExternalDependency");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+
+    it("condition pairs criticality=='CRITICAL' with security_audit_date non-null", () => {
+      const rule = getGuardrailOrThrow("GR-L5-004");
+      expect(rule.condition).toContain("object.criticality == 'CRITICAL'");
+      expect(rule.condition).toContain("object.security_audit_date");
+      expect(rule.condition).toContain("!= null");
+      // Implication form, not a flat AND — only CRITICAL deps require the audit.
+      expect(rule.condition).toContain("implies");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+ERROR with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L5-004");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to camelCase or alternative audit-timestamp names", () => {
+      const rule = getGuardrailOrThrow("GR-L5-004");
+      // Schema is ExternalDependency.securityAuditDate / .criticality; the
+      // runtime view stays snake_case.
+      expect(rule.condition).not.toContain("object.securityAuditDate");
+      expect(rule.condition).not.toContain("object.security_audited_at");
+      expect(rule.condition).not.toContain("object.audited_at");
+      expect(rule.condition).not.toContain("object.last_audit");
+      expect(rule.condition).not.toContain("object.last_security_review");
+      expect(rule.condition).not.toContain("object.cve_review_date");
+      // Severity bucket synonyms — must remain CRITICAL, not HIGH/SEV1/etc.
+      expect(rule.condition).not.toContain("'HIGH'");
+      expect(rule.condition).not.toContain("'SEV1'");
+      expect(rule.condition).not.toContain("'P1'");
+    });
+  });
+
+  describe("GR-L5-006 CodeModule without validated-by Test", () => {
+    it("scope targets CodeModule with relationship_type='validated-by' on UPDATE/PERIODIC", () => {
+      const rule = getGuardrailOrThrow("GR-L5-006");
+      expect(rule.scope.object_type).toBe("CodeModule");
+      expect(rule.scope.relationship_type).toBe("validated-by");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+
+    it("condition walks validated-by edge to Test with >= 1 cardinality", () => {
+      const rule = getGuardrailOrThrow("GR-L5-006");
+      expect(rule.condition).toContain("type='validated-by'");
+      expect(rule.condition).toContain("target_type='Test'");
+      expect(rule.condition).toContain(">= 1");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+WARNING with propagation LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-L5-006");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      // LATERAL: a missing test surfaces on dependent modules (regression risk
+      // spreads sideways), not on strategic ancestors.
+      expect(rule.propagation).toBe("LATERAL");
+    });
+
+    it("does not drift to invented coverage edge or target names", () => {
+      const rule = getGuardrailOrThrow("GR-L5-006");
+      // The canonical edge is `validated-by` (kap. 2.2). Synonyms must not slip in.
+      expect(rule.condition).not.toContain("type='tested-by'");
+      expect(rule.condition).not.toContain("type='covered-by'");
+      expect(rule.condition).not.toContain("type='verified-by'");
+      expect(rule.condition).not.toContain("type='has-test'");
+      expect(rule.condition).not.toContain("type='validates'");
+      expect(rule.condition).not.toContain("type='validated_by'");
+      expect(rule.condition).not.toContain("target_type='TestCase'");
+      expect(rule.condition).not.toContain("target_type='UnitTest'");
+    });
+  });
+
+  describe("GR-L5-007 ExternalDependency with GPL license in COMMERCIAL context", () => {
+    it("scope targets ExternalDependency on CREATE/UPDATE/PERIODIC", () => {
+      const rule = getGuardrailOrThrow("GR-L5-007");
+      expect(rule.scope.object_type).toBe("ExternalDependency");
+      expect(rule.scope.triggers).toContain("CREATE");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+
+    it("condition matches license against 'GPL*' AND distribution context COMMERCIAL", () => {
+      const rule = getGuardrailOrThrow("GR-L5-007");
+      expect(rule.condition).toContain("object.license");
+      expect(rule.condition).toContain("'GPL*'");
+      expect(rule.condition).toContain("config.distribution.context == 'COMMERCIAL'");
+      // Pattern match keyword (not equality) — GPL family covers GPL-2.0, GPL-3.0, AGPL, …
+      expect(rule.condition).toContain("matches");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+WARNING with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L5-007");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      expect(rule.propagation).toBe("NONE");
+    });
+
+    it("does not drift to alternative license-pattern or context spellings", () => {
+      const rule = getGuardrailOrThrow("GR-L5-007");
+      // GPL-only is the canonical pattern (kap. 5). Broadening the pattern
+      // (e.g. all copyleft) is a separate rule, not a silent rewording.
+      expect(rule.condition).not.toContain("'AGPL*'");
+      expect(rule.condition).not.toContain("'LGPL*'");
+      expect(rule.condition).not.toContain("'COPYLEFT*'");
+      expect(rule.condition).not.toContain("'GPL-3.0'");
+      expect(rule.condition).not.toContain("license_family");
+      expect(rule.condition).not.toContain("object.spdx");
+      expect(rule.condition).not.toContain("object.license_id");
+      // Distribution context must not collapse to a flat property.
+      expect(rule.condition).not.toContain("config.is_commercial");
+      expect(rule.condition).not.toContain("config.commercial");
+      expect(rule.condition).not.toContain("'PROPRIETARY'");
+    });
+  });
+});
+
