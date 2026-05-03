@@ -65,6 +65,7 @@ services:
       context: .
       args:
         NEXT_PUBLIC_TENANT_ID: aaaaaaaa-bbbb-cccc-dddd-000000000001
+        NEXT_PUBLIC_API_URL: http://localhost:3094
     command: node apps/web/.next/standalone/apps/web/server.js
     restart: unless-stopped
     environment:

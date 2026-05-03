@@ -24,6 +24,8 @@ COPY . .
 # Pass --build-arg NEXT_PUBLIC_TENANT_ID=<uuid> (or set in docker-compose build.args).
 ARG NEXT_PUBLIC_TENANT_ID=""
 ENV NEXT_PUBLIC_TENANT_ID=${NEXT_PUBLIC_TENANT_ID}
+ARG NEXT_PUBLIC_API_URL=""
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN pnpm build
 
 FROM node:${NODE_VERSION} AS runtime
