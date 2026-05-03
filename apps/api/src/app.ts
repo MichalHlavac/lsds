@@ -42,9 +42,14 @@ app.use(
   })
 );
 
-app.get("/health", (c) =>
-  c.json({ status: "ok", ts: new Date().toISOString(), oidc: oidcEnabled })
-);
+app.get("/health", async (c) => {
+  try {
+    await sql`SELECT 1`;
+    return c.json({ status: "ok", db: "ok", ts: new Date().toISOString(), oidc: oidcEnabled });
+  } catch {
+    return c.json({ status: "error", db: "unreachable", ts: new Date().toISOString() }, 503);
+  }
+});
 
 app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
