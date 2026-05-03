@@ -258,6 +258,24 @@ export function createLsdsClient(config: LsdsClientConfig) {
       draftId: string,
       body: { status?: "approved" | "rejected"; proposedAttrs?: Record<string, unknown> }
     ) => req("PATCH", `/agent/v1/migration/drafts/${encodeURIComponent(draftId)}`, body),
+
+    // ── Architect Agent ────────────────────────────────────────────────────────
+    architectAnalyze: (body?: {
+      persist?: boolean;
+      types?: string[];
+      layers?: string[];
+      lifecycleStatuses?: string[];
+      sampleLimit?: number;
+    }) => req("POST", "/agent/v1/architect/analyze", body ?? {}),
+
+    architectConsistency: () => req("GET", "/agent/v1/architect/consistency"),
+
+    architectDrift: (snapshotId?: string) => {
+      const qs = snapshotId ? `?snapshotId=${encodeURIComponent(snapshotId)}` : "";
+      return req("GET", `/agent/v1/architect/drift${qs}`);
+    },
+
+    architectDebt: () => req("GET", "/agent/v1/architect/debt"),
   };
 }
 

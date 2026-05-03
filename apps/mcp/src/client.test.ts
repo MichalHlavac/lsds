@@ -333,4 +333,86 @@ describe("createLsdsClient", () => {
     const [url] = fetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://localhost:3001/v1/violations");
   });
+
+  it("architectAnalyze sends POST to /agent/v1/architect/analyze with body", async () => {
+    const response = { scannedAt: "2026-01-01T00:00:00.000Z", summary: { totalViolations: 3 } };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectAnalyze({ persist: true, types: ["Service"], sampleLimit: 10 });
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/analyze");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body as string)).toMatchObject({ persist: true, types: ["Service"], sampleLimit: 10 });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("architectAnalyze sends POST with empty body when no params given", async () => {
+    const fetch = mockFetch({ data: { summary: {} } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.architectAnalyze();
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/analyze");
+    expect(JSON.parse(opts.body as string)).toEqual({});
+  });
+
+  it("architectConsistency sends GET to /agent/v1/architect/consistency", async () => {
+    const response = { scannedAt: "2026-01-01T00:00:00.000Z", patternCount: 2, patterns: [] };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectConsistency();
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/consistency");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("architectDrift sends GET to /agent/v1/architect/drift without snapshotId", async () => {
+    const fetch = mockFetch({ data: { delta: null, recentChanges: [] } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.architectDrift();
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/drift");
+    expect(opts.method).toBe("GET");
+  });
+
+  it("architectDrift appends ?snapshotId when provided", async () => {
+    const snapshotId = "00000000-0000-0000-0000-000000000099";
+    const fetch = mockFetch({ data: { delta: { nodesDelta: 5 }, recentChanges: [] } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.architectDrift(snapshotId);
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`http://localhost:3001/agent/v1/architect/drift?snapshotId=${snapshotId}`);
+  });
+
+  it("architectDebt sends GET to /agent/v1/architect/debt", async () => {
+    const response = { scannedAt: "2026-01-01T00:00:00.000Z", totals: { total: 10, open: 7, inProgress: 2 } };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectDebt();
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/debt");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
 });
