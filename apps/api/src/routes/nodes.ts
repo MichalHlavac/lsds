@@ -17,8 +17,10 @@ import {
   type NodeSortField,
 } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
+import type { GuardrailsRegistry } from "../guardrails/index.js";
+import { getViolationSuggestion, getNamingGuidance } from "../guardrails/naming.js";
 
-export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService): Hono {
+export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService, guardrails: GuardrailsRegistry): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
@@ -159,6 +161,37 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     const status = failed.length === 0 ? 200 : succeeded.length === 0 ? 422 : 207;
     return c.json({ data: { succeeded, failed } }, status as 200 | 207 | 422);
+  });
+
+  // Dry-run: evaluate guardrails against a draft node without persisting.
+  // Returns violations that *would* occur plus fix suggestions and naming guidance.
+  app.post("/preview-violations", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = CreateNodeSchema.parse(await c.req.json());
+
+    const draft = {
+      id: "",
+      tenantId,
+      type: body.type,
+      layer: body.layer,
+      name: body.name,
+      version: body.version,
+      lifecycleStatus: body.lifecycleStatus,
+      attributes: body.attributes,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deprecatedAt: null,
+      archivedAt: null,
+      purgeAfter: null,
+    };
+
+    const rawViolations = await guardrails.evaluate(tenantId, draft);
+    // Strip node ID — draft has no persisted ID
+    const violations = rawViolations.map(({ nodeId: _id, ...rest }) => rest);
+    const suggestions = rawViolations.map(getViolationSuggestion);
+    const namingGuidance = getNamingGuidance(body.type, body.name);
+
+    return c.json({ data: { violations, suggestions, namingGuidance } });
   });
 
   app.get("/:id", async (c) => {

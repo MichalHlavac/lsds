@@ -55,9 +55,9 @@ app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
 
 const v1 = new Hono();
-v1.route("/nodes", nodesRouter(sql, cache, lifecycle));
+v1.route("/nodes", nodesRouter(sql, cache, lifecycle, guardrails));
 v1.route("/nodes", traversalRouter(sql, cache, adapter));
-v1.route("/edges", edgesRouter(sql, cache, lifecycle));
+v1.route("/edges", edgesRouter(sql, cache, lifecycle, guardrails));
 v1.route("/violations", violationsRouter(sql));
 v1.route("/guardrails", guardrailsRouter(sql));
 v1.route("/lifecycle", lifecycleRouter(lifecycle));

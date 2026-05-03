@@ -15,6 +15,7 @@ import type { NodeRow, ViolationRow } from "../db/types.js";
 import { getTenantId, jsonb } from "../routes/util.js";
 import { AgentSearchSchema, BatchIdsSchema } from "../routes/schemas.js";
 import { PostgresGraphRepository } from "../db/graph-repository.js";
+import { checkNaming } from "../guardrails/naming.js";
 
 // Agent API — machine-friendly surface for AI agent consumption.
 // Returns minimal, structured payloads; uses application/json throughout.
@@ -129,6 +130,17 @@ export function agentRouter(
           "For each rule above, verify your proposed object satisfies the condition. Return a self_assessment mapping ruleKey → {passes: boolean, notes: string}. The framework runs final validation on write — your self-assessment is advisory.",
       },
     });
+  });
+
+  // ── Naming convention check (pure logic, no DB) ────────────────────────────
+  app.get("/naming-check", (c) => {
+    const type = c.req.query("type") ?? "";
+    const name = c.req.query("name") ?? "";
+    if (!type || !name) {
+      return c.json({ error: "type and name query params are required" }, 400);
+    }
+    const result = checkNaming(type, name);
+    return c.json({ data: { type, name, ...result } });
   });
 
   // ── Evaluate guardrails for a node (dry-run) ───────────────────────────────

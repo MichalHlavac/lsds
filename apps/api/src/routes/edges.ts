@@ -17,8 +17,10 @@ import {
   type EdgeSortField,
 } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
+import type { GuardrailsRegistry } from "../guardrails/index.js";
+import { getViolationSuggestion } from "../guardrails/naming.js";
 
-export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService): Hono {
+export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService, guardrails: GuardrailsRegistry): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
@@ -171,6 +173,62 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const op = previous ? "UPDATE" : "CREATE";
     await recordEdgeHistory(sql, tenantId, row.id, op, previous ?? null, row);
     return c.json({ data: row }, previous ? 200 : 201);
+  });
+
+  // Dry-run: evaluate guardrails against a draft edge without persisting.
+  // Also runs framework relationship validation (cross-layer rules).
+  app.post("/preview-violations", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = CreateEdgeSchema.parse(await c.req.json());
+
+    const [sourceNode] = await sql<NodeRow[]>`
+      SELECT id, layer FROM nodes WHERE id = ${body.sourceId} AND tenant_id = ${tenantId}
+    `;
+    if (!sourceNode) return c.json({ error: "source node not found" }, 404);
+
+    const [targetNode] = await sql<NodeRow[]>`
+      SELECT id, layer FROM nodes WHERE id = ${body.targetId} AND tenant_id = ${tenantId}
+    `;
+    if (!targetNode) return c.json({ error: "target node not found" }, 404);
+
+    const frameworkIssues = validateRelationshipEdge({
+      type: body.type,
+      sourceLayer: sourceNode.layer,
+      targetLayer: targetNode.layer,
+    });
+    const frameworkViolations = frameworkIssues.map((i) => ({
+      ruleKey: "GR-XL-003",
+      severity: "ERROR" as const,
+      message: i.message,
+    }));
+
+    const draft = {
+      id: "",
+      tenantId,
+      sourceId: body.sourceId,
+      targetId: body.targetId,
+      type: body.type,
+      layer: body.layer,
+      traversalWeight: body.traversalWeight,
+      lifecycleStatus: "ACTIVE" as const,
+      attributes: body.attributes,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deprecatedAt: null,
+      archivedAt: null,
+      purgeAfter: null,
+    };
+
+    const rawGuardrailViolations = await guardrails.evaluate(tenantId, draft);
+    const guardrailViolations = rawGuardrailViolations.map(({ edgeId: _id, ...rest }) => rest);
+
+    const violations = [...frameworkViolations, ...guardrailViolations];
+    const suggestions = [
+      ...frameworkViolations.map((v) => v.message),
+      ...rawGuardrailViolations.map(getViolationSuggestion),
+    ];
+
+    return c.json({ data: { violations, suggestions, namingGuidance: [] } });
   });
 
   app.get("/:id", async (c) => {

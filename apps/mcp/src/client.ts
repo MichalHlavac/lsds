@@ -130,6 +130,30 @@ export function createLsdsClient(config: LsdsClientConfig) {
     getWriteGuidance: (nodeType: string) =>
       req("GET", `/agent/v1/write-guidance/${encodeURIComponent(nodeType)}`),
 
+    // Preview violations for a draft node without persisting it.
+    previewNodeViolations: (body: {
+      type: string;
+      layer: string;
+      name: string;
+      version?: string;
+      lifecycleStatus?: string;
+      attributes?: Record<string, unknown>;
+    }) => req("POST", "/v1/nodes/preview-violations", body),
+
+    // Preview violations for a draft edge without persisting it.
+    previewEdgeViolations: (body: {
+      sourceId: string;
+      targetId: string;
+      type: string;
+      layer: string;
+      traversalWeight?: number;
+      attributes?: Record<string, unknown>;
+    }) => req("POST", "/v1/edges/preview-violations", body),
+
+    // Check whether a name follows naming conventions for a given node type.
+    checkNaming: (type: string, name: string) =>
+      req("GET", `/agent/v1/naming-check?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`),
+
     // ── Traversal ──────────────────────────────────────────────────────────
     traverse: (
       nodeId: string,
