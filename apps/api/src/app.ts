@@ -25,10 +25,14 @@ import { snapshotsRouter } from "./routes/snapshots.js";
 import { layersRouter } from "./routes/layers.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
+import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
 const guardrails = new GuardrailsRegistry(sql);
 const lifecycle = new LifecycleService(sql, cache);
+
+const embeddingProvider = createEmbeddingProvider();
+const embeddingService = embeddingProvider ? new EmbeddingService(embeddingProvider, sql) : undefined;
 
 export const app = new Hono();
 
@@ -59,7 +63,7 @@ app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
 
 const v1 = new Hono();
-v1.route("/nodes", nodesRouter(sql, cache, lifecycle));
+v1.route("/nodes", nodesRouter(sql, cache, lifecycle, embeddingService));
 v1.route("/nodes", traversalRouter(sql, cache, adapter));
 v1.route("/edges", edgesRouter(sql, cache, lifecycle));
 v1.route("/violations", violationsRouter(sql));
@@ -72,7 +76,7 @@ v1.route("/snapshots", snapshotsRouter(sql));
 v1.route("/layers", layersRouter(sql));
 
 app.route("/v1", v1);
-app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle));
+app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle, embeddingService));
 app.route("/agent/v1/architect", architectRouter(sql, guardrails));
 app.route("/agent/v1/migration", migrationRouter(sql));
 

@@ -117,6 +117,14 @@ export function createLsdsClient(config: LsdsClientConfig) {
       limit?: number;
     }) => req("POST", "/agent/v1/search", params),
 
+    semanticSearch: (params: {
+      query: string;
+      limit?: number;
+      type?: string;
+      layer?: string;
+      minScore?: number;
+    }) => req("POST", "/agent/v1/search/semantic", params),
+
     batchLookup: (ids: string[]) =>
       req("POST", "/agent/v1/nodes/batch", { ids }),
 

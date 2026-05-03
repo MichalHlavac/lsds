@@ -88,6 +88,46 @@ server.tool(
 );
 
 server.tool(
+  "lsds_semantic_search",
+  "Search for knowledge graph nodes by semantic meaning using vector similarity. Returns nodes ranked by cosine similarity to the query. Requires embeddings to have been generated (EMBEDDING_PROVIDER must be set). Use this when a keyword search would miss semantically related but differently-named nodes.",
+  {
+    query: z
+      .string()
+      .min(1)
+      .describe("Natural-language description of what you are looking for"),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe("Max results to return (default 10)"),
+    type: z
+      .string()
+      .optional()
+      .describe("Filter by node type, e.g. 'Service', 'BoundedContext'"),
+    layer: z
+      .enum(["L1", "L2", "L3", "L4", "L5", "L6"])
+      .optional()
+      .describe("Architecture layer filter"),
+    minScore: z
+      .number()
+      .min(0)
+      .max(1)
+      .optional()
+      .describe("Minimum cosine similarity score (0–1). Higher is more similar."),
+  },
+  async (params) => {
+    try {
+      const data = await client.semanticSearch(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
   "lsds_batch_lookup",
   "Fetch multiple knowledge graph nodes by their IDs in a single request.",
   {

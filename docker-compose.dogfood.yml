@@ -7,7 +7,7 @@ name: lsds-dogfood
 
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_DB: lsds_pilot

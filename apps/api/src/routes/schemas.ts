@@ -98,6 +98,14 @@ export const AgentSearchSchema = z.object({
   limit: z.number().int().positive().max(100).optional().default(20),
 });
 
+export const SemanticSearchSchema = z.object({
+  query: z.string().min(1),
+  limit: z.number().int().positive().max(100).optional().default(10),
+  type: z.string().min(1).optional(),
+  layer: LayerEnum.optional(),
+  minScore: z.number().min(0).max(1).optional(),
+});
+
 export const BatchIdsSchema = z.object({
   ids: z.array(z.string().uuid()).min(1),
 });
