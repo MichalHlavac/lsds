@@ -43,6 +43,7 @@ services:
       DATABASE_URL: postgres://lsds:lsds@db:5432/lsds_pilot
       # Must be a valid UUID — "lsds-pilot" triggers Postgres 22P02 error.
       TENANT_ID: aaaaaaaa-bbbb-cccc-dddd-000000000001
+      CORS_ORIGIN: http://localhost:3093
     ports:
       - "3094:3001"
     depends_on:
