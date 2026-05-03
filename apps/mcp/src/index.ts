@@ -602,6 +602,94 @@ server.tool(
   }
 );
 
+// ── Architect Agent tools ────────────────────────────────────────────────────
+
+server.tool(
+  "lsds_architect_analyze",
+  "Run a bulk guardrail drift scan across the entire knowledge graph. Evaluates every node in scope against the guardrail registry and returns aggregate findings grouped by severity and rule. Accepts optional scope filters (types, layers, lifecycle statuses) and a sampleLimit to cap returned violation examples. Pass persist=true to write detected violations to the database.",
+  {
+    persist: z
+      .boolean()
+      .optional()
+      .describe("Persist detected violations to the database (default false)"),
+    types: z
+      .array(z.string().min(1))
+      .optional()
+      .describe("Filter to specific node types, e.g. ['Service', 'BoundedContext']"),
+    layers: z
+      .array(z.enum(["L1", "L2", "L3", "L4", "L5", "L6"]))
+      .optional()
+      .describe("Filter to specific architecture layers"),
+    lifecycleStatuses: z
+      .array(z.enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"]))
+      .optional()
+      .describe("Lifecycle statuses to include (default: ACTIVE, DEPRECATED)"),
+    sampleLimit: z
+      .number()
+      .int()
+      .min(0)
+      .max(500)
+      .optional()
+      .describe("Max violation examples to return (default 50)"),
+  },
+  async (params) => {
+    try {
+      const data = await client.architectAnalyze(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_consistency",
+  "Run a structural consistency scan across the entire knowledge graph. Returns grouped findings for known anti-patterns: ArchitectureComponent nodes unlinked from any BoundedContext, TechnicalDebt items missing an owner, DEPRECATED nodes without a deprecation date, and orphaned ACTIVE nodes with no edges.",
+  {},
+  async () => {
+    try {
+      const data = await client.architectConsistency();
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_drift",
+  "Compare the current knowledge graph state against a snapshot. Returns node/edge delta counts, a breakdown of current nodes by type and layer, and up to 100 recently modified nodes since the snapshot was taken. Defaults to the most recent snapshot; pass snapshotId to compare against a specific one.",
+  {
+    snapshotId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("UUID of the snapshot to compare against (default: most recent snapshot)"),
+  },
+  async ({ snapshotId }) => {
+    try {
+      const data = await client.architectDrift(snapshotId);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_architect_debt",
+  "Aggregate TechnicalDebt nodes across the knowledge graph. Returns totals (open, in-progress), breakdowns by debt type and interest rate, and systemic patterns — nodes with 2 or more unresolved debt items attached via edges.",
+  {},
+  async () => {
+    try {
+      const data = await client.architectDebt();
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
