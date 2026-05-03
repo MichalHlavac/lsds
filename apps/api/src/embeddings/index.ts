@@ -34,7 +34,8 @@ class StubEmbeddingProvider implements EmbeddingProvider {
   readonly dimensions = 1536;
 
   async embed(_text: string): Promise<number[]> {
-    return new Array(1536).fill(0) as number[];
+    // pgvector returns NULL for cosine distance between zero vectors → use 1 instead
+    return new Array(1536).fill(1) as number[];
   }
 }
 

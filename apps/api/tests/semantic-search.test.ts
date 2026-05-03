@@ -3,8 +3,8 @@
 //
 // Semantic search integration tests.
 // Requires EMBEDDING_PROVIDER=stub (set in CI via env, or locally via .env.test).
-// With stub, all embeddings are zero-vectors; cosine distance between zero-vectors = 0
-// so every embedded node returns score ≈ 1.0 against any query.
+// With stub, all embeddings are constant [1,1,...,1] vectors; cosine similarity
+// between identical vectors = 1.0, so every embedded node returns score = 1.0.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
