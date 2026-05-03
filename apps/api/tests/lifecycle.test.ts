@@ -592,3 +592,252 @@ describe("GET /v1/nodes/:id lifecycle fields", () => {
     expect(data.archivedAt).toBeFalsy();
   });
 });
+
+// ── GET /v1/nodes — ARCHIVED exclusion ───────────────────────────────────────
+
+describe("GET /v1/nodes — ARCHIVED exclusion", () => {
+  it("excludes ARCHIVED nodes from default list", async () => {
+    const active = await createNode("list-active");
+    const archived = await createNode("list-archived");
+
+    await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+
+    const res = await app.request("/v1/nodes", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const ids = data.map((n: { id: string }) => n.id);
+    expect(ids).toContain(active.id);
+    expect(ids).not.toContain(archived.id);
+  });
+
+  it("includes ARCHIVED nodes when ?includeArchived=true", async () => {
+    const archived = await createNode("list-archived-incl");
+    await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+
+    const res = await app.request("/v1/nodes?includeArchived=true", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const ids = data.map((n: { id: string }) => n.id);
+    expect(ids).toContain(archived.id);
+  });
+
+  it("returns ARCHIVED when ?lifecycleStatus=ARCHIVED is explicit", async () => {
+    const archived = await createNode("list-archived-explicit");
+    await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/nodes/${archived.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+
+    const res = await app.request("/v1/nodes?lifecycleStatus=ARCHIVED", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.some((n: { id: string }) => n.id === archived.id)).toBe(true);
+  });
+});
+
+// ── GET /v1/edges — ARCHIVED exclusion ───────────────────────────────────────
+
+describe("GET /v1/edges — ARCHIVED exclusion", () => {
+  it("excludes ARCHIVED edges from default list", async () => {
+    const src = await createNode("e-list-src");
+    const tgt = await createNode("e-list-tgt");
+    const edge = await createEdge(src.id, tgt.id);
+
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+
+    const res = await app.request("/v1/edges", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.some((e: { id: string }) => e.id === edge.id)).toBe(false);
+  });
+
+  it("includes ARCHIVED edges when ?includeArchived=true", async () => {
+    const src = await createNode("e-list-src2");
+    const tgt = await createNode("e-list-tgt2");
+    const edge = await createEdge(src.id, tgt.id);
+
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+
+    const res = await app.request("/v1/edges?includeArchived=true", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.some((e: { id: string }) => e.id === edge.id)).toBe(true);
+  });
+});
+
+// ── PATCH /v1/nodes/:id — DEPRECATED immutability ────────────────────────────
+
+describe("PATCH /v1/nodes/:id — DEPRECATED attribute immutability", () => {
+  it("rejects attribute changes on a DEPRECATED node with 422", async () => {
+    const node = await createNode("imm-node");
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+
+    const res = await app.request(`/v1/nodes/${node.id}`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ attributes: { env: "prod" } }),
+    });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatch(/immutable/);
+  });
+
+  it("allows non-attribute patches on DEPRECATED nodes", async () => {
+    const node = await createNode("imm-node-ok");
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+
+    const res = await app.request(`/v1/nodes/${node.id}`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ version: "2.0.0" }),
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ── PATCH /v1/edges/:id — DEPRECATED immutability ────────────────────────────
+
+describe("PATCH /v1/edges/:id — DEPRECATED attribute immutability", () => {
+  it("rejects attribute changes on a DEPRECATED edge with 422", async () => {
+    const src = await createNode("imm-e-src");
+    const tgt = await createNode("imm-e-tgt");
+    const edge = await createEdge(src.id, tgt.id);
+
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+
+    const res = await app.request(`/v1/edges/${edge.id}`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ attributes: { tag: "old" } }),
+    });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatch(/immutable/);
+  });
+});
+
+// ── DELETE /v1/nodes/:id — ARCHIVED-first + retention ────────────────────────
+
+describe("DELETE /v1/nodes/:id — purge enforcement", () => {
+  it("returns 422 when node is ACTIVE (not ARCHIVED)", async () => {
+    const node = await createNode("del-active");
+    const res = await app.request(`/v1/nodes/${node.id}`, { method: "DELETE", headers: h() });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatch(/ARCHIVED/);
+  });
+
+  it("returns 422 when node is DEPRECATED (not ARCHIVED)", async () => {
+    const node = await createNode("del-deprecated");
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    const res = await app.request(`/v1/nodes/${node.id}`, { method: "DELETE", headers: h() });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatch(/ARCHIVED/);
+  });
+
+  it("returns 422 within retention window (just-archived node)", async () => {
+    const node = await createNode("del-retention");
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+    // Node was just archived — retention window has not elapsed
+    const res = await app.request(`/v1/nodes/${node.id}`, { method: "DELETE", headers: h() });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatch(/retention/);
+  });
+
+  it("purges (hard-deletes) an ARCHIVED node past retention window", async () => {
+    const orig = process.env.LIFECYCLE_RETENTION_DAYS;
+    process.env.LIFECYCLE_RETENTION_DAYS = "0";
+    try {
+      const node = await createNode("del-ok");
+      await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+      });
+      await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+      });
+
+      const res = await app.request(`/v1/nodes/${node.id}`, { method: "DELETE", headers: h() });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.id).toBe(node.id);
+
+      const check = await app.request(`/v1/nodes/${node.id}`, { headers: h() });
+      expect(check.status).toBe(404);
+    } finally {
+      if (orig === undefined) delete process.env.LIFECYCLE_RETENTION_DAYS;
+      else process.env.LIFECYCLE_RETENTION_DAYS = orig;
+    }
+  });
+});
+
+// ── DELETE /v1/edges/:id — ARCHIVED-first + retention ────────────────────────
+
+describe("DELETE /v1/edges/:id — purge enforcement", () => {
+  it("returns 422 when edge is ACTIVE (not ARCHIVED)", async () => {
+    const src = await createNode("del-e-src");
+    const tgt = await createNode("del-e-tgt");
+    const edge = await createEdge(src.id, tgt.id);
+
+    const res = await app.request(`/v1/edges/${edge.id}`, { method: "DELETE", headers: h() });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toMatch(/ARCHIVED/);
+  });
+
+  it("purges an ARCHIVED edge past retention window", async () => {
+    const orig = process.env.LIFECYCLE_RETENTION_DAYS;
+    process.env.LIFECYCLE_RETENTION_DAYS = "0";
+    try {
+      const src = await createNode("del-e-ok-src");
+      const tgt = await createNode("del-e-ok-tgt");
+      const edge = await createEdge(src.id, tgt.id);
+
+      await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+      });
+      await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+      });
+
+      const res = await app.request(`/v1/edges/${edge.id}`, { method: "DELETE", headers: h() });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.id).toBe(edge.id);
+
+      const check = await app.request(`/v1/edges/${edge.id}`, { headers: h() });
+      expect(check.status).toBe(404);
+    } finally {
+      if (orig === undefined) delete process.env.LIFECYCLE_RETENTION_DAYS;
+      else process.env.LIFECYCLE_RETENTION_DAYS = orig;
+    }
+  });
+});
