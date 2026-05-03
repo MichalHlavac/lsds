@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
+import { logger } from "./logger.js";
 import { sql } from "./db/client.js";
 import { PostgresTraversalAdapter } from "./db/traversal-adapter.js";
 import { cache } from "./cache/index.js";
@@ -75,6 +76,6 @@ app.route("/agent/v1/migration", migrationRouter(sql));
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
   if (err instanceof ZodError) return c.json({ error: "validation error", issues: err.issues }, 400);
-  console.error(err);
+  logger.error({ err }, "unhandled error");
   return c.json({ error: "internal server error" }, 500);
 });
