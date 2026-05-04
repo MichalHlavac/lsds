@@ -24,3 +24,12 @@
 - [ ] This PR introduces breaking changes
 
 <!-- If checked, describe what breaks and the migration path. -->
+
+## Schema Migrations (L1-L2)
+
+- [ ] This PR does NOT modify `apps/api/migrations/` — skip this section
+- [ ] This PR modifies `apps/api/migrations/` — CTO authorization required before merge
+
+<!-- If migration files changed: @MichalHlavac must comment "merge-authorized: <PR-number>"
+     The migration-auth CI check will fail until this token is present.
+     See apps/api/migrations/README.md for the full process. -->

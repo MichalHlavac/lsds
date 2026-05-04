@@ -1,0 +1,108 @@
+name: Migration Guard
+
+# Structural enforcement for L1-L2 schema migrations (ADR A4).
+# Any PR touching apps/api/migrations/*.sql must have an explicit CTO
+# authorization token before it can be merged.
+#
+# Authorization token: CTO (@MichalHlavac) posts a PR comment containing:
+#   merge-authorized: <PR-number>
+#
+# This check re-runs on every push to the PR and on every new PR comment,
+# so the status updates as soon as the token is posted.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  migration-auth:
+    name: migration-auth
+    # Run on PR events, or on comments that are on a PR (issue.pull_request != null)
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve PR number
+        id: resolve-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let prNumber;
+            if (context.eventName === 'pull_request') {
+              prNumber = context.payload.pull_request.number;
+            } else {
+              if (!context.payload.issue.pull_request) {
+                core.info('Comment on plain issue (not a PR) — skipping');
+                return null;
+              }
+              prNumber = context.payload.issue.number;
+            }
+            core.setOutput('number', String(prNumber));
+            return prNumber;
+
+      - name: Check migration files and CTO authorization
+        if: steps.resolve-pr.outputs.number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.resolve-pr.outputs.number }}', 10);
+
+            // Check which files this PR touches
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            const migrationFiles = files.filter(
+              f => f.filename.startsWith('apps/api/migrations/') && f.filename.endsWith('.sql')
+            );
+
+            if (migrationFiles.length === 0) {
+              core.info(`No migration SQL files in PR #${prNumber} — guard not required`);
+              return;
+            }
+
+            core.info(`Migration files changed: ${migrationFiles.map(f => f.filename).join(', ')}`);
+
+            // Check for CTO authorization token in PR comments
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const ctoLogin = 'MichalHlavac';
+            const token = `merge-authorized: ${prNumber}`;
+
+            const authorized = comments.some(
+              c => c.user.login === ctoLogin && c.body.includes(token)
+            );
+
+            if (!authorized) {
+              core.setFailed(
+                [
+                  `⛔ L1-L2 schema migration — CTO authorization required.`,
+                  ``,
+                  `This PR modifies \`apps/api/migrations/*.sql\` which is a schema migration`,
+                  `(L1-L2 change tier, ADR A4). Only the CTO may authorize the merge.`,
+                  ``,
+                  `**@${ctoLogin}** must post the following comment on this PR:`,
+                  ``,
+                  `    merge-authorized: ${prNumber}`,
+                  ``,
+                  `See \`apps/api/migrations/README.md\` for the full authorization process.`,
+                ].join('\n')
+              );
+            } else {
+              core.info(`✅ CTO authorization confirmed for PR #${prNumber} — migration guard passed`);
+            }

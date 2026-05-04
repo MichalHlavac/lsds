@@ -1,2 +1,5 @@
 # CODEOWNERS — all files require CTO review
 * @MichalHlavac
+
+# Schema migrations — L1-L2 change tier (requires CTO review + merge-authorized token)
+apps/api/migrations/**  @MichalHlavac
