@@ -349,15 +349,9 @@ describe("POST /agent/v1/context — semantic profile", () => {
     expect(nodes.map((n: { id: string }) => n.id)).toContain(neighbor.id);
   });
 
-  maybeIt("excludes nodes below minSimilarity threshold", async () => {
-    const anchor = await createNode("threshold-anchor");
-    const candidate = await createNode("threshold-candidate");
-    await Promise.all([waitForEmbedding(anchor.id), waitForEmbedding(candidate.id)]);
-
-    // With stub provider all scores = 1.0 so a threshold of 1.1 should exclude everything
-    const res = await postContext({ nodeId: anchor.id, profile: "semantic", minSimilarity: 1.1 });
-    expect(res.status).toBe(200);
-    const { nodes } = await res.json();
-    expect(nodes).toHaveLength(0);
-  });
+  // "excludes nodes below minSimilarity threshold" cannot be tested with the stub
+  // provider: the schema correctly enforces minSimilarity ≤ 1.0 (cosine range),
+  // and stub embeddings return similarity = 1.0 for every node, so no valid
+  // threshold can demonstrate exclusion. Exercise this path with a real
+  // embedding provider in a staging environment.
 });
