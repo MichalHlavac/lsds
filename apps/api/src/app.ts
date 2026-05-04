@@ -24,6 +24,7 @@ import { migrationRouter } from "./agent/migration.js";
 import { snapshotsRouter } from "./routes/snapshots.js";
 import { layersRouter } from "./routes/layers.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
+import { requestIdMiddleware } from "./middleware/request-id.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
 const guardrails = new GuardrailsRegistry(sql);
@@ -36,12 +37,14 @@ app.use(
   "*",
   cors({
     origin: corsOrigin.includes(",") ? corsOrigin.split(",").map((o) => o.trim()) : corsOrigin,
-    allowHeaders: ["Authorization", "Content-Type", "X-Tenant-Id"],
+    allowHeaders: ["Authorization", "Content-Type", "X-Tenant-Id", "X-Request-Id"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
     maxAge: 600,
   })
 );
+
+app.use("*", requestIdMiddleware);
 
 app.get("/health", async (c) => {
   try {
@@ -76,6 +79,7 @@ app.route("/agent/v1/migration", migrationRouter(sql));
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
   if (err instanceof ZodError) return c.json({ error: "validation error", issues: err.issues }, 400);
-  logger.error({ err }, "unhandled error");
+  const log = c.get("log") ?? logger;
+  log.error({ err }, "unhandled error");
   return c.json({ error: "internal server error" }, 500);
 });

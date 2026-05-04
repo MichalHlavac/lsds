@@ -7,14 +7,25 @@ export interface Logger {
   error(obj: Record<string, unknown>, msg: string): void;
   warn(obj: Record<string, unknown>, msg: string): void;
   info(obj: Record<string, unknown>, msg: string): void;
+  child(bindings: Record<string, unknown>): Logger;
 }
 
 let _pino = pino({ level: process.env["LOG_LEVEL"] ?? "info" });
+
+function wrapPino(p: pino.Logger): Logger {
+  return {
+    error(obj, msg) { p.error(obj, msg); },
+    warn(obj, msg) { p.warn(obj, msg); },
+    info(obj, msg) { p.info(obj, msg); },
+    child(bindings) { return wrapPino(p.child(bindings)); },
+  };
+}
 
 export const logger: Logger = {
   error(obj, msg) { _pino.error(obj, msg); },
   warn(obj, msg) { _pino.warn(obj, msg); },
   info(obj, msg) { _pino.info(obj, msg); },
+  child(bindings) { return wrapPino(_pino.child(bindings)); },
 };
 
 export function setLogger(instance: pino.Logger): void {
