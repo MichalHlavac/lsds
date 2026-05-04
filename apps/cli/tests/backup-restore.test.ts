@@ -51,8 +51,8 @@ let outDir: string;
 beforeAll(
   async () => {
     [sourceContainer, targetContainer] = await Promise.all([
-      new PostgreSqlContainer("postgres:16-alpine").start(),
-      new PostgreSqlContainer("postgres:16-alpine").start(),
+      new PostgreSqlContainer("pgvector/pgvector:pg16").start(),
+      new PostgreSqlContainer("pgvector/pgvector:pg16").start(),
     ]);
 
     sourceSql = postgres(sourceContainer.getConnectionUri(), { max: 1 });

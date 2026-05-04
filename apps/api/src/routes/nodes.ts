@@ -17,8 +17,14 @@ import {
   type NodeSortField,
 } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
+import type { EmbeddingService } from "../embeddings/index.js";
 
-export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleService): Hono {
+export function nodesRouter(
+  sql: Sql,
+  cache: LsdsCache,
+  lifecycle: LifecycleService,
+  embeddingService?: EmbeddingService
+): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
@@ -80,6 +86,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         RETURNING *
       `;
       await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
+      embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
       return c.json({ data: row }, 201);
     } catch (err: unknown) {
       if ((err as { code?: string })?.code === "23505") {
@@ -114,6 +121,7 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     const op = previous ? "UPDATE" : "CREATE";
     await recordNodeHistory(sql, tenantId, row.id, op, previous ?? null, row);
+    embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
     return c.json({ data: row }, previous ? 200 : 201);
   });
 
@@ -202,6 +210,11 @@ export function nodesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateNode(tenantId, id);
     await recordNodeHistory(sql, tenantId, id, "UPDATE", previous, row);
+    // `type` and `layer` are not in UpdateNodeSchema (immutable after creation), so
+    // only `name` and `attributes` can affect the embedded text.
+    if (body.name !== undefined || body.attributes !== undefined) {
+      embeddingService?.embedNodeAsync(tenantId, id, embeddingService.nodeText(row));
+    }
     return c.json({ data: row });
   });
 

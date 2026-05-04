@@ -13,7 +13,8 @@ import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
 import type { NodeRow, ViolationRow } from "../db/types.js";
 import { getTenantId, jsonb } from "../routes/util.js";
-import { AgentSearchSchema, BatchIdsSchema } from "../routes/schemas.js";
+import { AgentSearchSchema, BatchIdsSchema, SemanticSearchSchema } from "../routes/schemas.js";
+import type { EmbeddingService } from "../embeddings/index.js";
 import { PostgresGraphRepository } from "../db/graph-repository.js";
 
 // Agent API — machine-friendly surface for AI agent consumption.
@@ -26,7 +27,8 @@ export function agentRouter(
   sql: Sql,
   cache: LsdsCache,
   guardrails: GuardrailsRegistry,
-  lifecycle: LifecycleService
+  lifecycle: LifecycleService,
+  embeddingService?: EmbeddingService
 ): Hono {
   const app = new Hono();
 
@@ -97,6 +99,47 @@ export function agentRouter(
       LIMIT ${limit}
     `;
     return c.json({ data: nodes });
+  });
+
+  // ── Semantic search: cosine similarity over node embeddings ────────────────
+  app.post("/search/semantic", async (c) => {
+    if (!embeddingService) {
+      return c.json({ error: "semantic search is not enabled (EMBEDDING_PROVIDER not set)" }, 503);
+    }
+    const tenantId = getTenantId(c);
+    const body = SemanticSearchSchema.parse(await c.req.json());
+
+    const vectorLiteral = await embeddingService.embedQuery(body.query);
+
+    const rows = await sql<
+      Array<
+        NodeRow & { score: number }
+      >
+    >`
+      SELECT
+        id, tenant_id, type, layer, name, version,
+        lifecycle_status, attributes,
+        created_at, updated_at,
+        deprecated_at, archived_at, purge_after,
+        (1 - (embedding <=> ${vectorLiteral}::vector))::float AS score
+      FROM nodes
+      WHERE tenant_id = ${tenantId}
+        AND embedding IS NOT NULL
+        AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
+        ${body.type ? sql`AND type = ${body.type}` : sql``}
+        ${body.layer ? sql`AND layer = ${body.layer}` : sql``}
+      ORDER BY embedding <=> ${vectorLiteral}::vector
+      LIMIT ${body.limit}
+    `;
+
+    const filtered =
+      body.minScore !== undefined
+        ? rows.filter((r) => r.score >= body.minScore!)
+        : rows;
+
+    return c.json({
+      data: filtered.map(({ score, ...node }) => ({ node, score })),
+    });
   });
 
   // ── Active violations summary ───────────────────────────────────────────────

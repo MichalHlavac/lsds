@@ -34,7 +34,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: lsds
           POSTGRES_PASSWORD: lsds
@@ -75,6 +75,7 @@ jobs:
         run: pnpm test
         env:
           DATABASE_URL: postgres://lsds:lsds@localhost:5432/lsds
+          EMBEDDING_PROVIDER: stub
 
       - name: Build
         run: pnpm build
