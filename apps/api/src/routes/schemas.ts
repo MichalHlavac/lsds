@@ -140,6 +140,14 @@ export const CreateTeamSchema = z.object({
   attributes: z.record(z.unknown()).optional().default({}),
 });
 
+export const KnowledgeContextSchema = z.object({
+  nodeId: z.string().uuid(),
+  profile: z.enum(["depth", "breadth", "semantic"]),
+  maxNodes: z.number().int().positive().max(100).optional().default(20),
+  minSimilarity: z.number().min(0).max(1).optional().default(0.7),
+});
+export type KnowledgeContext = z.infer<typeof KnowledgeContextSchema>;
+
 export const LifecycleTransitionSchema = z.object({
   transition: z.enum(["deprecate", "archive", "purge"]),
 });

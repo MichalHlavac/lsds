@@ -11,11 +11,15 @@ import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
-import type { NodeRow, ViolationRow } from "../db/types.js";
+import type { NodeRow, EdgeRow, ViolationRow } from "../db/types.js";
 import { getTenantId, jsonb } from "../routes/util.js";
-import { AgentSearchSchema, BatchIdsSchema, SemanticSearchSchema } from "../routes/schemas.js";
+import { AgentSearchSchema, BatchIdsSchema, SemanticSearchSchema, KnowledgeContextSchema } from "../routes/schemas.js";
 import type { EmbeddingService } from "../embeddings/index.js";
 import { PostgresGraphRepository } from "../db/graph-repository.js";
+import { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
+
+// Dependency-class edge types followed by the "depth" traversal profile.
+const DEPTH_EDGE_TYPES = ["depends-on", "implements", "realizes"] as const;
 
 // Agent API — machine-friendly surface for AI agent consumption.
 // Returns minimal, structured payloads; uses application/json throughout.
@@ -69,6 +73,110 @@ export function agentRouter(
       }
       throw e;
     }
+  });
+
+  // ── Knowledge Agent context package ────────────────────────────────────────
+  // POST /agent/v1/context
+  // Returns structured graph context for an AI agent via one of three profiles:
+  //   depth    — outbound DFS via dependency edges (depends-on/implements/realizes), max depth 5
+  //   breadth  — BFS via all edge types, max hops 2
+  //   semantic — cosine-similarity neighbourhood; falls back to breadth if no embedding
+  app.post("/context", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = KnowledgeContextSchema.parse(await c.req.json());
+    const { nodeId, profile, maxNodes, minSimilarity } = body;
+
+    const [root] = await sql<NodeRow[]>`
+      SELECT * FROM nodes
+      WHERE id = ${nodeId} AND tenant_id = ${tenantId}
+        AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
+    `;
+    if (!root) return c.json({ error: "not found" }, 404);
+
+    const cacheKey = `agent:kctx:${tenantId}:${nodeId}:${profile}:${maxNodes}:${minSimilarity}`;
+    const hit = cache.traversals.get(cacheKey);
+    if (hit) return c.json({ ...hit, cached: true });
+
+    const adapter = new PostgresTraversalAdapter(sql);
+    let traversalIds: string[] = [];
+
+    if (profile === "depth") {
+      const results = await adapter.traverseWithDepth(nodeId, 5, "outbound", [...DEPTH_EDGE_TYPES]);
+      traversalIds = results.filter((r) => r.nodeId !== nodeId).map((r) => r.nodeId);
+    } else if (profile === "breadth") {
+      const results = await adapter.traverseWithDepth(nodeId, 2, "both");
+      traversalIds = results.filter((r) => r.nodeId !== nodeId).map((r) => r.nodeId);
+    } else {
+      // semantic: find nodes closest by cosine similarity; fallback to breadth
+      let usedBreadthFallback = false;
+      if (embeddingService) {
+        const [embRow] = await sql<[{ embedding: string | null }]>`
+          SELECT embedding::text AS embedding FROM nodes
+          WHERE id = ${nodeId} AND tenant_id = ${tenantId}
+        `;
+        if (embRow?.embedding) {
+          const emb = embRow.embedding;
+          const rows = await sql<Array<{ id: string; score: number }>>`
+            SELECT id, (1 - (embedding <=> ${emb}::vector))::float AS score
+            FROM nodes
+            WHERE tenant_id = ${tenantId}
+              AND id != ${nodeId}
+              AND embedding IS NOT NULL
+              AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
+            ORDER BY embedding <=> ${emb}::vector
+            LIMIT ${maxNodes + 1}
+          `;
+          traversalIds = rows
+            .filter((r) => r.score >= minSimilarity)
+            .slice(0, maxNodes)
+            .map((r) => r.id);
+        } else {
+          usedBreadthFallback = true;
+        }
+      } else {
+        usedBreadthFallback = true;
+      }
+      if (usedBreadthFallback) {
+        const results = await adapter.traverseWithDepth(nodeId, 2, "both");
+        traversalIds = results.filter((r) => r.nodeId !== nodeId).map((r) => r.nodeId);
+      }
+    }
+
+    // Fetch nodes with lifecycle filter; apply maxNodes cap
+    let nodes: NodeRow[] = [];
+    if (traversalIds.length > 0) {
+      nodes = await sql<NodeRow[]>`
+        SELECT * FROM nodes
+        WHERE id = ANY(${traversalIds})
+          AND tenant_id = ${tenantId}
+          AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
+      `;
+    }
+    const truncated = nodes.length > maxNodes;
+    if (truncated) nodes = nodes.slice(0, maxNodes);
+
+    const allIds = [nodeId, ...nodes.map((n) => n.id)];
+
+    const edges =
+      allIds.length > 1
+        ? await sql<EdgeRow[]>`
+            SELECT * FROM edges
+            WHERE tenant_id = ${tenantId}
+              AND source_id = ANY(${allIds})
+              AND target_id = ANY(${allIds})
+          `
+        : ([] as EdgeRow[]);
+
+    const violations = await sql<ViolationRow[]>`
+      SELECT * FROM violations
+      WHERE tenant_id = ${tenantId}
+        AND node_id = ANY(${allIds})
+        AND resolved = FALSE
+    `;
+
+    const payload = { root, nodes, edges, violations, profile, truncated };
+    cache.traversals.set(cacheKey, payload);
+    return c.json({ ...payload, cached: false });
   });
 
   // ── Bulk node lookup ────────────────────────────────────────────────────────
