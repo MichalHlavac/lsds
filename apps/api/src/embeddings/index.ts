@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import type { Sql } from "../db/client.js";
+import { logger } from "../logger.js";
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
@@ -74,7 +75,7 @@ export class EmbeddingService {
   // Fire-and-forget — does not block the HTTP response.
   embedNodeAsync(tenantId: string, nodeId: string, text: string): void {
     this._storeEmbedding(tenantId, nodeId, text).catch((err) => {
-      console.error(`[embeddings] failed to embed node ${nodeId}:`, err);
+      logger.error({ nodeId, err }, "failed to embed node");
     });
   }
 
