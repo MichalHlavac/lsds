@@ -134,6 +134,31 @@ describe("POST /agent/v1/search/semantic", () => {
     expect(data.find((r: { node: { id: string } }) => r.node.id === node.id)).toBeUndefined();
   });
 
+  maybeIt("excludes ARCHIVED nodes from results (ADR A9)", async () => {
+    const node = await createNode("Service", "L4", "archived-service");
+    await waitForEmbedding(node.id);
+
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "archive" }),
+    });
+
+    const res = await app.request("/agent/v1/search/semantic", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ query: "archived service" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.find((r: { node: { id: string } }) => r.node.id === node.id)).toBeUndefined();
+  });
+
   maybeIt("embedding is stored after node creation", async () => {
     const node = await createNode("Service", "L4", "new-service");
     // Embedding should be stored asynchronously by the on-write hook

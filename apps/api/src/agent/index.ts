@@ -125,6 +125,7 @@ export function agentRouter(
       FROM nodes
       WHERE tenant_id = ${tenantId}
         AND embedding IS NOT NULL
+        AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
         ${body.type ? sql`AND type = ${body.type}` : sql``}
         ${body.layer ? sql`AND layer = ${body.layer}` : sql``}
       ORDER BY embedding <=> ${vectorLiteral}::vector

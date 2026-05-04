@@ -210,6 +210,8 @@ export function nodesRouter(
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateNode(tenantId, id);
     await recordNodeHistory(sql, tenantId, id, "UPDATE", previous, row);
+    // `type` and `layer` are not in UpdateNodeSchema (immutable after creation), so
+    // only `name` and `attributes` can affect the embedded text.
     if (body.name !== undefined || body.attributes !== undefined) {
       embeddingService?.embedNodeAsync(tenantId, id, embeddingService.nodeText(row));
     }

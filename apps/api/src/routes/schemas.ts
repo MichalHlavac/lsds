@@ -24,6 +24,7 @@ export const CreateNodeSchema = z.object({
 });
 export type CreateNode = z.infer<typeof CreateNodeSchema>;
 
+// `type` and `layer` are intentionally absent — they are immutable after creation.
 export const UpdateNodeSchema = z.object({
   name: z.string().min(1).optional(),
   version: z.string().optional(),
