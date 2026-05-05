@@ -249,6 +249,76 @@ server.tool(
 );
 
 server.tool(
+  "lsds_write_guidance",
+  "Preview guardrail violations for a draft node or edge before writing it. Evaluates all applicable guardrails against the draft and returns violations that would occur, plain-text fix suggestions, and naming convention guidance — without persisting anything. Call this before lsds_create_node or lsds_create_edge to catch issues early.",
+  {
+    kind: z
+      .enum(["node", "edge"])
+      .describe("Whether the draft is a node or an edge"),
+    type: z
+      .string()
+      .min(1)
+      .describe("Node type (e.g. 'Service', 'DomainEvent') or edge type (e.g. 'DEPENDS_ON')"),
+    layer: z
+      .enum(["L1", "L2", "L3", "L4", "L5", "L6"])
+      .describe("Architecture layer"),
+    name: z
+      .string()
+      .optional()
+      .describe("Name of the node (required for nodes, omit for edges)"),
+    version: z.string().optional().describe("Semantic version (nodes only, default '0.1.0')"),
+    lifecycleStatus: z
+      .enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"])
+      .optional()
+      .describe("Lifecycle status (nodes only, default ACTIVE)"),
+    attributes: z.record(z.unknown()).optional().describe("JSONB attributes"),
+    sourceId: z.string().uuid().optional().describe("Source node UUID (edges only)"),
+    targetId: z.string().uuid().optional().describe("Target node UUID (edges only)"),
+    traversalWeight: z.number().positive().optional().describe("Traversal weight (edges only, default 1.0)"),
+  },
+  async ({ kind, type, layer, name, version, lifecycleStatus, attributes, sourceId, targetId, traversalWeight }) => {
+    try {
+      let data: unknown;
+      if (kind === "node") {
+        if (!name) return { content: [{ type: "text", text: "name is required for node drafts" }], isError: true };
+        data = await client.previewNodeViolations({ type, layer, name, version, lifecycleStatus, attributes });
+      } else {
+        if (!sourceId || !targetId) {
+          return { content: [{ type: "text", text: "sourceId and targetId are required for edge drafts" }], isError: true };
+        }
+        data = await client.previewEdgeViolations({ sourceId, targetId, type, layer, traversalWeight, attributes });
+      }
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_check_naming",
+  "Check whether a name follows the naming conventions for a given node type. Returns { valid, suggestions } — valid is true when the name conforms, false when it does not. Suggestions explain how to fix non-conforming names. Supported conventions: DomainEvent (past-tense last word).",
+  {
+    type: z
+      .string()
+      .min(1)
+      .describe("Node type to check conventions for, e.g. 'DomainEvent', 'Service', 'BoundedContext'"),
+    name: z
+      .string()
+      .min(1)
+      .describe("Proposed name to validate"),
+  },
+  async ({ type, name }) => {
+    try {
+      const data = await client.checkNaming(type, name);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
   "lsds_create_node",
   "Create a new node in the knowledge graph. Nodes represent architecture entities across six layers (L1=Business to L6=Operations).",
   {
