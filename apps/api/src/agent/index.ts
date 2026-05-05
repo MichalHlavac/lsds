@@ -12,6 +12,21 @@ import type { LsdsCache } from "../cache/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
 import type { NodeRow, EdgeRow, ViolationRow } from "../db/types.js";
+
+// json_agg serializes PG timestamps as ISO 8601 strings, not Date objects.
+// These DTOs reflect the actual runtime shape returned by the single-CTE query.
+type IsoString = string;
+interface ContextNodeRow extends Omit<NodeRow, "createdAt" | "updatedAt" | "deprecatedAt" | "archivedAt" | "purgeAfter"> {
+  createdAt: IsoString; updatedAt: IsoString;
+  deprecatedAt: IsoString | null; archivedAt: IsoString | null; purgeAfter: IsoString | null;
+}
+interface ContextEdgeRow extends Omit<EdgeRow, "createdAt" | "updatedAt" | "deprecatedAt" | "archivedAt" | "purgeAfter"> {
+  createdAt: IsoString; updatedAt: IsoString;
+  deprecatedAt: IsoString | null; archivedAt: IsoString | null; purgeAfter: IsoString | null;
+}
+interface ContextViolationRow extends Omit<ViolationRow, "createdAt" | "updatedAt" | "resolvedAt"> {
+  createdAt: IsoString; updatedAt: IsoString; resolvedAt: IsoString | null;
+}
 import { getTenantId, jsonb } from "../routes/util.js";
 import { AgentSearchSchema, BatchIdsSchema, SemanticSearchSchema, KnowledgeContextSchema } from "../routes/schemas.js";
 import type { EmbeddingService } from "../embeddings/index.js";
@@ -145,8 +160,8 @@ export function agentRouter(
 
     // Single CTE: collapse nodes + edges + violations into one round-trip.
     // json_agg preserves DB column names (snake_case); sc2cc converts them to
-    // camelCase to match the NodeRow/EdgeRow/ViolationRow interfaces.
-    const sc2cc = (rows: Array<Record<string, unknown>>) =>
+    // camelCase. T is one of the Context*Row DTOs above — dates are strings.
+    const sc2cc = <T>(rows: Array<Record<string, unknown>>): T[] =>
       rows.map((r) =>
         Object.fromEntries(
           Object.entries(r).map(([k, v]) => [
@@ -154,7 +169,7 @@ export function agentRouter(
             v,
           ])
         )
-      );
+      ) as unknown as T[];
 
     const [ctx] = await sql<[{
       nodesJson: Array<Record<string, unknown>> | null;
@@ -185,14 +200,14 @@ export function agentRouter(
             AND v.resolved = FALSE), '[]'::json)                                   AS violations_json
     `;
 
-    let nodes = sc2cc(ctx.nodesJson ?? []) as unknown as NodeRow[];
+    let nodes = sc2cc<ContextNodeRow>(ctx.nodesJson ?? []);
     const truncated = nodes.length > maxNodes;
     if (truncated) nodes = nodes.slice(0, maxNodes);
 
     const allIdSet = new Set([nodeId, ...nodes.map((n) => n.id)]);
-    const edges = (sc2cc(ctx.edgesJson ?? []) as unknown as EdgeRow[])
+    const edges = sc2cc<ContextEdgeRow>(ctx.edgesJson ?? [])
       .filter((e) => allIdSet.has(e.sourceId) && allIdSet.has(e.targetId));
-    const violations = (sc2cc(ctx.violationsJson ?? []) as unknown as ViolationRow[])
+    const violations = sc2cc<ContextViolationRow>(ctx.violationsJson ?? [])
       .filter((v) => v.nodeId != null && allIdSet.has(v.nodeId));
 
     const payload = { root, nodes, edges, violations, profile, truncated };
