@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sql } from "./client.js";
+import { logger } from "../logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(__dirname, "../../migrations");
@@ -31,7 +32,7 @@ for (const file of files) {
     await tx.unsafe(body);
     await tx`INSERT INTO _migrations (filename) VALUES (${file})`;
   });
-  console.log(`applied: ${file}`);
+  logger.info({ file }, "applied migration");
 }
 
 await sql.end();
