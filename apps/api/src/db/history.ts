@@ -3,8 +3,7 @@
 
 import type { Sql } from "./client.js";
 import type { EdgeRow, HistoryOp, NodeRow } from "./types.js";
-
-type JsonArg = Parameters<Sql["json"]>[0];
+import { jsonb } from "../routes/util.js";
 
 export async function recordNodeHistory(
   sql: Sql,
@@ -20,8 +19,8 @@ export async function recordNodeHistory(
       ${nodeId},
       ${tenantId},
       ${op},
-      ${previous ? sql.json(previous as unknown as JsonArg) : null},
-      ${sql.json(current as unknown as JsonArg)}
+      ${previous ? jsonb(sql, previous as unknown as Record<string, unknown>) : null},
+      ${jsonb(sql, current as unknown as Record<string, unknown>)}
     )
   `;
 }
@@ -40,8 +39,8 @@ export async function recordEdgeHistory(
       ${edgeId},
       ${tenantId},
       ${op},
-      ${previous ? sql.json(previous as unknown as JsonArg) : null},
-      ${sql.json(current as unknown as JsonArg)}
+      ${previous ? jsonb(sql, previous as unknown as Record<string, unknown>) : null},
+      ${jsonb(sql, current as unknown as Record<string, unknown>)}
     )
   `;
 }
