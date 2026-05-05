@@ -13,6 +13,138 @@ const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 beforeEach(() => { tid = randomUUID(); });
 afterEach(async () => { await cleanTenant(sql, tid); });
 
+// ── POST /v1/nodes — ExternalSystem (L3) and ExternalDependency (L5) ─────────
+
+describe("POST /v1/nodes — ExternalSystem (ADR A8)", () => {
+  it("accepts type=ExternalSystem at layer L3 and returns 201", async () => {
+    const res = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        type: "ExternalSystem",
+        layer: "L3",
+        name: "stripe-payments",
+        attributes: {
+          description: "Payment processing gateway",
+          vendor: "Stripe",
+          criticality: "CRITICAL",
+          fallbackStrategy: "Queue payments locally and retry when Stripe is restored",
+          slaReference: "https://stripe.com/sla",
+          contractOwner: { id: "owner-1", name: "Payments Team" },
+          documentationUrl: "https://stripe.com/docs",
+          owner: { id: "team-1", name: "Payments" },
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.type).toBe("ExternalSystem");
+    expect(data.layer).toBe("L3");
+    expect(data.name).toBe("stripe-payments");
+  });
+
+  it("accepts type=ExternalSystem with MEDIUM criticality (no sla/fallback required)", async () => {
+    const res = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        type: "ExternalSystem",
+        layer: "L3",
+        name: "internal-metrics",
+        attributes: {
+          description: "Internal Prometheus instance",
+          vendor: "Internal",
+          criticality: "MEDIUM",
+          contractOwner: { id: "owner-2", name: "Platform Team" },
+          documentationUrl: "https://internal.example/metrics",
+          owner: { id: "team-2", name: "Platform" },
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.type).toBe("ExternalSystem");
+  });
+});
+
+describe("POST /v1/nodes — ExternalDependency (ADR A8)", () => {
+  it("accepts type=ExternalDependency at layer L5 and returns 201", async () => {
+    const res = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        type: "ExternalDependency",
+        layer: "L5",
+        name: "zod-validation",
+        attributes: {
+          description: "Runtime schema validation library",
+          packageManager: "npm",
+          packageName: "zod",
+          versionConstraint: "^3.22.0",
+          isDirect: true,
+          hasKnownVulnerability: false,
+          criticality: "HIGH",
+          license: "MIT",
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.type).toBe("ExternalDependency");
+    expect(data.layer).toBe("L5");
+    expect(data.name).toBe("zod-validation");
+  });
+
+  it("accepts ExternalDependency with hasKnownVulnerability=true when externalSystemRef is provided", async () => {
+    // Create the L3 ExternalSystem first so we have a ref target
+    const sysRes = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        type: "ExternalSystem",
+        layer: "L3",
+        name: "npm-registry",
+        attributes: {
+          description: "Public npm package registry",
+          vendor: "npm Inc.",
+          criticality: "HIGH",
+          slaReference: "https://status.npmjs.org",
+          contractOwner: { id: "owner-3", name: "Build Team" },
+          documentationUrl: "https://docs.npmjs.com",
+          owner: { id: "team-3", name: "Build" },
+        },
+      }),
+    });
+    expect(sysRes.status).toBe(201);
+    const { data: sys } = await sysRes.json();
+
+    const res = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        type: "ExternalDependency",
+        layer: "L5",
+        name: "lodash-vulnerable",
+        attributes: {
+          description: "Utility library with known prototype pollution CVE",
+          packageManager: "npm",
+          packageName: "lodash",
+          versionConstraint: "4.17.15",
+          isDirect: false,
+          hasKnownVulnerability: true,
+          criticality: "CRITICAL",
+          securityAuditDate: "2026-03-01",
+          externalSystemRef: { id: sys.id, type: "ExternalSystem" },
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.type).toBe("ExternalDependency");
+    expect(data.attributes.hasKnownVulnerability).toBe(true);
+  });
+});
+
 // ── POST /v1/nodes ────────────────────────────────────────────────────────────
 
 describe("POST /v1/nodes", () => {

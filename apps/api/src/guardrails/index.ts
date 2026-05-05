@@ -29,7 +29,18 @@ export type GuardrailCheck = (
   config: Record<string, unknown>
 ) => ViolationCandidate | null;
 
-const BUILT_IN_CHECKS: Map<string, GuardrailCheck> = new Map([
+function nodeAttrs(subject: NodeRow | EdgeRow): Record<string, unknown> | null {
+  if (!("type" in subject) || !("attributes" in subject)) return null;
+  return (subject as NodeRow).attributes as Record<string, unknown>;
+}
+
+function nodeOfType(subject: NodeRow | EdgeRow, type: string): NodeRow | null {
+  if (!("type" in subject)) return null;
+  const node = subject as NodeRow;
+  return node.type === type ? node : null;
+}
+
+const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
   [
     "naming.node.min_length",
     (subject, config) => {
@@ -64,6 +75,102 @@ const BUILT_IN_CHECKS: Map<string, GuardrailCheck> = new Map([
         };
       }
       return null;
+    },
+  ],
+  // ── GR-L3-004: ExternalSystem CRITICAL without fallbackStrategy ──────────────
+  [
+    "GR-L3-004",
+    (subject) => {
+      const node = nodeOfType(subject, "ExternalSystem");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs || attrs["criticality"] !== "CRITICAL") return null;
+      const fallback = attrs["fallbackStrategy"] ?? attrs["fallback_strategy"];
+      if (fallback && String(fallback).length >= 20) return null;
+      return {
+        ruleKey: "GR-L3-004",
+        severity: "ERROR",
+        message: `ExternalSystem '${node.name}' has criticality=CRITICAL but no fallbackStrategy (≥ 20 chars required)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L3-005: ExternalSystem CRITICAL/HIGH without slaReference ─────────────
+  [
+    "GR-L3-005",
+    (subject) => {
+      const node = nodeOfType(subject, "ExternalSystem");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const criticality = attrs["criticality"];
+      if (criticality !== "CRITICAL" && criticality !== "HIGH") return null;
+      const sla = attrs["slaReference"] ?? attrs["sla_reference"];
+      if (sla && String(sla).length >= 10) return null;
+      return {
+        ruleKey: "GR-L3-005",
+        severity: "ERROR",
+        message: `ExternalSystem '${node.name}' has criticality=${String(criticality)} but no slaReference (≥ 10 chars required)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L3-009: ExternalSystem last review older than 180 days ───────────────
+  [
+    "GR-L3-009",
+    (subject) => {
+      const node = nodeOfType(subject, "ExternalSystem");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const dateStr = attrs["lastReviewDate"] ?? attrs["last_review_date"];
+      if (!dateStr) return null;
+      const reviewDate = new Date(String(dateStr));
+      if (isNaN(reviewDate.getTime())) return null;
+      const ageDays = (Date.now() - reviewDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (ageDays <= 180) return null;
+      return {
+        ruleKey: "GR-L3-009",
+        severity: "WARN",
+        message: `ExternalSystem '${node.name}' was last reviewed ${Math.floor(ageDays)} days ago (max: 180)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L5-004: ExternalDependency CRITICAL without securityAuditDate ─────────
+  [
+    "GR-L5-004",
+    (subject) => {
+      const node = nodeOfType(subject, "ExternalDependency");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs || attrs["criticality"] !== "CRITICAL") return null;
+      const auditDate = attrs["securityAuditDate"] ?? attrs["security_audit_date"];
+      if (auditDate) return null;
+      return {
+        ruleKey: "GR-L5-004",
+        severity: "ERROR",
+        message: `ExternalDependency '${node.name}' has criticality=CRITICAL but no securityAuditDate`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L5-007: ExternalDependency with GPL-family license ───────────────────
+  [
+    "GR-L5-007",
+    (subject) => {
+      const node = nodeOfType(subject, "ExternalDependency");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const license = attrs["license"];
+      if (typeof license !== "string" || !license.toUpperCase().startsWith("GPL")) return null;
+      return {
+        ruleKey: "GR-L5-007",
+        severity: "WARN",
+        message: `ExternalDependency '${node.name}' uses GPL-family license '${license}' which may impose copyleft obligations in commercial distribution`,
+        nodeId: node.id,
+      };
     },
   ],
 ]);
