@@ -305,6 +305,11 @@ export function createLsdsClient(config: LsdsClientConfig) {
     },
 
     architectDebt: () => req("GET", "/agent/v1/architect/debt"),
+
+    architectAdrCoverage: (minEdges?: number) => {
+      const qs = minEdges != null ? `?minEdges=${minEdges}` : "";
+      return req("GET", `/agent/v1/architect/adr-coverage${qs}`);
+    },
   };
 }
 

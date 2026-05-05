@@ -800,6 +800,27 @@ server.tool(
   }
 );
 
+server.tool(
+  "lsds_architect_adr_coverage",
+  "Scan structural architecture nodes (BoundedContext, ArchitectureComponent, ArchitectureSystem) for missing ADR coverage. Flags nodes that have many connections (≥minEdges) but no linked ADR node. Returns coverage statistics and per-node suggestions for undocumented architectural decisions.",
+  {
+    minEdges: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Minimum edge count for a node to be flagged as needing an ADR (default 5)"),
+  },
+  async ({ minEdges }) => {
+    try {
+      const data = await client.architectAdrCoverage(minEdges);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
