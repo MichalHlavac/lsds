@@ -6,11 +6,12 @@ import { app } from "./app.js";
 import { sql } from "./db/client.js";
 import { cache } from "./cache/index.js";
 import { warmCache } from "./cache/warm.js";
+import { logger } from "./logger.js";
 
 const port = Number(process.env["PORT"] ?? 3001);
 serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`LSDS API listening on http://localhost:${info.port}`);
+  logger.info({ port: info.port }, "LSDS API listening");
   warmCache(sql, cache).catch((err) =>
-    console.warn("[cache] warm-up failed:", err)
+    logger.warn({ err }, "cache warm-up failed")
   );
 });

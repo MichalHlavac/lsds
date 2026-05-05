@@ -138,6 +138,27 @@ export function createLsdsClient(config: LsdsClientConfig) {
     getWriteGuidance: (nodeType: string) =>
       req("GET", `/agent/v1/write-guidance/${encodeURIComponent(nodeType)}`),
 
+    previewNodeViolations: (body: {
+      type: string;
+      layer: string;
+      name: string;
+      version?: string;
+      lifecycleStatus?: string;
+      attributes?: Record<string, unknown>;
+    }) => req("POST", "/v1/nodes/preview-violations", body),
+
+    previewEdgeViolations: (body: {
+      sourceId: string;
+      targetId: string;
+      type: string;
+      layer: string;
+      traversalWeight?: number;
+      attributes?: Record<string, unknown>;
+    }) => req("POST", "/v1/edges/preview-violations", body),
+
+    checkNaming: (type: string, name: string) =>
+      req("GET", `/agent/v1/naming-check?type=${encodeURIComponent(type)}&name=${encodeURIComponent(name)}`),
+
     // ── Traversal ──────────────────────────────────────────────────────────
     traverse: (
       nodeId: string,
