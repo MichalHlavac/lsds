@@ -40,7 +40,7 @@ function nodeOfType(subject: NodeRow | EdgeRow, type: string): NodeRow | null {
   return node.type === type ? node : null;
 }
 
-const BUILT_IN_CHECKS: Map<string, GuardrailCheck> = new Map([
+const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
   [
     "naming.node.min_length",
     (subject, config) => {
