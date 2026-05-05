@@ -121,7 +121,9 @@ describe("POST /agent/v1/search/semantic", () => {
 
   maybeIt("excludes nodes without embeddings", async () => {
     const node = await createNode("Service", "L4", "ghost-service");
-    // Null out the embedding immediately to simulate un-embedded node
+    // Wait for the async embed task to finish before nulling — otherwise the
+    // fire-and-forget _storeEmbedding can race and overwrite the NULL.
+    await waitForEmbedding(node.id);
     await sql`UPDATE nodes SET embedding = NULL WHERE id = ${node.id}`;
 
     const res = await app.request("/agent/v1/search/semantic", {
