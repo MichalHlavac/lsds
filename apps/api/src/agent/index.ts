@@ -17,6 +17,7 @@ import { AgentSearchSchema, BatchIdsSchema, SemanticSearchSchema, KnowledgeConte
 import type { EmbeddingService } from "../embeddings/index.js";
 import { PostgresGraphRepository } from "../db/graph-repository.js";
 import { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
+import { checkNaming } from "../guardrails/naming.js";
 
 // Dependency-class edge types followed by the "depth" traversal profile.
 const DEPTH_EDGE_TYPES = ["depends-on", "implements", "realizes"] as const;
@@ -280,6 +281,17 @@ export function agentRouter(
           "For each rule above, verify your proposed object satisfies the condition. Return a self_assessment mapping ruleKey → {passes: boolean, notes: string}. The framework runs final validation on write — your self-assessment is advisory.",
       },
     });
+  });
+
+  // ── Naming convention check (pure logic, no DB) ────────────────────────────
+  app.get("/naming-check", (c) => {
+    const type = c.req.query("type") ?? "";
+    const name = c.req.query("name") ?? "";
+    if (!type || !name) {
+      return c.json({ error: "type and name query params are required" }, 400);
+    }
+    const result = checkNaming(type, name);
+    return c.json({ data: { type, name, ...result } });
   });
 
   // ── Evaluate guardrails for a node (dry-run) ───────────────────────────────
