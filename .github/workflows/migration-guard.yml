@@ -33,7 +33,7 @@ jobs:
     steps:
       - name: Resolve PR number
         id: resolve-pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             let prNumber;
@@ -51,7 +51,7 @@ jobs:
 
       - name: Check migration files and CTO authorization
         if: steps.resolve-pr.outputs.number != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const prNumber = parseInt('${{ steps.resolve-pr.outputs.number }}', 10);
