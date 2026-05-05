@@ -46,6 +46,7 @@ export class LifecycleService {
   // ── nodes ──────────────────────────────────────────────────────────────────
 
   async deprecate(tenantId: string, nodeId: string): Promise<NodeRow> {
+    const neighborIds = await this.#fetchNeighborIds(tenantId, nodeId);
     const [row] = await this.sql<NodeRow[]>`
       UPDATE nodes
       SET lifecycle_status = 'DEPRECATED',
@@ -59,7 +60,7 @@ export class LifecycleService {
       const current = await this.#nodeStatus(tenantId, nodeId);
       throw new LifecycleTransitionError(current, "deprecate", ALLOWED_TRANSITIONS[current]);
     }
-    this.cache.invalidateNode(tenantId, nodeId);
+    this.cache.invalidateNode(tenantId, nodeId, neighborIds);
     return row;
   }
 
@@ -91,7 +92,8 @@ export class LifecycleService {
         AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
       RETURNING id, source_id, target_id
     `;
-    this.cache.invalidateNode(tenantId, nodeId);
+    const neighborIds = [...new Set(cascaded.flatMap(e => [e.sourceId, e.targetId]).filter(id => id !== nodeId))];
+    this.cache.invalidateNode(tenantId, nodeId, neighborIds);
     for (const e of cascaded) {
       this.cache.invalidateEdge(tenantId, e.id, e.sourceId, e.targetId);
     }
@@ -99,6 +101,7 @@ export class LifecycleService {
   }
 
   async markForPurge(tenantId: string, nodeId: string, purgeAfterDays?: number): Promise<NodeRow> {
+    const neighborIds = await this.#fetchNeighborIds(tenantId, nodeId);
     const days = purgeAfterDays ?? this.retention.archivedToPurgeDays;
     const [row] = await this.sql<NodeRow[]>`
       UPDATE nodes
@@ -113,11 +116,12 @@ export class LifecycleService {
       const current = await this.#nodeStatus(tenantId, nodeId);
       throw new LifecycleTransitionError(current, "purge", ALLOWED_TRANSITIONS[current]);
     }
-    this.cache.invalidateNode(tenantId, nodeId);
+    this.cache.invalidateNode(tenantId, nodeId, neighborIds);
     return row;
   }
 
   async purge(tenantId: string, nodeId: string): Promise<void> {
+    const neighborIds = await this.#fetchNeighborIds(tenantId, nodeId);
     const [row] = await this.sql<{ id: string }[]>`
       DELETE FROM nodes
       WHERE id = ${nodeId} AND tenant_id = ${tenantId}
@@ -126,7 +130,7 @@ export class LifecycleService {
       RETURNING id
     `;
     if (!row) throw new Error("node not eligible for purge");
-    this.cache.invalidateNode(tenantId, nodeId);
+    this.cache.invalidateNode(tenantId, nodeId, neighborIds);
   }
 
   async transitionNode(
@@ -234,14 +238,35 @@ export class LifecycleService {
       RETURNING id
     `;
 
-    for (const r of [...deprecated, ...archived]) {
-      this.cache.invalidateNode(tenantId, r.id);
+    const affected = [...deprecated, ...archived];
+    if (affected.length > 0) {
+      const nodeIds = affected.map(r => r.id);
+      const edges = await this.sql<{ sourceId: string; targetId: string }[]>`
+        SELECT DISTINCT source_id, target_id FROM edges
+        WHERE tenant_id = ${tenantId} AND (source_id = ANY(${nodeIds}) OR target_id = ANY(${nodeIds}))
+      `;
+      const neighborMap = new Map<string, Set<string>>(nodeIds.map(id => [id, new Set()]));
+      for (const e of edges) {
+        neighborMap.get(e.sourceId)?.add(e.targetId);
+        neighborMap.get(e.targetId)?.add(e.sourceId);
+      }
+      for (const r of affected) {
+        this.cache.invalidateNode(tenantId, r.id, [...(neighborMap.get(r.id) ?? [])]);
+      }
     }
 
     return { deprecated: deprecated.length, archived: archived.length };
   }
 
   // ── private helpers ────────────────────────────────────────────────────────
+
+  async #fetchNeighborIds(tenantId: string, nodeId: string): Promise<string[]> {
+    const rows = await this.sql<{ sourceId: string; targetId: string }[]>`
+      SELECT DISTINCT source_id, target_id FROM edges
+      WHERE tenant_id = ${tenantId} AND (source_id = ${nodeId} OR target_id = ${nodeId})
+    `;
+    return [...new Set(rows.flatMap(r => [r.sourceId, r.targetId]).filter(id => id !== nodeId))];
+  }
 
   async #nodeStatus(tenantId: string, nodeId: string): Promise<LifecycleStatus> {
     const [row] = await this.sql<{ lifecycleStatus: LifecycleStatus }[]>`

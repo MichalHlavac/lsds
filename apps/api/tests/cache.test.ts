@@ -258,6 +258,33 @@ describe("LsdsCache — invalidateNode", () => {
     cache.invalidateNode("t1", "n1");
     expect(cache.edges.get(eKey)).toBeDefined();
   });
+
+  it("evicts only node and neighbor traversals, preserving unrelated ones", () => {
+    const nodeKey    = cache.traversalKey("t1", "n1",        2, "both");
+    const neighborKey = cache.traversalKey("t1", "neighbor", 2, "both");
+    const unrelatedKey = cache.traversalKey("t1", "other",   2, "both");
+    cache.traversals.set(nodeKey, []);
+    cache.traversals.set(neighborKey, []);
+    cache.traversals.set(unrelatedKey, []);
+
+    cache.invalidateNode("t1", "n1", ["neighbor"]);
+
+    expect(cache.traversals.get(nodeKey)).toBeUndefined();
+    expect(cache.traversals.get(neighborKey)).toBeUndefined();
+    expect(cache.traversals.get(unrelatedKey)).toBeDefined();
+  });
+
+  it("with no neighbors, only the node's own traversals are evicted", () => {
+    const nodeKey     = cache.traversalKey("t1", "n1",    2, "both");
+    const siblingKey  = cache.traversalKey("t1", "other", 2, "both");
+    cache.traversals.set(nodeKey, []);
+    cache.traversals.set(siblingKey, []);
+
+    cache.invalidateNode("t1", "n1");
+
+    expect(cache.traversals.get(nodeKey)).toBeUndefined();
+    expect(cache.traversals.get(siblingKey)).toBeDefined();
+  });
 });
 
 describe("LsdsCache — invalidateEdge", () => {

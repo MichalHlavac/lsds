@@ -98,9 +98,12 @@ export class LsdsCache {
     return `${tenantId}:${rootId}:${depth}:${direction}:${et}`;
   }
 
-  invalidateNode(tenantId: string, nodeId: string): void {
+  invalidateNode(tenantId: string, nodeId: string, neighborIds: string[] = []): void {
     this.nodes.delete(this.nodeKey(tenantId, nodeId));
-    this.traversals.invalidatePattern(`${tenantId}:`);
+    this.traversals.invalidatePattern(`${tenantId}:${nodeId}:`);
+    for (const nid of neighborIds) {
+      this.traversals.invalidatePattern(`${tenantId}:${nid}:`);
+    }
   }
 
   invalidateEdge(tenantId: string, edgeId: string, sourceId: string, targetId: string): void {
