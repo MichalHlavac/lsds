@@ -200,6 +200,22 @@ guardrail "GR-L3-004 critical-external-has-fallback" "$(jq -n '{
   config: {}
 }')"
 
+guardrail "GR-L3-005 critical-high-external-has-sla" "$(jq -n '{
+  ruleKey: "GR-L3-005",
+  description: "CRITICAL/HIGH ExternalSystems must declare an slaReference — without it ops cannot size alerts or error budgets.",
+  severity: "ERROR",
+  enabled: true,
+  config: {}
+}')"
+
+guardrail "GR-L3-009 external-review-not-stale" "$(jq -n '{
+  ruleKey: "GR-L3-009",
+  description: "ExternalSystems must be reviewed at least every 180 days — stale reviews operate on outdated vendor assumptions.",
+  severity: "WARN",
+  enabled: true,
+  config: {}
+}')"
+
 guardrail "GR-L3-007 no-arch-component-dep-cycle" "$(jq -n '{
   ruleKey: "GR-L3-007",
   description: "Cyclic depends-on relationships between ArchitectureComponents break deployment ordering and hide missing abstractions.",
@@ -219,6 +235,22 @@ guardrail "GR-L5-technical-debt-cap" "$(jq -n '{
   severity: "WARN",
   enabled: true,
   config: {"max_open_items": 5}
+}')"
+
+guardrail "GR-L5-004 critical-dep-has-security-audit" "$(jq -n '{
+  ruleKey: "GR-L5-004",
+  description: "CRITICAL ExternalDependencies must declare a securityAuditDate — without it supply-chain CVE and license risk is untracked.",
+  severity: "ERROR",
+  enabled: true,
+  config: {}
+}')"
+
+guardrail "GR-L5-007 no-gpl-in-commercial" "$(jq -n '{
+  ruleKey: "GR-L5-007",
+  description: "ExternalDependencies with GPL-family licenses may impose copyleft obligations in commercial distribution.",
+  severity: "WARN",
+  enabled: true,
+  config: {}
 }')"
 
 echo ""

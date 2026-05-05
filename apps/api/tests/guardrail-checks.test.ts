@@ -219,3 +219,229 @@ describe("GuardrailsRegistry.evaluate — orchestration", () => {
   });
 });
 
+// ── GR-L3-004: ExternalSystem CRITICAL without fallbackStrategy ───────────────
+
+describe("built-in check: GR-L3-004 (ExternalSystem CRITICAL without fallbackStrategy)", () => {
+  it("fires for CRITICAL ExternalSystem with no fallbackStrategy", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "CRITICAL" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-004");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("fires for CRITICAL ExternalSystem with fallbackStrategy shorter than 20 chars", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "CRITICAL", fallbackStrategy: "short" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for CRITICAL ExternalSystem with valid fallbackStrategy (≥ 20 chars)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "CRITICAL", fallbackStrategy: "Degrade to read-only cache mode" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for HIGH ExternalSystem (only CRITICAL is in scope)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "HIGH" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for non-ExternalSystem nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "Service", attributes: { criticality: "CRITICAL" } }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-L3-005: ExternalSystem CRITICAL/HIGH without slaReference ──────────────
+
+describe("built-in check: GR-L3-005 (ExternalSystem CRITICAL/HIGH without slaReference)", () => {
+  it("fires for HIGH ExternalSystem with no slaReference", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "HIGH" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-005");
+    expect(violations[0]?.severity).toBe("ERROR");
+  });
+
+  it("fires for CRITICAL ExternalSystem with no slaReference", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "CRITICAL", fallbackStrategy: "Use secondary queue for all writes" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-005");
+  });
+
+  it("does not fire for HIGH ExternalSystem with valid slaReference (≥ 10 chars)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "HIGH", slaReference: "https://vendor.example/sla" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for MEDIUM ExternalSystem (below HIGH threshold)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "MEDIUM" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-L3-009: ExternalSystem review older than 180 days ─────────────────────
+
+describe("built-in check: GR-L3-009 (ExternalSystem stale review date)", () => {
+  it("fires when lastReviewDate is older than 180 days", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const staleDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { lastReviewDate: staleDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-009");
+    expect(violations[0]?.severity).toBe("WARN");
+  });
+
+  it("does not fire when lastReviewDate is within 180 days", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const recentDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { lastReviewDate: recentDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire when lastReviewDate is absent (handled by a separate ownership rule)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { criticality: "HIGH" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case last_review_date attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const staleDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ type: "ExternalSystem", layer: "L3", attributes: { last_review_date: staleDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+});
+
+// ── GR-L5-004: ExternalDependency CRITICAL without securityAuditDate ──────────
+
+describe("built-in check: GR-L5-004 (ExternalDependency CRITICAL without securityAuditDate)", () => {
+  it("fires for CRITICAL ExternalDependency with no securityAuditDate", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { criticality: "CRITICAL" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L5-004");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("does not fire for CRITICAL ExternalDependency with securityAuditDate set", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { criticality: "CRITICAL", securityAuditDate: "2026-01-15" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for HIGH ExternalDependency (only CRITICAL is in scope)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { criticality: "HIGH" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for non-ExternalDependency nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "Package", attributes: { criticality: "CRITICAL" } }));
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case security_audit_date attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { criticality: "CRITICAL", security_audit_date: "2026-01-15" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-L5-007: ExternalDependency with GPL-family license ────────────────────
+
+describe("built-in check: GR-L5-007 (ExternalDependency GPL license)", () => {
+  it("fires for ExternalDependency with GPL-3.0 license", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "GPL-3.0" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L5-007");
+    expect(violations[0]?.severity).toBe("WARN");
+    expect(violations[0]?.message).toContain("GPL-3.0");
+  });
+
+  it("fires for ExternalDependency with GPL-2.0-only license", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "GPL-2.0-only" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for ExternalDependency with LGPL-2.1 license (LGPL does not start with GPL)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "LGPL-2.1" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for ExternalDependency with MIT license", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "MIT" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire when license attribute is absent", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { criticality: "HIGH" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for non-ExternalDependency nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "Service", attributes: { license: "GPL-3.0" } }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
