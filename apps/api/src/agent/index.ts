@@ -212,11 +212,11 @@ export function agentRouter(
 
   // ── Semantic search: cosine similarity over node embeddings ────────────────
   app.post("/search/semantic", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = SemanticSearchSchema.parse(await c.req.json());
     if (!embeddingService) {
       return c.json({ error: "semantic search is not enabled (EMBEDDING_PROVIDER not set)" }, 503);
     }
-    const tenantId = getTenantId(c);
-    const body = SemanticSearchSchema.parse(await c.req.json());
 
     const vectorLiteral = await embeddingService.embedQuery(body.query);
 
