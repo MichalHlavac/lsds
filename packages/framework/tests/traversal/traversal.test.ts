@@ -167,6 +167,64 @@ describe("DefaultTraversalEngine", () => {
     expect(op.health.violations.map((v) => v.id)).toEqual(["v1"]);
     expect(full.health.violations.map((v) => v.id).sort()).toEqual(["v1", "v2"]);
   });
+
+  it("expired SUPPRESSED violations project as OPEN (kap. 2.5)", async () => {
+    // SUPPRESSED waivers are bounded to 90 days. Once `expiresAt` is in the
+    // past, the read-side projection used to assemble the LLM context must
+    // surface the violation as OPEN, otherwise stale rationales ride into
+    // the agent's prompt as live consent.
+    const { graph, endpoint } = buildExampleGraph();
+    const detectedAt = "2025-12-01T00:00:00Z";
+    graph.addViolation({
+      id: "v-stale",
+      rule_id: "GR-L4-006",
+      object_id: endpoint.id,
+      object_type: "APIEndpoint",
+      severity: "WARNING",
+      status: "SUPPRESSED",
+      detectedAt,
+      message: "Endpoint is DEPRECATED without sunset_date",
+      suppression: {
+        rationale: "tracked separately in SUNSET-42 — temporary",
+        suppressedAt: "2025-12-01T00:00:00Z",
+        expiresAt: "2026-02-15T00:00:00Z", // 76 days — valid window, but well in the past
+        suppressedBy: "user:michal",
+      },
+    });
+    graph.addViolation({
+      id: "v-fresh",
+      rule_id: "GR-L4-001",
+      object_id: endpoint.id,
+      object_type: "APIEndpoint",
+      severity: "ERROR",
+      status: "SUPPRESSED",
+      detectedAt: "2026-05-01T00:00:00Z",
+      message: "missing error_response — accepted risk for now",
+      suppression: {
+        rationale: "scheduled in next sprint via SVC-911 — confirmed",
+        suppressedAt: "2026-05-01T00:00:00Z",
+        expiresAt: "2030-01-01T00:00:00Z", // far future — still valid
+        suppressedBy: "user:michal",
+      },
+    });
+
+    const engine = new DefaultTraversalEngine(graph);
+    const pkg = await engine.traverse(endpoint.id, { profile: "OPERATIONAL" });
+
+    const stale = pkg.health.violations.find((v) => v.id === "v-stale");
+    const fresh = pkg.health.violations.find((v) => v.id === "v-fresh");
+    expect(stale).toBeDefined();
+    expect(fresh).toBeDefined();
+    // Drift guard: an expired SUPPRESSED must NOT appear as SUPPRESSED in
+    // the projected ViolationSummary; it is canonically OPEN until
+    // re-suppressed (canTransitionViolation already permits SUPPRESSED→OPEN).
+    expect(stale!.status).toBe("OPEN");
+    // Severity, ruleId, and inherited flag must be preserved verbatim.
+    expect(stale!.severity).toBe("WARNING");
+    expect(stale!.ruleId).toBe("GR-L4-006");
+    // A still-valid SUPPRESSED waiver continues to project as SUPPRESSED.
+    expect(fresh!.status).toBe("SUPPRESSED");
+  });
 });
 
 describe("token-aware truncation", () => {

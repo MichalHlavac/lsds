@@ -24,6 +24,7 @@ import type {
 } from "./relationship/types.js";
 import { getRelationshipDefinition } from "./relationship/registry.js";
 import type { Severity, ViolationStatus, Violation } from "./guardrail/index.js";
+import { isSuppressionExpired } from "./guardrail/violation.js";
 
 export type TraversalProfile = "OPERATIONAL" | "ANALYTICAL" | "FULL";
 
@@ -419,7 +420,17 @@ export class DefaultTraversalEngine implements TraversalEngine {
         id: v.id,
         ruleId: v.rule_id,
         severity: v.severity,
-        status: v.status,
+        // SUPPRESSED violations whose suppression window has lapsed must not
+        // ride into the LLM context as live consent — the canonical state is
+        // OPEN until re-suppressed (kap. 2.5; canTransitionViolation already
+        // permits SUPPRESSED→OPEN). The source record is left untouched here;
+        // a periodic worker materializes the actual lifecycle transition.
+        status:
+          v.status === "SUPPRESSED" &&
+          v.suppression &&
+          isSuppressionExpired(v.suppression)
+            ? "OPEN"
+            : v.status,
         message: v.message,
         inherited: Boolean(v.inherited),
       }));
