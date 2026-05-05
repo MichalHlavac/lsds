@@ -143,37 +143,57 @@ export function agentRouter(
       }
     }
 
-    // Fetch nodes with lifecycle filter; apply maxNodes cap
-    let nodes: NodeRow[] = [];
-    if (traversalIds.length > 0) {
-      nodes = await sql<NodeRow[]>`
-        SELECT * FROM nodes
-        WHERE id = ANY(${traversalIds})
-          AND tenant_id = ${tenantId}
-          AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
-      `;
-    }
+    // Single CTE: collapse nodes + edges + violations into one round-trip.
+    // json_agg preserves DB column names (snake_case); sc2cc converts them to
+    // camelCase to match the NodeRow/EdgeRow/ViolationRow interfaces.
+    const sc2cc = (rows: Array<Record<string, unknown>>) =>
+      rows.map((r) =>
+        Object.fromEntries(
+          Object.entries(r).map(([k, v]) => [
+            k.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase()),
+            v,
+          ])
+        )
+      );
+
+    const [ctx] = await sql<[{
+      nodesJson: Array<Record<string, unknown>> | null;
+      edgesJson: Array<Record<string, unknown>> | null;
+      violationsJson: Array<Record<string, unknown>> | null;
+    }]>`
+      WITH ctx_nodes AS (
+        ${traversalIds.length > 0
+          ? sql`SELECT * FROM nodes
+                WHERE id = ANY(${traversalIds})
+                  AND tenant_id = ${tenantId}
+                  AND lifecycle_status NOT IN ('ARCHIVED', 'PURGE')`
+          : sql`SELECT * FROM nodes WHERE FALSE`}
+      ),
+      all_ids(id) AS (
+        SELECT id FROM ctx_nodes
+        UNION ALL SELECT ${nodeId}::uuid
+      )
+      SELECT
+        COALESCE((SELECT json_agg(n.*) FROM ctx_nodes n), '[]'::json)              AS nodes_json,
+        COALESCE((SELECT json_agg(e.*) FROM edges e
+          WHERE e.tenant_id = ${tenantId}
+            AND e.source_id = ANY(SELECT id FROM all_ids)
+            AND e.target_id = ANY(SELECT id FROM all_ids)), '[]'::json)            AS edges_json,
+        COALESCE((SELECT json_agg(v.*) FROM violations v
+          WHERE v.tenant_id = ${tenantId}
+            AND v.node_id = ANY(SELECT id FROM all_ids)
+            AND v.resolved = FALSE), '[]'::json)                                   AS violations_json
+    `;
+
+    let nodes = sc2cc(ctx.nodesJson ?? []) as unknown as NodeRow[];
     const truncated = nodes.length > maxNodes;
     if (truncated) nodes = nodes.slice(0, maxNodes);
 
-    const allIds = [nodeId, ...nodes.map((n) => n.id)];
-
-    const edges =
-      allIds.length > 1
-        ? await sql<EdgeRow[]>`
-            SELECT * FROM edges
-            WHERE tenant_id = ${tenantId}
-              AND source_id = ANY(${allIds})
-              AND target_id = ANY(${allIds})
-          `
-        : ([] as EdgeRow[]);
-
-    const violations = await sql<ViolationRow[]>`
-      SELECT * FROM violations
-      WHERE tenant_id = ${tenantId}
-        AND node_id = ANY(${allIds})
-        AND resolved = FALSE
-    `;
+    const allIdSet = new Set([nodeId, ...nodes.map((n) => n.id)]);
+    const edges = (sc2cc(ctx.edgesJson ?? []) as unknown as EdgeRow[])
+      .filter((e) => allIdSet.has(e.sourceId) && allIdSet.has(e.targetId));
+    const violations = (sc2cc(ctx.violationsJson ?? []) as unknown as ViolationRow[])
+      .filter((v) => v.nodeId != null && allIdSet.has(v.nodeId));
 
     const payload = { root, nodes, edges, violations, profile, truncated };
     cache.traversals.set(cacheKey, payload);
