@@ -617,3 +617,113 @@ describe("GET /agent/v1/architect/requirements", () => {
     );
   });
 });
+
+// ── GET /agent/v1/architect/requirement-fulfillment ───────────────────────────
+
+describe("GET /agent/v1/architect/requirement-fulfillment", () => {
+  it("returns 400 when x-tenant-id header is missing", async () => {
+    const res = await app.request("/agent/v1/architect/requirement-fulfillment", {});
+    expect(res.status).toBe(400);
+  });
+
+  it("returns empty result when no APPROVED requirements exist", async () => {
+    // IMPLEMENTED and OBSOLETE requirements must not appear
+    await createNode("L1", "Done Req", "Requirement", { status: "IMPLEMENTED" });
+    await createNode("L1", "Old Req", "Requirement", { status: "OBSOLETE" });
+
+    const res = await app.request("/agent/v1/architect/requirement-fulfillment", {
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.summary.total).toBe(0);
+    expect(data.summary.gap).toBe(0);
+    expect(data.summary.reflected).toBe(0);
+    expect(data.gaps).toEqual([]);
+    expect(data.requirements).toEqual([]);
+  });
+
+  it("classifies APPROVED requirement with no linked nodes as gap", async () => {
+    const req = await createNode("L1", "Unlinked Req", "Requirement", {
+      status: "APPROVED",
+      requirementType: "FUNCTIONAL",
+    });
+
+    const res = await app.request("/agent/v1/architect/requirement-fulfillment", {
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.summary.total).toBe(1);
+    expect(data.summary.gap).toBe(1);
+    expect(data.summary.reflected).toBe(0);
+    const gap = data.gaps.find((r: { id: string }) => r.id === req.id);
+    expect(gap).toBeDefined();
+    expect(gap.fulfillmentStatus).toBe("gap");
+  });
+
+  it("classifies APPROVED requirement as reflected when a linked neighbor has post-approval history", async () => {
+    // Create requirement first (establishes approvedAt = req.updatedAt = T1)
+    const req = await createNode("L1", "Linked Req", "Requirement", {
+      status: "APPROVED",
+      requirementType: "FUNCTIONAL",
+    });
+    // Create a service node AFTER the requirement — its node_history.changed_at > req.updatedAt
+    const svc = await createNode("L4", "PaymentService", "Service");
+    await createEdge(svc.id, req.id, "motivated-by");
+
+    const res = await app.request("/agent/v1/architect/requirement-fulfillment", {
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const found = data.requirements.find((r: { id: string }) => r.id === req.id);
+    expect(found).toBeDefined();
+    expect(found.fulfillmentStatus).toBe("reflected");
+    expect(data.summary.reflected).toBe(1);
+    expect(data.summary.gap).toBe(0);
+    // reflected items must not appear in gaps
+    expect(data.gaps.find((r: { id: string }) => r.id === req.id)).toBeUndefined();
+  });
+
+  it("excludes non-APPROVED requirements (IMPLEMENTED, OBSOLETE, PROPOSED)", async () => {
+    await createNode("L1", "Impl Req", "Requirement", { status: "IMPLEMENTED" });
+    await createNode("L1", "Obs Req", "Requirement", { status: "OBSOLETE" });
+    await createNode("L1", "Draft Req", "Requirement", { status: "PROPOSED" });
+
+    const res = await app.request("/agent/v1/architect/requirement-fulfillment", {
+      headers: h(),
+    });
+    const { data } = await res.json();
+    expect(data.summary.total).toBe(0);
+  });
+
+  it("returns consistent summary totals", async () => {
+    const req1 = await createNode("L1", "Gap Req", "Requirement", { status: "APPROVED" });
+    const req2 = await createNode("L1", "Reflected Req", "Requirement", { status: "APPROVED" });
+    const svc = await createNode("L4", "AuthService", "Service");
+    await createEdge(svc.id, req2.id, "motivated-by");
+
+    const res = await app.request("/agent/v1/architect/requirement-fulfillment", {
+      headers: h(),
+    });
+    const { data } = await res.json();
+    expect(data.summary.total).toBe(2);
+    expect(data.summary.gap + data.summary.reflected).toBe(data.summary.total);
+    // req1 has no linked nodes → gap
+    expect(data.gaps.some((r: { id: string }) => r.id === req1.id)).toBe(true);
+    // req2 has a linked node created after it → reflected
+    expect(data.requirements.find((r: { id: string }) => r.id === req2.id)?.fulfillmentStatus).toBe("reflected");
+  });
+
+  it("includes scannedAt and approvedAt timestamps", async () => {
+    await createNode("L1", "TS Req", "Requirement", { status: "APPROVED" });
+
+    const res = await app.request("/agent/v1/architect/requirement-fulfillment", {
+      headers: h(),
+    });
+    const { data } = await res.json();
+    expect(data.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(data.requirements[0].approvedAt).toBeTruthy();
+  });
+});

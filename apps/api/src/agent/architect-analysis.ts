@@ -434,6 +434,77 @@ export async function adrCoverageAnalysis(sql: Sql, tenantId: string, minEdges: 
   };
 }
 
+// Scan APPROVED requirements for implementation gaps using node_history as the
+// mutation signal. A requirement is "reflected" when at least one active-edge
+// neighbor has a node_history entry recorded after the requirement's updatedAt
+// (proxy for approval time). All others are "gap" items.
+export async function requirementFulfillmentScan(sql: Sql, tenantId: string) {
+  const requirements = await sql<NodeRow[]>`
+    SELECT * FROM nodes
+    WHERE tenant_id = ${tenantId}
+      AND type = 'Requirement'
+      AND lifecycle_status NOT IN ('PURGE')
+      AND attributes->>'status' = 'APPROVED'
+    ORDER BY updated_at DESC
+  `;
+
+  if (requirements.length === 0) {
+    return {
+      scannedAt: new Date().toISOString(),
+      summary: { total: 0, gap: 0, reflected: 0 },
+      gaps: [],
+      requirements: [] as never[],
+    };
+  }
+
+  const reqIds = requirements.map((r) => r.id);
+
+  // For each APPROVED requirement, check if any linked neighbor node has a
+  // node_history entry with changed_at >= req.updated_at. Using >= so that
+  // nodes created in the same database transaction as the approval are counted.
+  const reflectedRows = await sql<{ reqId: string }[]>`
+    SELECT DISTINCT
+      CASE WHEN e.source_id = ANY(${reqIds}::uuid[]) THEN e.source_id ELSE e.target_id END AS req_id
+    FROM edges e
+    JOIN nodes req_node ON req_node.id =
+      CASE WHEN e.source_id = ANY(${reqIds}::uuid[]) THEN e.source_id ELSE e.target_id END
+    JOIN node_history nh ON nh.tenant_id = ${tenantId}
+      AND nh.node_id =
+        CASE WHEN e.source_id = ANY(${reqIds}::uuid[]) THEN e.target_id ELSE e.source_id END
+      AND nh.changed_at >= req_node.updated_at
+    WHERE e.tenant_id = ${tenantId}
+      AND e.lifecycle_status = 'ACTIVE'
+      AND (e.source_id = ANY(${reqIds}::uuid[]) OR e.target_id = ANY(${reqIds}::uuid[]))
+  `;
+
+  const reflectedSet = new Set(reflectedRows.map((r) => r.reqId));
+
+  const classified = requirements.map((req) => {
+    const fulfillmentStatus: "gap" | "reflected" = reflectedSet.has(req.id) ? "reflected" : "gap";
+    return {
+      id: req.id,
+      name: req.name,
+      approvedAt: req.updatedAt,
+      fulfillmentStatus,
+    };
+  });
+
+  const summary = classified.reduce(
+    (acc, r) => {
+      acc[r.fulfillmentStatus]++;
+      return acc;
+    },
+    { total: classified.length, gap: 0, reflected: 0 },
+  );
+
+  return {
+    scannedAt: new Date().toISOString(),
+    summary,
+    gaps: classified.filter((r) => r.fulfillmentStatus === "gap"),
+    requirements: classified,
+  };
+}
+
 export async function requirementsFulfillment(sql: Sql, tenantId: string) {
   const requirements = await sql<NodeRow[]>`
     SELECT * FROM nodes

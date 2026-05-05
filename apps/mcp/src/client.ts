@@ -310,6 +310,9 @@ export function createLsdsClient(config: LsdsClientConfig) {
       const qs = minEdges != null ? `?minEdges=${minEdges}` : "";
       return req("GET", `/agent/v1/architect/adr-coverage${qs}`);
     },
+
+    architectRequirementFulfillment: () =>
+      req("GET", "/agent/v1/architect/requirement-fulfillment"),
   };
 }
 

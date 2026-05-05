@@ -821,6 +821,20 @@ server.tool(
   }
 );
 
+server.tool(
+  "lsds_architect_requirement_fulfillment",
+  "Scan APPROVED requirements against the architecture knowledge graph to identify implementation gaps. For each APPROVED requirement, checks whether any directly-linked neighbor node has a mutation recorded in the graph history since the requirement was approved. Returns a 'gaps' list of requirements with no post-approval graph work, plus a full classification. Use this to surface requirements that are specified but not yet reflected in the architecture.",
+  {},
+  async () => {
+    try {
+      const data = await client.architectRequirementFulfillment();
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
