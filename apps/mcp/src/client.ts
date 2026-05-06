@@ -313,6 +313,26 @@ export function createLsdsClient(config: LsdsClientConfig) {
 
     architectRequirementFulfillment: () =>
       req("GET", "/agent/v1/architect/requirement-fulfillment"),
+
+    impactPredict: (body: {
+      changeType: "create" | "update" | "delete";
+      nodeId?: string;
+      proposedNode?: {
+        type: string;
+        layer: string;
+        name: string;
+        version?: string;
+        lifecycleStatus?: string;
+        attributes?: Record<string, unknown>;
+      };
+      edgeChanges?: Array<{
+        fromId: string;
+        toId: string;
+        edgeType: string;
+        action: "add" | "remove";
+      }>;
+      maxDepth?: number;
+    }) => req("POST", "/agent/v1/architect/impact-predict", body),
   };
 }
 
