@@ -9,7 +9,7 @@ export const requestLoggerMiddleware = createMiddleware(async (c, next) => {
   await next();
   const duration = Date.now() - start;
   const log = c.get("log") ?? logger;
-  const tenantId = c.req.header("X-Tenant-Id");
+  const tenantId = c.req.header("X-Tenant-Id") ?? c.get("tenantId");
   const entry: Record<string, unknown> = {
     method: c.req.method,
     path: c.req.path,

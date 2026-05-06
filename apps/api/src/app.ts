@@ -29,6 +29,7 @@ import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
 import { requestLoggerMiddleware } from "./middleware/request-logger.js";
+import { rateLimitMiddleware } from "./middleware/rate-limit.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
@@ -68,6 +69,8 @@ app.use("/v1/*", apiKeyMiddleware(sql));
 app.use("/agent/*", apiKeyMiddleware(sql));
 app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
+app.use("/v1/*", rateLimitMiddleware);
+app.use("/agent/*", rateLimitMiddleware);
 
 const v1 = new Hono();
 v1.route("/nodes", nodesRouter(sql, cache, lifecycle, embeddingService, guardrails));
