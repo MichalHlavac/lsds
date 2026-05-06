@@ -12,6 +12,7 @@ import {
   UpdateNodeSchema,
   LifecycleTransitionSchema,
   BatchLifecycleSchema,
+  SearchByAttributesSchema,
   NODE_SORT_FIELDS,
   SORT_ORDER_VALUES,
   type NodeSortField,
@@ -201,6 +202,39 @@ export function nodesRouter(
     const namingGuidance = getNamingGuidance(body.type, body.name);
 
     return c.json({ data: { violations, suggestions, namingGuidance } });
+  });
+
+  app.get("/search", async (c) => {
+    const tenantId = getTenantId(c);
+    const attributesRaw = c.req.query("attributes");
+
+    if (!attributesRaw) {
+      return c.json({ error: "attributes query param is required" }, 400);
+    }
+
+    let parsedAttrs: unknown;
+    try {
+      parsedAttrs = JSON.parse(attributesRaw);
+    } catch {
+      return c.json({ error: "attributes must be valid JSON" }, 400);
+    }
+
+    const limitRaw = c.req.query("limit");
+    const { attributes, nodeType, limit } = SearchByAttributesSchema.parse({
+      attributes: parsedAttrs,
+      nodeType: c.req.query("type") || undefined,
+      limit: limitRaw !== undefined ? Number(limitRaw) : undefined,
+    });
+
+    const rows = await sql<NodeRow[]>`
+      SELECT * FROM nodes
+      WHERE tenant_id = ${tenantId}
+        AND attributes @> ${jsonb(sql, attributes)}
+        ${nodeType ? sql`AND type = ${nodeType}` : sql``}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+    return c.json({ data: rows });
   });
 
   app.get("/:id", async (c) => {

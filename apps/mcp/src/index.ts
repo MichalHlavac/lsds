@@ -88,6 +88,35 @@ server.tool(
 );
 
 server.tool(
+  "lsds_search_by_attributes",
+  "Find knowledge graph nodes whose JSONB attributes contain all the specified key-value pairs (containment match). Use this when you know an attribute value and want to find every node that carries it — for example, all nodes with owner.id='team-payments' or criticality='CRITICAL'. Returns up to 50 matches by default.",
+  {
+    attributes: z
+      .record(z.unknown())
+      .describe("JSONB containment filter: returned nodes must have attributes that contain all specified key-value pairs"),
+    nodeType: z
+      .string()
+      .optional()
+      .describe("Optional node type filter, e.g. 'Service', 'BoundedContext'"),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe("Maximum number of results to return (default 50)"),
+  },
+  async (params) => {
+    try {
+      const data = await client.searchByAttributes(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
   "lsds_semantic_search",
   "Search for knowledge graph nodes by semantic meaning using vector similarity. Returns nodes ranked by cosine similarity to the query. Requires embeddings to have been generated (EMBEDDING_PROVIDER must be set). Use this when a keyword search would miss semantically related but differently-named nodes.",
   {
