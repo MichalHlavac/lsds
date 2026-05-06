@@ -13,6 +13,7 @@ import {
   debtAggregation,
   adrCoverageAnalysis,
   requirementsFulfillment,
+  requirementFulfillmentScan,
   SnapshotNotFoundError,
 } from "./architect-analysis.js";
 
@@ -84,6 +85,16 @@ export function architectRouter(sql: Sql, guardrails: GuardrailsRegistry): Hono 
   app.get("/requirements", async (c) => {
     const tenantId = getTenantId(c);
     const data = await requirementsFulfillment(sql, tenantId);
+    return c.json({ data });
+  });
+
+  // ── Requirement fulfillment gap scan (kap. 6.3 cap. 4/4) ───────────────────
+  // Focused scan: APPROVED requirements only. Checks node_history for mutations
+  // on linked neighbor nodes since approval. Surfaces requirements with no
+  // post-approval graph work ("gap"). Returns gaps[] for easy triage.
+  app.get("/requirement-fulfillment", async (c) => {
+    const tenantId = getTenantId(c);
+    const data = await requirementFulfillmentScan(sql, tenantId);
     return c.json({ data });
   });
 
