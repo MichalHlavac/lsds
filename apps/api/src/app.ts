@@ -25,6 +25,7 @@ import { snapshotsRouter } from "./routes/snapshots.js";
 import { layersRouter } from "./routes/layers.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
+import { requestLoggerMiddleware } from "./middleware/request-logger.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
@@ -49,6 +50,7 @@ app.use(
 );
 
 app.use("*", requestIdMiddleware);
+app.use("*", requestLoggerMiddleware);
 
 app.get("/health", async (c) => {
   try {
