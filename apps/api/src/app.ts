@@ -27,6 +27,7 @@ import { apiKeysRouter } from "./routes/api-keys.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
+import { requestLoggerMiddleware } from "./middleware/request-logger.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
 const adapter = new PostgresTraversalAdapter(sql);
@@ -51,6 +52,7 @@ app.use(
 );
 
 app.use("*", requestIdMiddleware);
+app.use("*", requestLoggerMiddleware);
 
 app.get("/health", async (c) => {
   try {
