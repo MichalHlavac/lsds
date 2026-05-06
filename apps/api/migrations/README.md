@@ -17,6 +17,15 @@ to `main` requires explicit CTO authorization recorded as a PR comment.
    gh pr merge <pr-number> --repo MichalHlavac/lsds --squash --delete-branch
    ```
 
+## Rebase / fixup rule
+
+**Any new commits pushed to the PR after the authorization comment invalidate that authorization.**
+The `migration-auth` check verifies that the `merge-authorized` comment was posted *after* the
+latest commit on the branch. If the PR is rebased onto a newer `main` or a fixup is pushed, the
+CTO must re-review the updated diff and post a fresh `merge-authorized: <PR-number>` comment.
+
+This ensures the authorized diff matches what was actually merged.
+
 ## Why these restrictions
 
 Schema migrations are irreversible changes to the production database schema. ADR A4
