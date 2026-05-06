@@ -31,5 +31,6 @@
 - [ ] This PR modifies `apps/api/migrations/` — CTO authorization required before merge
 
 <!-- If migration files changed: @MichalHlavac must comment "merge-authorized: <PR-number>"
-     The migration-auth CI check will fail until this token is present.
+     AFTER the most recent push. Any new commits (rebase, fixup) invalidate prior authorization.
+     The migration-auth CI check will fail until a post-push token is present.
      See apps/api/migrations/README.md for the full process. -->
