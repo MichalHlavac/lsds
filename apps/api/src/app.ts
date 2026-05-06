@@ -23,7 +23,9 @@ import { architectRouter } from "./agent/architect.js";
 import { migrationRouter } from "./agent/migration.js";
 import { snapshotsRouter } from "./routes/snapshots.js";
 import { layersRouter } from "./routes/layers.js";
+import { apiKeysRouter } from "./routes/api-keys.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
+import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
@@ -41,7 +43,7 @@ app.use(
   "*",
   cors({
     origin: corsOrigin.includes(",") ? corsOrigin.split(",").map((o) => o.trim()) : corsOrigin,
-    allowHeaders: ["Authorization", "Content-Type", "X-Tenant-Id", "X-Request-Id"],
+    allowHeaders: ["Authorization", "Content-Type", "X-Tenant-Id", "X-Request-Id", "X-Api-Key"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
     maxAge: 600,
@@ -59,6 +61,8 @@ app.get("/health", async (c) => {
   }
 });
 
+app.use("/v1/*", apiKeyMiddleware(sql));
+app.use("/agent/*", apiKeyMiddleware(sql));
 app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
 
@@ -74,6 +78,7 @@ v1.route("/teams", teamsRouter(sql));
 v1.route("/query", queryRouter(sql));
 v1.route("/snapshots", snapshotsRouter(sql));
 v1.route("/layers", layersRouter(sql));
+v1.route("/api-keys", apiKeysRouter(sql));
 
 app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle, embeddingService));
