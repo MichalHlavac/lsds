@@ -122,6 +122,16 @@ export interface GuardrailRow {
   updatedAt: Date;
 }
 
+export interface ApiKeyRow {
+  id: string;
+  tenantId: string;
+  name: string;
+  keyHash: string;
+  keyPrefix: string;
+  createdAt: Date;
+  revokedAt: Date | null;
+}
+
 export interface MigrationDraftRow {
   id: string;
   tenantId: string;
