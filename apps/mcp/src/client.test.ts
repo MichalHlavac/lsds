@@ -529,4 +529,45 @@ describe("createLsdsClient", () => {
     expect(body.edgeChanges[0].action).toBe("add");
     expect(body.maxDepth).toBe(2);
   });
+
+  it("architectAdrCoverage sends GET to /agent/v1/architect/adr-coverage without minEdges", async () => {
+    const response = { scannedAt: "2026-01-01T00:00:00.000Z", uncoveredNodes: [], coveragePercent: 100 };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectAdrCoverage();
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/adr-coverage");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("architectAdrCoverage appends ?minEdges when provided", async () => {
+    const fetch = mockFetch({ data: { scannedAt: "2026-01-01T00:00:00.000Z", uncoveredNodes: [], coveragePercent: 80 } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.architectAdrCoverage(5);
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/adr-coverage?minEdges=5");
+  });
+
+  it("architectRequirementFulfillment sends GET to /agent/v1/architect/requirement-fulfillment", async () => {
+    const response = { scannedAt: "2026-01-01T00:00:00.000Z", requirements: [], fulfilledCount: 0, totalCount: 0 };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectRequirementFulfillment();
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/requirement-fulfillment");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
 });
