@@ -13,6 +13,7 @@ import {
   LifecycleTransitionSchema,
   BatchLifecycleSchema,
   SearchByAttributesSchema,
+  SimilarNodesSchema,
   NODE_SORT_FIELDS,
   SORT_ORDER_VALUES,
   type NodeSortField,
@@ -388,6 +389,59 @@ export function nodesRouter(
     const result = { outbound: outboundNodes, inbound: inboundNodes };
     cache.traversals.set(cacheKey, result);
     return c.json({ data: result });
+  });
+
+  // POST /similar — cosine-similarity nearest-neighbour over node_embeddings.
+  // Embeddings are populated by callers (MCP/agent); this endpoint is query-only.
+  app.post("/similar", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = SimilarNodesSchema.parse(await c.req.json());
+    const { nodeId, topK, threshold, model } = body;
+
+    const [root] = await sql<[{ id: string }]>`
+      SELECT id FROM nodes WHERE id = ${nodeId} AND tenant_id = ${tenantId}
+    `;
+    if (!root) return c.json({ error: "not found" }, 404);
+
+    const [rootEmb] = await sql<[{ embedding: string }]>`
+      SELECT embedding::text AS embedding
+      FROM node_embeddings
+      WHERE node_id = ${nodeId} AND tenant_id = ${tenantId}
+        ${model ? sql`AND model = ${model}` : sql``}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    if (!rootEmb?.embedding) {
+      return c.json({ error: "node has no embedding" }, 422);
+    }
+
+    const emb = rootEmb.embedding;
+
+    const rows = await sql<Array<NodeRow & { score: number }>>`
+      WITH closest AS (
+        SELECT ne.node_id,
+          (1 - (ne.embedding <=> ${emb}::vector))::float AS score
+        FROM node_embeddings ne
+        WHERE ne.tenant_id = ${tenantId}
+          AND ne.node_id != ${nodeId}
+          ${model ? sql`AND ne.model = ${model}` : sql``}
+        ORDER BY ne.embedding <=> ${emb}::vector
+        LIMIT ${topK}
+      )
+      SELECT
+        n.id, n.tenant_id, n.type, n.layer, n.name, n.version,
+        n.lifecycle_status, n.attributes, n.created_at, n.updated_at,
+        n.deprecated_at, n.archived_at, n.purge_after,
+        c.score
+      FROM closest c
+      JOIN nodes n ON n.id = c.node_id
+      WHERE n.tenant_id = ${tenantId}
+        AND n.lifecycle_status NOT IN ('ARCHIVED', 'PURGE')
+        ${threshold !== undefined ? sql`AND c.score >= ${threshold}` : sql``}
+      ORDER BY c.score DESC
+    `;
+
+    return c.json({ data: rows.map(({ score, ...node }) => ({ node, score })) });
   });
 
   app.get("/:id/history", async (c) => {

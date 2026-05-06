@@ -193,6 +193,13 @@ export const SearchByAttributesSchema = z.object({
 });
 export type SearchByAttributes = z.infer<typeof SearchByAttributesSchema>;
 
+export const SimilarNodesSchema = z.object({
+  nodeId: z.string().uuid(),
+  topK: z.number().int().positive().max(100).optional().default(10),
+  threshold: z.number().min(0).max(1).optional(),
+  model: z.string().optional(),
+});
+
 export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;
 export type NodeSortField = (typeof NODE_SORT_FIELDS)[number];
 
