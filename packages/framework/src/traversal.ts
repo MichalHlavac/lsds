@@ -144,6 +144,16 @@ export interface TraversalOptions {
 
 export interface TraversalEngine {
   traverse(rootId: string, options?: TraversalOptions): Promise<ContextPackage>;
+  /**
+   * Semantic nearest-neighbour search — returns nodes ranked by cosine
+   * similarity to the root node's embedding (A10).
+   * Optional stub: full implementation in Core Application layer.
+   */
+  similarNodes?(
+    rootId: string,
+    topK?: number,
+    threshold?: number,
+  ): Promise<Array<{ nodeId: string; score: number }>>;
 }
 
 /**
