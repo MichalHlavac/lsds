@@ -159,6 +159,13 @@ export const CreateSnapshotSchema = z.object({
   snapshotData: z.record(z.unknown()).optional().default({}),
 });
 
+export const SearchByAttributesSchema = z.object({
+  nodeType: z.string().min(1).optional(),
+  attributes: z.record(z.unknown()),
+  limit: z.number().int().positive().max(500).optional().default(50),
+});
+export type SearchByAttributes = z.infer<typeof SearchByAttributesSchema>;
+
 export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;
 export type NodeSortField = (typeof NODE_SORT_FIELDS)[number];
 
