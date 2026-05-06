@@ -6,6 +6,9 @@ import { HTTPException } from "hono/http-exception";
 import type { Sql } from "../db/client.js";
 
 export function getTenantId(c: Context): string {
+  // API key middleware sets this when a valid key is present
+  const fromContext = c.get("tenantId");
+  if (fromContext) return fromContext;
   const tenantId = c.req.header("x-tenant-id");
   if (!tenantId) throw new HTTPException(400, { message: "missing x-tenant-id header" });
   return tenantId;
