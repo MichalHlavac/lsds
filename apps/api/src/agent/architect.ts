@@ -5,13 +5,14 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getTenantId } from "../routes/util.js";
-import { AgentAnalyzeSchema } from "../routes/schemas.js";
+import { AgentAnalyzeSchema, ImpactPredictSchema } from "../routes/schemas.js";
 import {
   analyzeNodes,
   consistencyScan,
   driftAnalysis,
   debtAggregation,
   adrCoverageAnalysis,
+  impactPredict,
   requirementsFulfillment,
   requirementFulfillmentScan,
   SnapshotNotFoundError,
@@ -85,6 +86,18 @@ export function architectRouter(sql: Sql, guardrails: GuardrailsRegistry): Hono 
   app.get("/requirements", async (c) => {
     const tenantId = getTenantId(c);
     const data = await requirementsFulfillment(sql, tenantId);
+    return c.json({ data });
+  });
+
+  // ── Pre-change impact analysis ──────────────────────────────────────────────
+  // Simulates a proposed node/edge change in-memory, traverses neighbors up to
+  // maxDepth, runs guardrails against the proposed state, and flags L1/L2 blast
+  // radius per ADR A4 layer-dependent policy. Never writes to DB.
+  app.post("/impact-predict", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = ImpactPredictSchema.parse(await c.req.json());
+    const data = await impactPredict(sql, guardrails, tenantId, body);
+    if (data === null) return c.json({ error: "node not found" }, 404);
     return c.json({ data });
   });
 
