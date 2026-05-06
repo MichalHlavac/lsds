@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@lsds/framework": path.resolve(__dirname, "../../packages/framework/src/index.ts"),
+      "@lsds/shared": path.resolve(__dirname, "../../packages/shared/src/index.ts"),
     },
   },
   test: {
