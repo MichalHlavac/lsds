@@ -345,6 +345,26 @@ export function createLsdsClient(config: LsdsClientConfig) {
       }>;
       maxDepth?: number;
     }) => req("POST", "/agent/v1/architect/impact-predict", body),
+
+    // ── Bulk Import ────────────────────────────────────────────────────────
+    bulkImport: (body: {
+      nodes: Array<{
+        type: string;
+        layer: string;
+        name: string;
+        version?: string;
+        lifecycleStatus?: string;
+        attributes?: Record<string, unknown>;
+      }>;
+      edges?: Array<{
+        sourceId: string;
+        targetId: string;
+        type: string;
+        layer: string;
+        traversalWeight?: number;
+        attributes?: Record<string, unknown>;
+      }>;
+    }) => req("POST", "/v1/import/bulk", body),
   };
 }
 
