@@ -835,6 +835,67 @@ server.tool(
   }
 );
 
+// ── Impact analysis tools ────────────────────────────────────────────────────
+
+server.tool(
+  "lsds_impact_predict",
+  "Predict the blast radius of a proposed node or edge change before committing it. Traverses the knowledge graph to find downstream neighbors, runs guardrail checks against the simulated proposed state in-memory (nothing is written), and flags whether any L1/L2 (Business/Domain) nodes would be affected — requiring explicit confirmation before the change is applied. Use before lsds_create_node, lsds_update_node, or lsds_delete_node to proactively surface architectural risk.",
+  {
+    changeType: z
+      .enum(["create", "update", "delete"])
+      .describe("Type of change to simulate"),
+    nodeId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("UUID of the existing node (required for update/delete, omit for create)"),
+    proposedNode: z
+      .object({
+        type: z.string().min(1).describe("Node type, e.g. 'Service', 'BoundedContext'"),
+        layer: z
+          .enum(["L1", "L2", "L3", "L4", "L5", "L6"])
+          .describe("Architecture layer"),
+        name: z.string().min(1).describe("Proposed node name"),
+        version: z.string().optional().describe("Semantic version"),
+        lifecycleStatus: z
+          .enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"])
+          .optional()
+          .describe("Lifecycle status (default ACTIVE)"),
+        attributes: z.record(z.unknown()).optional().describe("JSONB attributes"),
+      })
+      .optional()
+      .describe("Proposed node state (required for create, optional for update)"),
+    edgeChanges: z
+      .array(
+        z.object({
+          fromId: z.string().uuid().describe("Source node UUID"),
+          toId: z.string().uuid().describe("Target node UUID"),
+          edgeType: z.string().min(1).describe("Edge type, e.g. 'DEPENDS_ON'"),
+          action: z
+            .enum(["add", "remove"])
+            .describe("Whether to add or remove this edge in the simulation"),
+        })
+      )
+      .optional()
+      .describe("Edge changes to include in the blast-radius simulation"),
+    maxDepth: z
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .optional()
+      .describe("Traversal depth for blast radius (default 3)"),
+  },
+  async (params) => {
+    try {
+      const data = await client.impactPredict(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();

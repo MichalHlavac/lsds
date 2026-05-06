@@ -148,6 +148,33 @@ export const KnowledgeContextSchema = z.object({
 });
 export type KnowledgeContext = z.infer<typeof KnowledgeContextSchema>;
 
+export const ImpactPredictSchema = z.object({
+  changeType: z.enum(["create", "update", "delete"]),
+  nodeId: z.string().uuid().optional(),
+  proposedNode: z
+    .object({
+      type: z.string().min(1),
+      layer: LayerEnum,
+      name: z.string().min(1),
+      version: z.string().optional(),
+      lifecycleStatus: LifecycleEnum.optional(),
+      attributes: z.record(z.unknown()).optional().default({}),
+    })
+    .optional(),
+  edgeChanges: z
+    .array(
+      z.object({
+        fromId: z.string().uuid(),
+        toId: z.string().uuid(),
+        edgeType: z.string().min(1),
+        action: z.enum(["add", "remove"]),
+      })
+    )
+    .optional(),
+  maxDepth: z.number().int().min(1).max(10).optional().default(3),
+});
+export type ImpactPredict = z.infer<typeof ImpactPredictSchema>;
+
 export const LifecycleTransitionSchema = z.object({
   transition: z.enum(["deprecate", "archive", "purge"]),
 });
