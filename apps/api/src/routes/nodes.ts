@@ -242,7 +242,12 @@ export function nodesRouter(
       RETURNING *
     `;
     if (!row) return c.json({ error: "not found" }, 404);
-    cache.invalidateNode(tenantId, id);
+    const neighborEdges = await sql<{ sourceId: string; targetId: string }[]>`
+      SELECT DISTINCT source_id, target_id FROM edges
+      WHERE tenant_id = ${tenantId} AND (source_id = ${id} OR target_id = ${id})
+    `;
+    const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
+    cache.invalidateNode(tenantId, id, neighborIds);
     await recordNodeHistory(sql, tenantId, id, "UPDATE", previous, row);
     // `type` and `layer` are not in UpdateNodeSchema (immutable after creation), so
     // only `name` and `attributes` can affect the embedded text.
@@ -305,8 +310,13 @@ export function nodesRouter(
       return c.json({ error: `retention period of ${retentionDays} days has not elapsed since archival` }, 422);
     }
 
+    const neighborEdges = await sql<{ sourceId: string; targetId: string }[]>`
+      SELECT DISTINCT source_id, target_id FROM edges
+      WHERE tenant_id = ${tenantId} AND (source_id = ${id} OR target_id = ${id})
+    `;
+    const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
     await sql`DELETE FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
-    cache.invalidateNode(tenantId, id);
+    cache.invalidateNode(tenantId, id, neighborIds);
     return c.json({ data: { id } });
   });
 
