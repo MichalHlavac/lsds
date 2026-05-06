@@ -15,6 +15,7 @@ export * from "./types/l5/index.js";
 export * from "./types/l6/index.js";
 export * from "./relationship/index.js";
 export * from "./traversal.js";
+export * from "./persistence/index.js";
 export * from "./lifecycle.js";
 export * from "./types.js";
 export * from "./guardrail/index.js";

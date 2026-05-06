@@ -11,7 +11,7 @@ import {
   type ContextPackage,
 } from "../../src/traversal.js";
 
-import { InMemoryGraph, makeEdge, makeNode, resetCounter } from "./in-memory-graph.js";
+import { InMemoryGraphRepository, makeEdge, makeNode, resetCounter } from "./in-memory-graph.js";
 
 beforeEach(() => resetCounter());
 
@@ -28,7 +28,7 @@ beforeEach(() => resetCounter());
 //                             └─ motivated-by ──> Requirement (L1, LAZY)
 //
 function buildExampleGraph(): {
-  graph: InMemoryGraph;
+  graph: InMemoryGraphRepository;
   endpoint: ReturnType<typeof makeNode>;
   service: ReturnType<typeof makeNode>;
   component: ReturnType<typeof makeNode>;
@@ -47,7 +47,7 @@ function buildExampleGraph(): {
   const adr = makeNode({ id: "adr-1", type: "ADR", layer: "L3", name: "ADR-042 REST over GraphQL" });
   const requirement = makeNode({ id: "req-1", type: "Requirement", layer: "L1", name: "Customers can place orders" });
 
-  const graph = new InMemoryGraph();
+  const graph = new InMemoryGraphRepository();
   for (const n of [capability, context, component, service, endpoint, external, adr, requirement]) {
     graph.addNode(n);
   }
@@ -231,7 +231,7 @@ describe("token-aware truncation", () => {
   // Build a wide graph so we can prove truncation drops downward first and
   // preserves upward context (kap. 6.1).
   function buildWideGraph(downwardCount: number, upwardCount: number) {
-    const graph = new InMemoryGraph();
+    const graph = new InMemoryGraphRepository();
     const root = makeNode({ id: "root", type: "Service", layer: "L4", name: "RootService" });
     graph.addNode(root);
 

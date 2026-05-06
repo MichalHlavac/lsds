@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-// In-memory GraphRepository fixture for framework tests.
-// Lives next to the tests so it never leaks into production builds.
+// Test fixtures for traversal specs. The repository class itself now lives in
+// `src/persistence/InMemoryGraphRepository`; only the test-only node/edge
+// factories stay here (deterministic ids + frozen timestamps).
 
 import type { LayerId } from "../../src/layer/index.js";
 import type { Lifecycle } from "../../src/lifecycle.js";
@@ -11,49 +12,8 @@ import type {
   RelationshipEdge,
   RelationshipType,
 } from "../../src/relationship/types.js";
-import type { GraphRepository, ViolationRecord } from "../../src/traversal.js";
 
-export class InMemoryGraph implements GraphRepository {
-  readonly nodes = new Map<string, TknBase>();
-  readonly edges: RelationshipEdge[] = [];
-  readonly violations: ViolationRecord[] = [];
-
-  addNode(node: TknBase): this {
-    this.nodes.set(node.id, node);
-    return this;
-  }
-
-  addEdge(edge: RelationshipEdge): this {
-    this.edges.push(edge);
-    return this;
-  }
-
-  addViolation(v: ViolationRecord): this {
-    this.violations.push(v);
-    return this;
-  }
-
-  async getNode(id: string): Promise<TknBase | null> {
-    return this.nodes.get(id) ?? null;
-  }
-
-  async getNodes(ids: ReadonlyArray<string>): Promise<TknBase[]> {
-    return ids.map((id) => this.nodes.get(id)).filter((n): n is TknBase => n !== undefined);
-  }
-
-  async getOutgoingEdges(nodeId: string): Promise<RelationshipEdge[]> {
-    return this.edges.filter((e) => e.sourceTknId === nodeId);
-  }
-
-  async getIncomingEdges(nodeId: string): Promise<RelationshipEdge[]> {
-    return this.edges.filter((e) => e.targetTknId === nodeId);
-  }
-
-  async getViolations(nodeIds: ReadonlyArray<string>): Promise<ViolationRecord[]> {
-    const set = new Set(nodeIds);
-    return this.violations.filter((v) => set.has(v.object_id));
-  }
-}
+export { InMemoryGraphRepository } from "../../src/persistence/index.js";
 
 let counter = 0;
 const id = (prefix: string) => `${prefix}-${++counter}`;
