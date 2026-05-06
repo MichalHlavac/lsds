@@ -43,10 +43,10 @@ export function apiKeyMiddleware(sql: Sql) {
 
     const hash = await sha256hex(key);
     const [row] = await sql<ApiKeyRow[]>`
-      SELECT * FROM api_keys WHERE key_hash = ${hash}
+      SELECT * FROM api_keys WHERE key_hash = ${hash} AND revoked_at IS NULL
     `;
 
-    if (!row || row.revokedAt !== null) {
+    if (!row) {
       return c.json({ error: "forbidden" }, 403);
     }
 

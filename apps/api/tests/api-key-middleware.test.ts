@@ -37,8 +37,6 @@ const ACTIVE_ROW: ApiKeyRow = {
   revokedAt: null,
 };
 
-const REVOKED_ROW: ApiKeyRow = { ...ACTIVE_ROW, revokedAt: new Date() };
-
 // ── sha256hex ─────────────────────────────────────────────────────────────────
 
 describe("sha256hex", () => {
@@ -87,7 +85,8 @@ describe("apiKeyMiddleware — auth enforcement disabled", () => {
   });
 
   it("returns 403 when a revoked key is provided", async () => {
-    const app = await makeTestApp([REVOKED_ROW], false);
+    // revoked_at IS NULL filter in SQL means DB returns no row for revoked keys
+    const app = await makeTestApp([], false);
     const res = await app.request("/v1/ping", { headers: { "X-Api-Key": "lsds_whatever" } });
     expect(res.status).toBe(403);
   });
