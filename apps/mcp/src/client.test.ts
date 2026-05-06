@@ -350,6 +350,62 @@ describe("createLsdsClient", () => {
     expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
   });
 
+  it("bulkImport sends POST to /v1/import/bulk with nodes and edges", async () => {
+    const created = { nodes: ["id-1", "id-2"], edges: ["eid-1"] };
+    const fetch = mockFetch({ data: { created, errors: [] } }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.bulkImport({
+      nodes: [
+        { type: "Service", layer: "L4", name: "svc-a" },
+        { type: "Service", layer: "L4", name: "svc-b" },
+      ],
+      edges: [
+        {
+          sourceId: "00000000-0000-0000-0000-000000000001",
+          targetId: "00000000-0000-0000-0000-000000000002",
+          type: "depends-on",
+          layer: "L4",
+        },
+      ],
+    });
+
+    expect(result).toEqual({ created, errors: [] });
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/import/bulk");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body.nodes).toHaveLength(2);
+    expect(body.edges).toHaveLength(1);
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("bulkImport sends POST with nodes only (no edges)", async () => {
+    const fetch = mockFetch({ data: { created: { nodes: ["id-1"], edges: [] }, errors: [] } }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.bulkImport({ nodes: [{ type: "Service", layer: "L4", name: "svc-a" }] });
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/import/bulk");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body.nodes).toHaveLength(1);
+    expect(body.edges).toBeUndefined();
+  });
+
+  it("bulkImport throws on 400 (oversized batch)", async () => {
+    const fetch = mockFetch({ error: "validation error", issues: [] }, 400);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(
+      client.bulkImport({ nodes: [{ type: "Service", layer: "L4", name: "svc" }] })
+    ).rejects.toThrow("400");
+  });
+
   it("architectAnalyze sends POST with empty body when no params given", async () => {
     const fetch = mockFetch({ data: { summary: {} } });
     vi.stubGlobal("fetch", fetch);
