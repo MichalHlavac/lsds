@@ -3,13 +3,15 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
+import type { MiddlewareHandler } from "hono";
 
-async function makeApp(opts: { enabled: string; rpm: string }) {
+async function makeApp(opts: { enabled: string; rpm: string }, upstream?: MiddlewareHandler) {
   process.env["LSDS_RATE_LIMIT_ENABLED"] = opts.enabled;
   process.env["LSDS_RATE_LIMIT_RPM"] = opts.rpm;
   vi.resetModules();
   const { rateLimitMiddleware } = await import("../src/middleware/rate-limit.js");
   const app = new Hono();
+  if (upstream) app.use("/v1/*", upstream);
   app.use("/v1/*", rateLimitMiddleware);
   app.get("/v1/ping", (c) => c.json({ ok: true }));
   return app;
@@ -80,5 +82,22 @@ describe("rate-limit middleware — enabled", () => {
       const res = await app.request("/v1/ping");
       expect(res.status).toBe(200);
     }
+  });
+
+  it("keys on context tenantId (not header) when set by upstream middleware", async () => {
+    // Simulates apiKeyMiddleware setting c.set("tenantId") before rateLimitMiddleware runs.
+    const upstream: MiddlewareHandler = async (c, next) => {
+      c.set("tenantId", "ctx-tenant");
+      return next();
+    };
+    const app = await makeApp({ enabled: "true", rpm: "2" }, upstream);
+
+    // Exhaust the window for "ctx-tenant" while sending a different header value.
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/ping", { headers: { "X-Tenant-Id": "header-tenant" } });
+    }
+    // The bucket keyed on "ctx-tenant" is full; "header-tenant" was never used.
+    const res = await app.request("/v1/ping", { headers: { "X-Tenant-Id": "header-tenant" } });
+    expect(res.status).toBe(429);
   });
 });
