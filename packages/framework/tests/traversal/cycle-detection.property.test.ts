@@ -21,14 +21,15 @@ import {
   DefaultTraversalEngine,
   type TraversalProfile,
 } from "../../src/traversal.js";
-import { InMemoryGraph, makeEdge, makeNode, resetCounter } from "./in-memory-graph.js";
+import { InMemoryGraphRepository } from "../../src/persistence/in-memory-graph.js";
+import { makeEdge, makeNode, resetCounter } from "./fixtures.js";
 
 beforeEach(() => resetCounter());
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildL2Ring(size: number): { graph: InMemoryGraph; nodes: ReturnType<typeof makeNode>[] } {
-  const graph = new InMemoryGraph();
+function buildL2Ring(size: number): { graph: InMemoryGraphRepository; nodes: ReturnType<typeof makeNode>[] } {
+  const graph = new InMemoryGraphRepository();
   const nodes = Array.from({ length: size }, (_, i) =>
     makeNode({ type: "BoundedContext", layer: "L2", name: `BC-${i}` }),
   );
@@ -59,7 +60,7 @@ function allBucketIds(pkg: Awaited<ReturnType<DefaultTraversalEngine["traverse"]
 
 describe("cycle detection — deterministic cases", () => {
   it("two-node mutual context-integration cycle terminates", async () => {
-    const graph = new InMemoryGraph();
+    const graph = new InMemoryGraphRepository();
     const a = makeNode({ type: "BoundedContext", layer: "L2", name: "A" });
     const b = makeNode({ type: "BoundedContext", layer: "L2", name: "B" });
     graph.addNode(a);
@@ -88,7 +89,7 @@ describe("cycle detection — deterministic cases", () => {
   });
 
   it("self-loop (node context-integration itself) terminates cleanly", async () => {
-    const graph = new InMemoryGraph();
+    const graph = new InMemoryGraphRepository();
     const a = makeNode({ type: "BoundedContext", layer: "L2", name: "SelfLoop" });
     graph.addNode(a);
     graph.addEdge(makeEdge(a, a, "context-integration"));
@@ -118,7 +119,7 @@ describe("cycle detection — deterministic cases", () => {
   it("upstream/downstream chains with cycle back to root terminate", async () => {
     // Pattern: root (L4) → parent (L3) → root (via depends-on, lateral back)
     // and root → child → root-again (via contains + part-of cycle)
-    const graph = new InMemoryGraph();
+    const graph = new InMemoryGraphRepository();
     const root = makeNode({ type: "Service", layer: "L4", name: "Root" });
     const child = makeNode({ type: "APIEndpoint", layer: "L4", name: "Child" });
     const parent = makeNode({ type: "ArchitectureComponent", layer: "L3", name: "Parent" });
@@ -161,7 +162,7 @@ describe("cycle detection — property tests (fast-check)", () => {
       fc.asyncProperty(
         nodeCountArb.chain((n) => fc.tuple(fc.constant(n), edgesArb(n))),
         async ([nodeCount, edges]) => {
-          const graph = new InMemoryGraph();
+          const graph = new InMemoryGraphRepository();
           const nodes = Array.from({ length: nodeCount }, (_, i) =>
             makeNode({ type: "BoundedContext", layer: "L2", name: `N${i}` }),
           );
@@ -191,7 +192,7 @@ describe("cycle detection — property tests (fast-check)", () => {
       fc.asyncProperty(
         nodeCountArb.chain((n) => fc.tuple(fc.constant(n), edgesArb(n))),
         async ([nodeCount, edges]) => {
-          const graph = new InMemoryGraph();
+          const graph = new InMemoryGraphRepository();
           const nodes = Array.from({ length: nodeCount }, (_, i) =>
             makeNode({ type: "BoundedContext", layer: "L2", name: `N${i}` }),
           );
@@ -222,7 +223,7 @@ describe("cycle detection — property tests (fast-check)", () => {
 
     await fc.assert(
       fc.asyncProperty(lifecycleArb, async (lifecycles) => {
-        const graph = new InMemoryGraph();
+        const graph = new InMemoryGraphRepository();
         const nodes = lifecycles.map((lc, i) =>
           makeNode({ type: "BoundedContext", layer: "L2", name: `N${i}`, lifecycle: lc }),
         );
@@ -254,7 +255,7 @@ describe("cycle detection — property tests (fast-check)", () => {
       fc.asyncProperty(
         fc.integer({ min: 2, max: 8 }),
         async (nodeCount) => {
-          const graph = new InMemoryGraph();
+          const graph = new InMemoryGraphRepository();
           const nodes = Array.from({ length: nodeCount }, (_, i) =>
             makeNode({ type: "BoundedContext", layer: "L2", name: `N${i}` }),
           );
@@ -298,7 +299,7 @@ describe("cycle detection — property tests (fast-check)", () => {
       fc.asyncProperty(
         fc.integer({ min: 3, max: 10 }),
         async (nodeCount) => {
-          const graph = new InMemoryGraph();
+          const graph = new InMemoryGraphRepository();
           // Nodes spread across L2/L3/L4 so various relationship types are valid.
           const nodes = Array.from({ length: nodeCount }, (_, i) =>
             makeNode({ type: "Service", layer: "L4", name: `N${i}` }),
