@@ -7,7 +7,7 @@ import { createMiddleware } from "hono/factory";
 // c.set("tenantId") once it lands; this declaration lets TypeScript see the key now.
 declare module "hono" {
   interface ContextVariableMap {
-    tenantId?: string;
+    tenantId: string;
   }
 }
 
@@ -26,7 +26,9 @@ export const rateLimitMiddleware = createMiddleware(async (c, next) => {
 
   // Prefer verified tenant from auth context (populated by apiKeyMiddleware);
   // fall back to header for OIDC-only / dev flows.
-  const tenantId = c.get("tenantId") ?? c.req.header("X-Tenant-Id");
+  // c.get("tenantId") returns undefined at runtime when apiKeyMiddleware hasn't run;
+  // the declared type is string, so cast to account for the unset case.
+  const tenantId = (c.get("tenantId") as string | undefined) ?? c.req.header("X-Tenant-Id");
   if (!tenantId) return next();
 
   const now = Date.now();
