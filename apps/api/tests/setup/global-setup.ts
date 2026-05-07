@@ -32,11 +32,24 @@ export async function setup(): Promise<void> {
   for (const file of files) {
     if (applied.has(file)) continue;
     const body = readFileSync(join(migrationsDir, file), "utf8");
-    await sql.begin(async (tx) => {
-      await tx.unsafe(body);
-      await tx`INSERT INTO _migrations (filename) VALUES (${file})`;
-    });
-    console.log(`[test setup] applied migration: ${file}`);
+    try {
+      await sql.begin(async (tx) => {
+        await tx.unsafe(body);
+        await tx`INSERT INTO _migrations (filename) VALUES (${file})`;
+      });
+      console.log(`[test setup] applied migration: ${file}`);
+    } catch (err: unknown) {
+      // Skip migrations that require optional extensions (e.g. pgvector) not
+      // installed in the local dev postgres. Embedding-dependent tests will
+      // simply fail with a "table doesn't exist" error instead of crashing
+      // the entire test suite.
+      const pg = err as { code?: string };
+      if (pg.code === "42704" || pg.code === "42883") {
+        console.warn(`[test setup] skipped migration ${file}: optional extension unavailable`);
+      } else {
+        throw err;
+      }
+    }
   }
 
   await sql.end();
