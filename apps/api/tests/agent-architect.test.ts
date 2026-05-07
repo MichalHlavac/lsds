@@ -6,6 +6,12 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant } from "./test-helpers";
+import { AnalyzeChangeSchema } from "../src/routes/schemas";
+import {
+  classifyFilePath,
+  pickLayer,
+  type ChangeSignal,
+} from "../src/agent/architect-analysis";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -725,5 +731,404 @@ describe("GET /agent/v1/architect/requirement-fulfillment", () => {
     const { data } = await res.json();
     expect(data.scannedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(data.requirements[0].approvedAt).toBeTruthy();
+  });
+});
+
+// ── AnalyzeChangeSchema contract ──────────────────────────────────────────────
+
+describe("AnalyzeChangeSchema", () => {
+  it("accepts a non-empty diff string", () => {
+    expect(() =>
+      AnalyzeChangeSchema.parse({ diff: "- old line\n+ new line" })
+    ).not.toThrow();
+  });
+
+  it("accepts a non-empty filePaths array", () => {
+    expect(() =>
+      AnalyzeChangeSchema.parse({ filePaths: ["apps/api/src/routes/nodes.ts"] })
+    ).not.toThrow();
+  });
+
+  it("accepts a non-empty nodeTypes array", () => {
+    expect(() =>
+      AnalyzeChangeSchema.parse({ nodeTypes: ["BoundedContext"] })
+    ).not.toThrow();
+  });
+
+  it("accepts a non-empty nodeIds array of valid UUIDs", () => {
+    expect(() =>
+      AnalyzeChangeSchema.parse({
+        nodeIds: ["550e8400-e29b-41d4-a716-446655440000"],
+      })
+    ).not.toThrow();
+  });
+
+  it("accepts all four fields combined", () => {
+    expect(() =>
+      AnalyzeChangeSchema.parse({
+        diff: "+ add",
+        filePaths: ["apps/api/src/x.ts"],
+        nodeTypes: ["Service"],
+        nodeIds: ["550e8400-e29b-41d4-a716-446655440000"],
+      })
+    ).not.toThrow();
+  });
+
+  it("rejects empty object — at least one field required", () => {
+    expect(() => AnalyzeChangeSchema.parse({})).toThrow();
+  });
+
+  it("rejects diff that is an empty string", () => {
+    expect(() => AnalyzeChangeSchema.parse({ diff: "" })).toThrow();
+  });
+
+  it("rejects filePaths that is an empty array", () => {
+    expect(() => AnalyzeChangeSchema.parse({ filePaths: [] })).toThrow();
+  });
+
+  it("rejects nodeTypes that is an empty array", () => {
+    expect(() => AnalyzeChangeSchema.parse({ nodeTypes: [] })).toThrow();
+  });
+
+  it("rejects nodeIds that is an empty array", () => {
+    expect(() => AnalyzeChangeSchema.parse({ nodeIds: [] })).toThrow();
+  });
+
+  it("rejects nodeIds containing a non-UUID string", () => {
+    expect(() =>
+      AnalyzeChangeSchema.parse({ nodeIds: ["not-a-uuid"] })
+    ).toThrow();
+  });
+});
+
+// ── classifyFilePath unit tests ───────────────────────────────────────────────
+
+describe("classifyFilePath", () => {
+  it("classifies DB migration SQL path as L1 HIGH", () => {
+    const r = classifyFilePath("apps/api/src/db/migrations/001_init.sql");
+    expect(r?.layer).toBe("L1");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies framework types path as L1 HIGH", () => {
+    const r = classifyFilePath("packages/framework/src/types.ts");
+    expect(r?.layer).toBe("L1");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies framework schema path as L1 HIGH", () => {
+    const r = classifyFilePath("packages/framework/src/schema/index.ts");
+    expect(r?.layer).toBe("L1");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies framework core module (non-types) as L2 HIGH", () => {
+    const r = classifyFilePath("packages/framework/src/traversal.ts");
+    expect(r?.layer).toBe("L2");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies shared package as L2 MEDIUM", () => {
+    const r = classifyFilePath("packages/shared/src/index.ts");
+    expect(r?.layer).toBe("L2");
+    expect(r?.confidence).toBe("MEDIUM");
+  });
+
+  it("classifies guardrails module as L2 HIGH", () => {
+    const r = classifyFilePath("apps/api/src/guardrails/registry.ts");
+    expect(r?.layer).toBe("L2");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies routes module as L3 HIGH", () => {
+    const r = classifyFilePath("apps/api/src/routes/nodes.ts");
+    expect(r?.layer).toBe("L3");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies MCP app path as L3 HIGH", () => {
+    const r = classifyFilePath("apps/mcp/src/index.ts");
+    expect(r?.layer).toBe("L3");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies agent module as L3 MEDIUM", () => {
+    const r = classifyFilePath("apps/api/src/agent/architect.ts");
+    expect(r?.layer).toBe("L3");
+    expect(r?.confidence).toBe("MEDIUM");
+  });
+
+  it("classifies DB access module as L4 HIGH", () => {
+    const r = classifyFilePath("apps/api/src/db/client.ts");
+    expect(r?.layer).toBe("L4");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies frontend (apps/web) as L5 HIGH", () => {
+    const r = classifyFilePath("apps/web/src/pages/index.tsx");
+    expect(r?.layer).toBe("L5");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("classifies .test.ts file as L6", () => {
+    const r = classifyFilePath("apps/api/tests/nodes.test.ts");
+    expect(r?.layer).toBe("L6");
+  });
+
+  it("classifies YAML CI config as L6 HIGH", () => {
+    const r = classifyFilePath(".github/workflows/ci.yml");
+    expect(r?.layer).toBe("L6");
+    expect(r?.confidence).toBe("HIGH");
+  });
+
+  it("returns null for an unrecognised path", () => {
+    const r = classifyFilePath("random/unknown/file.txt");
+    expect(r).toBeNull();
+  });
+});
+
+// ── pickLayer unit tests ──────────────────────────────────────────────────────
+
+describe("pickLayer", () => {
+  const sig = (
+    inferredLayer: ChangeSignal["inferredLayer"],
+    confidence: ChangeSignal["confidence"]
+  ): ChangeSignal => ({
+    source: "file_path",
+    value: "x",
+    inferredLayer,
+    confidence,
+    rationale: "test",
+  });
+
+  it("returns L5 LOW for empty signal list", () => {
+    const r = pickLayer([]);
+    expect(r.layer).toBe("L5");
+    expect(r.confidence).toBe("LOW");
+  });
+
+  it("returns the single signal's layer and HIGH confidence", () => {
+    const r = pickLayer([sig("L3", "HIGH")]);
+    expect(r.layer).toBe("L3");
+    expect(r.confidence).toBe("HIGH");
+  });
+
+  it("picks worst-case (lowest L number) among HIGH signals", () => {
+    const r = pickLayer([sig("L4", "HIGH"), sig("L2", "HIGH"), sig("L5", "HIGH")]);
+    expect(r.layer).toBe("L2");
+    expect(r.confidence).toBe("HIGH");
+  });
+
+  it("ignores MEDIUM/LOW signals when HIGH signals exist", () => {
+    const r = pickLayer([sig("L1", "MEDIUM"), sig("L4", "HIGH")]);
+    expect(r.layer).toBe("L4");
+    expect(r.confidence).toBe("HIGH");
+  });
+
+  it("falls back to all signals when no HIGH signals exist", () => {
+    const r = pickLayer([sig("L3", "MEDIUM"), sig("L5", "LOW")]);
+    expect(r.layer).toBe("L3");
+  });
+
+  it("returns MEDIUM confidence when 2+ signals agree on same layer (no HIGH)", () => {
+    const r = pickLayer([sig("L3", "MEDIUM"), sig("L3", "LOW")]);
+    expect(r.layer).toBe("L3");
+    expect(r.confidence).toBe("MEDIUM");
+  });
+
+  it("returns LOW confidence for single LOW signal", () => {
+    const r = pickLayer([sig("L5", "LOW")]);
+    expect(r.layer).toBe("L5");
+    expect(r.confidence).toBe("LOW");
+  });
+});
+
+// ── POST /agent/v1/architect/analyze-change ───────────────────────────────────
+
+describe("POST /agent/v1/architect/analyze-change", () => {
+  it("returns 400 when x-tenant-id header is missing", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePaths: ["apps/api/src/routes/nodes.ts"] }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when body has no valid input field", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 200 with classifiedAt and classification shape", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ filePaths: ["apps/api/src/routes/nodes.ts"] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.classifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(data.classification).toMatchObject({
+      layer: expect.stringMatching(/^L[1-6]$/),
+      confidence: expect.stringMatching(/^(HIGH|MEDIUM|LOW)$/),
+      reviewPath: expect.stringMatching(/^(REQUIRE_CONFIRMATION|AUTO_WITH_OVERRIDE|AUTO)$/),
+    });
+    expect(Array.isArray(data.signals)).toBe(true);
+    expect(Array.isArray(data.recommendations)).toBe(true);
+  });
+
+  it("classifies framework/types path as L1 REQUIRE_CONFIRMATION", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        filePaths: ["packages/framework/src/types.ts"],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.classification.layer).toBe("L1");
+    expect(data.classification.reviewPath).toBe("REQUIRE_CONFIRMATION");
+    expect(data.signals).toHaveLength(1);
+    expect(data.signals[0].source).toBe("file_path");
+  });
+
+  it("classifies L5 file path as AUTO", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ filePaths: ["apps/web/src/pages/index.tsx"] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.classification.layer).toBe("L5");
+    expect(data.classification.reviewPath).toBe("AUTO");
+  });
+
+  it("classifies SQL DDL diff as L1 REQUIRE_CONFIRMATION", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        diff: "+CREATE TABLE orders (id uuid PRIMARY KEY);",
+      }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.classification.layer).toBe("L1");
+    expect(data.classification.reviewPath).toBe("REQUIRE_CONFIRMATION");
+    const ddlSignal = data.signals.find(
+      (s: { source: string }) => s.source === "diff_content"
+    );
+    expect(ddlSignal).toBeDefined();
+  });
+
+  it("classifies BoundedContext nodeType as L1", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ nodeTypes: ["BoundedContext"] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.classification.layer).toBe("L1");
+    expect(data.signals[0].source).toBe("node_type");
+  });
+
+  it("classifies Service nodeType as L5 AUTO", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ nodeTypes: ["Service"] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.classification.layer).toBe("L5");
+    expect(data.classification.reviewPath).toBe("AUTO");
+  });
+
+  it("classifies by nodeIds — looks up DB node layer", async () => {
+    // Create an L1 node in the DB
+    const createRes = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "BoundedContext", layer: "L1", name: "PaymentContext" }),
+    });
+    expect(createRes.status).toBe(201);
+    const { data: node } = await createRes.json();
+
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ nodeIds: [node.id] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.classification.layer).toBe("L1");
+    expect(data.classification.reviewPath).toBe("REQUIRE_CONFIRMATION");
+    const nodeSignal = data.signals.find(
+      (s: { source: string }) => s.source === "node_id"
+    );
+    expect(nodeSignal).toBeDefined();
+    expect(nodeSignal.value).toBe(node.id);
+  });
+
+  it("returns no signals for unknown nodeId (not in DB)", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ nodeIds: [randomUUID()] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    // No signals from the unknown id; defaults to L5
+    expect(data.signals).toHaveLength(0);
+    expect(data.classification.layer).toBe("L5");
+  });
+
+  it("picks worst-case layer when filePaths span multiple layers", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({
+        filePaths: [
+          "apps/web/src/pages/index.tsx",
+          "packages/framework/src/types.ts",
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    // L1 is worse than L5 — must win
+    expect(data.classification.layer).toBe("L1");
+  });
+
+  it("includes L1/L2 recommendations for REQUIRE_CONFIRMATION paths", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ filePaths: ["packages/framework/src/types.ts"] }),
+    });
+    const { data } = await res.json();
+    expect(
+      data.recommendations.some((r: string) => r.includes("confirmation"))
+    ).toBe(true);
+  });
+
+  it("includes AUTO recommendation for L5/L6 paths", async () => {
+    const res = await app.request("/agent/v1/architect/analyze-change", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ filePaths: ["apps/web/src/pages/index.tsx"] }),
+    });
+    const { data } = await res.json();
+    expect(
+      data.recommendations.some((r: string) => r.includes("autonomously"))
+    ).toBe(true);
   });
 });

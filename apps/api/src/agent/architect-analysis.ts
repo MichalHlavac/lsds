@@ -725,11 +725,11 @@ export async function requirementsFulfillment(sql: Sql, tenantId: string) {
 
 // ── Change classification (ADR A4) ──────────────────────────────────────────
 
-type ChangeLayer = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
+export type ChangeLayer = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
 type ReviewPath = "REQUIRE_CONFIRMATION" | "AUTO_WITH_OVERRIDE" | "AUTO";
-type SignalConfidence = "HIGH" | "MEDIUM" | "LOW";
+export type SignalConfidence = "HIGH" | "MEDIUM" | "LOW";
 
-interface ChangeSignal {
+export interface ChangeSignal {
   source: "file_path" | "diff_content" | "node_type" | "node_id";
   value: string;
   inferredLayer: ChangeLayer;
@@ -750,7 +750,7 @@ const LAYER_ORDER: Record<ChangeLayer, number> = {
   L1: 1, L2: 2, L3: 3, L4: 4, L5: 5, L6: 6,
 };
 
-function classifyFilePath(
+export function classifyFilePath(
   filePath: string
 ): { layer: ChangeLayer; confidence: SignalConfidence; rationale: string } | null {
   const p = filePath.toLowerCase();
@@ -835,7 +835,7 @@ const NODE_TYPE_LAYERS: Record<string, ChangeLayer> = {
   Deployment: "L6", Infrastructure: "L6", CICDPipeline: "L6", TechnicalDebt: "L5",
 };
 
-function pickLayer(signals: ChangeSignal[]): { layer: ChangeLayer; confidence: SignalConfidence; rationale: string } {
+export function pickLayer(signals: ChangeSignal[]): { layer: ChangeLayer; confidence: SignalConfidence; rationale: string } {
   if (signals.length === 0) {
     return { layer: "L5", confidence: "LOW", rationale: "No signals — defaulting to L5 (module level)" };
   }
