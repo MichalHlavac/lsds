@@ -4,11 +4,12 @@
 import type { Sql } from "../db/client.js";
 import type { NodeRow, EdgeRow } from "../db/types.js";
 import type { LsdsCache } from "./index.js";
+import { config } from "../config.js";
 
 export async function warmCache(
   sql: Sql,
   cache: LsdsCache,
-  limit: number = Number(process.env.CACHE_WARMUP_LIMIT ?? 500)
+  limit: number = config.cacheWarmupLimit
 ): Promise<void> {
   const [nodes, edges] = await Promise.all([
     sql<NodeRow[]>`SELECT * FROM nodes ORDER BY updated_at DESC LIMIT ${limit}`,

@@ -4,6 +4,7 @@
 import { createMiddleware } from "hono/factory";
 import type { Sql } from "../db/client.js";
 import type { ApiKeyRow } from "../db/types.js";
+import { config } from "../config.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -13,7 +14,7 @@ declare module "hono" {
 
 // When true: requests without X-Api-Key are rejected with 401.
 // Leave unset in development/test environments to keep existing X-Tenant-Id flows working.
-export const apiKeyAuthEnabled = Boolean(process.env["LSDS_API_KEY_AUTH_ENABLED"]);
+export const apiKeyAuthEnabled = config.apiKeyAuthEnabled;
 
 export async function sha256hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { createMiddleware } from "hono/factory";
+import { config } from "../config.js";
 
 // Forward-compatible with apiKeyMiddleware (LSDS-513): that middleware sets
 // c.set("tenantId") once it lands; this declaration lets TypeScript see the key now.
@@ -18,8 +19,8 @@ const windows = new Map<string, number[]>();
 const WINDOW_MS = 60_000;
 const RETRY_AFTER = "60";
 
-const enabled = process.env["LSDS_RATE_LIMIT_ENABLED"] === "true";
-const rpm = Number(process.env["LSDS_RATE_LIMIT_RPM"] ?? 600);
+const enabled = config.rateLimitEnabled;
+const rpm = config.rateLimitRpm;
 
 export const rateLimitMiddleware = createMiddleware(async (c, next) => {
   if (!enabled) return next();
