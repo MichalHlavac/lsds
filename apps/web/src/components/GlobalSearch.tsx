@@ -153,6 +153,7 @@ export function GlobalSearch() {
         <input
           ref={inputRef}
           type="search"
+          role="combobox"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -162,6 +163,7 @@ export function GlobalSearch() {
           aria-expanded={showDropdown}
           aria-haspopup="listbox"
           aria-controls="global-search-results"
+          aria-autocomplete="list"
           className="w-full bg-gray-900 border border-gray-700 rounded pl-8 pr-3 py-1.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500"
         />
         {loading && (
