@@ -138,6 +138,7 @@ export interface ApiKeyRow {
 export interface TenantRow {
   id: string;
   name: string;
+  slug: string | null;
   plan: string;
   retentionDays: number;
   createdAt: Date;
