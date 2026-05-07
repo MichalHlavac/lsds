@@ -20,4 +20,3 @@ export const ArchitecturePrincipleSchema = TknBaseSchema.extend({
 });
 export type ArchitecturePrinciple = z.infer<typeof ArchitecturePrincipleSchema>;
 
-export const ARCHITECTURE_PRINCIPLE_TRAVERSAL_WEIGHT = "LAZY" as const;

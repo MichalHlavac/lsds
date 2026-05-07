@@ -37,4 +37,3 @@ export const IntegrationPatternSchema = TknBaseSchema.extend({
 });
 export type IntegrationPattern = z.infer<typeof IntegrationPatternSchema>;
 
-export const INTEGRATION_PATTERN_TRAVERSAL_WEIGHT = "LAZY" as const;

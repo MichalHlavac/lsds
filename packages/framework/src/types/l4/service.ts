@@ -45,4 +45,3 @@ export const ServiceSchema = TknBaseSchema.extend({
 });
 export type Service = z.infer<typeof ServiceSchema>;
 
-export const SERVICE_TRAVERSAL_WEIGHT = "EAGER" as const;

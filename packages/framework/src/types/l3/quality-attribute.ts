@@ -41,4 +41,3 @@ export const QualityAttributeSchema = TknBaseSchema.extend({
 });
 export type QualityAttribute = z.infer<typeof QualityAttributeSchema>;
 
-export const QUALITY_ATTRIBUTE_TRAVERSAL_WEIGHT = "EAGER" as const;

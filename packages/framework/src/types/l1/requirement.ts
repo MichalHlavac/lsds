@@ -70,4 +70,3 @@ export const RequirementSchema = TknBaseSchema.extend({
 });
 export type Requirement = z.infer<typeof RequirementSchema>;
 
-export const REQUIREMENT_TRAVERSAL_WEIGHT = "LAZY" as const;

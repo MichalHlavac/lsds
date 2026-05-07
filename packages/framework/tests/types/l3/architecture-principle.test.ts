@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  ARCHITECTURE_PRINCIPLE_TRAVERSAL_WEIGHT,
   ArchitecturePrincipleSchema,
 } from "../../../src/types/l3/architecture-principle.js";
 import { expectIssue } from "../../fixtures.js";
@@ -57,7 +56,4 @@ describe("ArchitecturePrinciple (kap. 4 § L3)", () => {
     );
   });
 
-  it("declares LAZY traversal weight", () => {
-    expect(ARCHITECTURE_PRINCIPLE_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 });

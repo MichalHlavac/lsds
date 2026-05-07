@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  ARCHITECTURE_COMPONENT_TRAVERSAL_WEIGHT,
   ARCHITECTURE_COMPONENT_TYPES,
   ArchitectureComponentSchema,
   DATA_CLASSIFICATIONS,
@@ -67,9 +66,6 @@ describe("ArchitectureComponent (kap. 4 § L3)", () => {
     );
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(ARCHITECTURE_COMPONENT_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes 8 component types, 4 data classifications, 3 scalability modes", () => {
     expect(ARCHITECTURE_COMPONENT_TYPES).toHaveLength(8);

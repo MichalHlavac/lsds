@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  INTEGRATION_PATTERN_TRAVERSAL_WEIGHT,
   INTEGRATION_PATTERN_TYPES,
   IntegrationPatternSchema,
 } from "../../../src/types/l4/integration-pattern.js";
@@ -61,9 +60,6 @@ describe("IntegrationPattern (kap. 4 § L4)", () => {
     );
   });
 
-  it("declares LAZY traversal weight (patterns are reference material, not hot path)", () => {
-    expect(INTEGRATION_PATTERN_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 
   it("enumerates 11 well-known integration patterns", () => {
     expect(INTEGRATION_PATTERN_TYPES).toHaveLength(11);

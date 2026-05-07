@@ -33,4 +33,3 @@ export const ApiContractSchema = TknBaseSchema.extend({
 });
 export type ApiContract = z.infer<typeof ApiContractSchema>;
 
-export const API_CONTRACT_TRAVERSAL_WEIGHT = "EAGER" as const;

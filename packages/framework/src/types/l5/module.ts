@@ -42,4 +42,3 @@ export const CodeModuleSchema = TknBaseSchema.extend({
 });
 export type CodeModule = z.infer<typeof CodeModuleSchema>;
 
-export const CODE_MODULE_TRAVERSAL_WEIGHT = "LAZY" as const;

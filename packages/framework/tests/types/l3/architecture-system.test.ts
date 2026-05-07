@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  ARCHITECTURE_SYSTEM_TRAVERSAL_WEIGHT,
   ArchitectureSystemSchema,
 } from "../../../src/types/l3/architecture-system.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -59,7 +58,4 @@ describe("ArchitectureSystem (kap. 4 § L3)", () => {
     );
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(ARCHITECTURE_SYSTEM_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 });

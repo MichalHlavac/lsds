@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   API_CONTRACT_SPEC_TYPES,
-  API_CONTRACT_TRAVERSAL_WEIGHT,
   ApiContractSchema,
 } from "../../../src/types/l4/api-contract.js";
 import { expectIssue } from "../../fixtures.js";
@@ -59,9 +58,6 @@ describe("APIContract (kap. 4 § L4)", () => {
     );
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(API_CONTRACT_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes 5 spec types (kap. 4 closed enum)", () => {
     expect(API_CONTRACT_SPEC_TYPES).toEqual([

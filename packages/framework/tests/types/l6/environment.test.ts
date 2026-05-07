@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ACCESS_RESTRICTIONS,
-  ENVIRONMENT_TRAVERSAL_WEIGHT,
   ENVIRONMENT_TYPES,
   EnvironmentSchema,
 } from "../../../src/types/l6/environment.js";
@@ -100,9 +99,6 @@ describe("Environment (kap. 4 § L6, lines 606–635)", () => {
     expectIssue(EnvironmentSchema.safeParse({ ...baseEnv, layer: "L5" }), /Invalid literal value/);
   });
 
-  it("declares EAGER traversal weight (kap. 4 § L6 Environment)", () => {
-    expect(ENVIRONMENT_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes all 5 environment types and 3 access restrictions (closed enums)", () => {
     expect(ENVIRONMENT_TYPES).toEqual([

@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   SERVICE_AUTHENTICATION_SCHEMES,
-  SERVICE_TRAVERSAL_WEIGHT,
   SERVICE_TYPES,
   ServiceSchema,
   VERSION_STRATEGIES,
@@ -65,9 +64,6 @@ describe("Service (kap. 4 § L4)", () => {
     );
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(SERVICE_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes 6 service types, 3 version strategies, 5 authentication schemes (kap. 4 closed enums)", () => {
     expect(SERVICE_TYPES).toHaveLength(6);

@@ -49,4 +49,3 @@ export const InfrastructureComponentSchema = TknBaseSchema.extend({
 });
 export type InfrastructureComponent = z.infer<typeof InfrastructureComponentSchema>;
 
-export const INFRASTRUCTURE_COMPONENT_TRAVERSAL_WEIGHT = "LAZY" as const;

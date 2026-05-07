@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   UI_FLOW_PLATFORMS,
-  UI_FLOW_TRAVERSAL_WEIGHT,
   UiFlowSchema,
 } from "../../../src/types/l4/ui-flow.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -99,9 +98,6 @@ describe("UIFlow (kap. 4 § L4)", () => {
     );
   });
 
-  it("declares LAZY traversal weight", () => {
-    expect(UI_FLOW_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 
   it("exposes 5 supported platforms", () => {
     expect(UI_FLOW_PLATFORMS).toEqual(["WEB", "IOS", "ANDROID", "DESKTOP", "TERMINAL"]);
