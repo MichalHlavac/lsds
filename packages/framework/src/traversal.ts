@@ -178,7 +178,7 @@ export interface GraphRepository {
 
 type TraversalBucket = "upward" | "downward" | "lateral" | "cross-layer";
 
-// Map the 19 RelationshipTypes onto the four traversal buckets the engine
+// Map the 20 RelationshipTypes onto the four traversal buckets the engine
 // uses. Most types follow their `direction` field directly; `vertical` and
 // `any` (kap. 2.2) are flattened into upward / cross-layer based on category
 // (TRACEABILITY/MOTIVATION → upward; DECISION/VIOLATION → cross-layer).
