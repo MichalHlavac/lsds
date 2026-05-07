@@ -70,6 +70,20 @@ services:
       retries: 3
       start_period: 20s
 
+  bootstrap:
+    image: ghcr.io/michalhlavac/lsds:${LSDS_VERSION:-latest}
+    command: node apps/api/dist/bootstrap-cli.js
+    environment:
+      API_URL: http://api:${API_PORT:-3001}
+      TENANT_ID: ${TENANT_ID:-00000000-0000-0000-0000-000000000001}
+      TENANT_NAME: ${TENANT_NAME:-default}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+
   web:
     image: ghcr.io/michalhlavac/lsds:${LSDS_VERSION:-latest}
     command: node apps/web/.next/standalone/apps/web/server.js
