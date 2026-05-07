@@ -135,6 +135,15 @@ export interface ApiKeyRow {
   revokedAt: Date | null;
 }
 
+export interface TenantRow {
+  id: string;
+  name: string;
+  plan: string;
+  retentionDays: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface MigrationDraftRow {
   id: string;
   tenantId: string;
