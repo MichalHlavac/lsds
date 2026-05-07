@@ -326,6 +326,13 @@ export function createLsdsClient(config: LsdsClientConfig) {
     architectRequirementFulfillment: () =>
       req("GET", "/agent/v1/architect/requirement-fulfillment"),
 
+    architectAnalyzeChange: (body: {
+      diff?: string;
+      filePaths?: string[];
+      nodeTypes?: string[];
+      nodeIds?: string[];
+    }) => req("POST", "/agent/v1/architect/analyze-change", body),
+
     impactPredict: (body: {
       changeType: "create" | "update" | "delete";
       nodeId?: string;

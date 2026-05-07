@@ -4,7 +4,7 @@
 import type { Sql } from "../db/client.js";
 import type { NodeRow, SnapshotRow } from "../db/types.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
-import type { AgentAnalyze, ImpactPredict } from "../routes/schemas.js";
+import type { AgentAnalyze, AnalyzeChange, ImpactPredict } from "../routes/schemas.js";
 import { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
 
 export const ARCH_STRUCTURAL_TYPES = ["BoundedContext", "ArchitectureComponent", "ArchitectureSystem"];
@@ -720,5 +720,218 @@ export async function requirementsFulfillment(sql: Sql, tenantId: string) {
     scannedAt: new Date().toISOString(),
     summary,
     requirements: classified,
+  };
+}
+
+// ── Change classification (ADR A4) ──────────────────────────────────────────
+
+type ChangeLayer = "L1" | "L2" | "L3" | "L4" | "L5" | "L6";
+type ReviewPath = "REQUIRE_CONFIRMATION" | "AUTO_WITH_OVERRIDE" | "AUTO";
+type SignalConfidence = "HIGH" | "MEDIUM" | "LOW";
+
+interface ChangeSignal {
+  source: "file_path" | "diff_content" | "node_type" | "node_id";
+  value: string;
+  inferredLayer: ChangeLayer;
+  confidence: SignalConfidence;
+  rationale: string;
+}
+
+const LAYER_REVIEW_PATH: Record<ChangeLayer, ReviewPath> = {
+  L1: "REQUIRE_CONFIRMATION",
+  L2: "REQUIRE_CONFIRMATION",
+  L3: "AUTO_WITH_OVERRIDE",
+  L4: "AUTO_WITH_OVERRIDE",
+  L5: "AUTO",
+  L6: "AUTO",
+};
+
+const LAYER_ORDER: Record<ChangeLayer, number> = {
+  L1: 1, L2: 2, L3: 3, L4: 4, L5: 5, L6: 6,
+};
+
+function classifyFilePath(
+  filePath: string
+): { layer: ChangeLayer; confidence: SignalConfidence; rationale: string } | null {
+  const p = filePath.toLowerCase();
+
+  if (p.includes("/db/migrations/") || p.includes("/migrations/") && p.endsWith(".sql")) {
+    return { layer: "L1", confidence: "HIGH", rationale: "Database schema migration" };
+  }
+  if (
+    p.match(/packages\/framework\/src\/(types|schema|layers)/)
+  ) {
+    return { layer: "L1", confidence: "HIGH", rationale: "Framework type/schema/layer definition" };
+  }
+  if (p.includes("packages/framework/")) {
+    return { layer: "L2", confidence: "HIGH", rationale: "Framework core module" };
+  }
+  if (p.includes("packages/shared/")) {
+    return { layer: "L2", confidence: "MEDIUM", rationale: "Shared types package" };
+  }
+  if (p.includes("/guardrails/")) {
+    return { layer: "L2", confidence: "HIGH", rationale: "Guardrail rule or registry" };
+  }
+  if (p.includes("/routes/") || p.includes("/endpoints/")) {
+    return { layer: "L3", confidence: "HIGH", rationale: "API route definition" };
+  }
+  if (p.includes("apps/mcp/")) {
+    return { layer: "L3", confidence: "HIGH", rationale: "MCP integration layer" };
+  }
+  if (p.includes("/agent/")) {
+    return { layer: "L3", confidence: "MEDIUM", rationale: "Agent API module" };
+  }
+  if (p.includes("/db/")) {
+    return { layer: "L4", confidence: "HIGH", rationale: "Database access / persistence layer" };
+  }
+  if (p.includes("/embeddings/")) {
+    return { layer: "L4", confidence: "MEDIUM", rationale: "Embedding / data enrichment layer" };
+  }
+  if (p.includes("apps/web/")) {
+    return { layer: "L5", confidence: "HIGH", rationale: "Frontend application module" };
+  }
+  if (p.endsWith(".test.ts") || p.endsWith(".spec.ts") || p.includes("/__tests__/") || p.includes("/test/")) {
+    return { layer: "L6", confidence: "MEDIUM", rationale: "Test file" };
+  }
+  if (
+    p.includes(".github/") ||
+    p.includes("/scripts/") ||
+    p.endsWith(".sh") ||
+    p.startsWith("dockerfile") ||
+    p.includes("docker-compose") ||
+    p.endsWith(".yml") ||
+    p.endsWith(".yaml")
+  ) {
+    return { layer: "L6", confidence: "HIGH", rationale: "CI/CD, infrastructure, or operations config" };
+  }
+  if (p.includes("apps/api/")) {
+    return { layer: "L4", confidence: "LOW", rationale: "API application code (layer uncertain)" };
+  }
+  return null;
+}
+
+const DIFF_SIGNALS: Array<{ pattern: RegExp; layer: ChangeLayer; confidence: SignalConfidence; rationale: string }> = [
+  { pattern: /CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE/i, layer: "L1", confidence: "HIGH", rationale: "SQL DDL statement" },
+  { pattern: /\b(BoundedContext|BusinessProcess|DomainEvent|ValueObject|Aggregate)\b/, layer: "L1", confidence: "HIGH", rationale: "Domain / L1 node type" },
+  { pattern: /\b(Requirement)\b.*?(type|layer)\s*[:=]\s*["']?L1/, layer: "L1", confidence: "MEDIUM", rationale: "L1 Requirement node" },
+  { pattern: /\b(ArchitectureSystem|ArchitectureComponent|ADR)\b/, layer: "L2", confidence: "HIGH", rationale: "L2 architecture node type" },
+  { pattern: /guardrails\.register|GuardrailRegistry|REQUIRE_CONFIRMATION/, layer: "L2", confidence: "HIGH", rationale: "Guardrail registry or confirmation policy" },
+  { pattern: /\b(ExternalSystem|ExternalDependency|APIEndpoint|Interface)\b/, layer: "L3", confidence: "HIGH", rationale: "L3 integration node type" },
+  { pattern: /app\.(get|post|put|patch|delete)\s*\(|router\.(get|post|put|patch|delete)\s*\(/i, layer: "L3", confidence: "MEDIUM", rationale: "HTTP route registration" },
+  { pattern: /McpServer|server\.tool\s*\(/, layer: "L3", confidence: "HIGH", rationale: "MCP server tool registration" },
+  { pattern: /sql`|FROM\s+nodes\b|FROM\s+edges\b|TraversalAdapter/i, layer: "L4", confidence: "MEDIUM", rationale: "Database query or traversal layer" },
+  { pattern: /\b(Module|Package|Library)\b.*?(type|layer)\s*[:=]\s*["']?L5/, layer: "L5", confidence: "HIGH", rationale: "L5 module/package node type" },
+  { pattern: /\bdescribe\s*\(|it\s*\(|test\s*\(|expect\s*\(/, layer: "L6", confidence: "LOW", rationale: "Test assertion code" },
+];
+
+// Node types mapped to their canonical layer per the LSDS type registry.
+const NODE_TYPE_LAYERS: Record<string, ChangeLayer> = {
+  BoundedContext: "L1", BusinessProcess: "L1", DomainEvent: "L1", ValueObject: "L1",
+  Aggregate: "L1", Requirement: "L1", Policy: "L1",
+  ArchitectureSystem: "L2", ArchitectureComponent: "L2", ADR: "L2",
+  ExternalSystem: "L3", ExternalDependency: "L3", APIEndpoint: "L3", Interface: "L3",
+  Database: "L4", DataStore: "L4", Schema: "L4", Queue: "L4",
+  Module: "L5", Package: "L5", Library: "L5", Service: "L5",
+  Deployment: "L6", Infrastructure: "L6", CICDPipeline: "L6", TechnicalDebt: "L5",
+};
+
+function pickLayer(signals: ChangeSignal[]): { layer: ChangeLayer; confidence: SignalConfidence; rationale: string } {
+  if (signals.length === 0) {
+    return { layer: "L5", confidence: "LOW", rationale: "No signals — defaulting to L5 (module level)" };
+  }
+
+  // Highest-risk (lowest L number) HIGH-confidence signal wins.
+  const high = signals.filter((s) => s.confidence === "HIGH");
+  const pool = high.length > 0 ? high : signals;
+  const worst = pool.reduce((a, b) => (LAYER_ORDER[a.inferredLayer] <= LAYER_ORDER[b.inferredLayer] ? a : b));
+
+  const sameLayer = pool.filter((s) => s.inferredLayer === worst.inferredLayer);
+  const confidence: SignalConfidence = high.length > 0 ? "HIGH" : sameLayer.length >= 2 ? "MEDIUM" : "LOW";
+  return { layer: worst.inferredLayer, confidence, rationale: worst.rationale };
+}
+
+export async function analyzeChange(
+  sql: Sql,
+  tenantId: string,
+  params: AnalyzeChange
+): Promise<{
+  classifiedAt: string;
+  classification: { layer: ChangeLayer; confidence: SignalConfidence; reviewPath: ReviewPath; rationale: string };
+  signals: Array<{ source: string; value: string; inferredLayer: string; confidence: string; rationale: string }>;
+  recommendations: string[];
+}> {
+  const signals: ChangeSignal[] = [];
+
+  // ── File-path signals ──────────────────────────────────────────────────────
+  for (const fp of params.filePaths ?? []) {
+    const result = classifyFilePath(fp);
+    if (result) {
+      signals.push({ source: "file_path", value: fp, inferredLayer: result.layer, confidence: result.confidence, rationale: result.rationale });
+    }
+  }
+
+  // ── Diff-content signals ───────────────────────────────────────────────────
+  if (params.diff) {
+    for (const { pattern, layer, confidence, rationale } of DIFF_SIGNALS) {
+      if (pattern.test(params.diff)) {
+        const excerpt = params.diff.split("\n").find((l) => pattern.test(l))?.trim().slice(0, 120) ?? "";
+        signals.push({ source: "diff_content", value: excerpt, inferredLayer: layer, confidence, rationale });
+      }
+    }
+  }
+
+  // ── Node-type signals ──────────────────────────────────────────────────────
+  for (const nt of params.nodeTypes ?? []) {
+    const layer = NODE_TYPE_LAYERS[nt];
+    if (layer) {
+      signals.push({ source: "node_type", value: nt, inferredLayer: layer, confidence: "HIGH", rationale: `Node type '${nt}' is canonical L${LAYER_ORDER[layer]}` });
+    } else {
+      signals.push({ source: "node_type", value: nt, inferredLayer: "L5", confidence: "LOW", rationale: `Unknown node type '${nt}' — defaulting to L5` });
+    }
+  }
+
+  // ── Node-ID signals (DB lookup) ────────────────────────────────────────────
+  if (params.nodeIds && params.nodeIds.length > 0) {
+    const rows = await sql<{ id: string; type: string; layer: string }[]>`
+      SELECT id, type, layer FROM nodes
+      WHERE tenant_id = ${tenantId} AND id = ANY(${params.nodeIds})
+    `;
+    for (const row of rows) {
+      const layer = row.layer as ChangeLayer;
+      signals.push({
+        source: "node_id",
+        value: row.id,
+        inferredLayer: layer,
+        confidence: "HIGH",
+        rationale: `Node ${row.id} (${row.type}) is ${layer}`,
+      });
+    }
+  }
+
+  const { layer, confidence, rationale } = pickLayer(signals);
+  const reviewPath = LAYER_REVIEW_PATH[layer];
+
+  const recommendations: string[] = [];
+  if (layer === "L1" || layer === "L2") {
+    recommendations.push("This change touches structural (L1/L2) elements — explicit board or CTO confirmation required before merge.");
+    recommendations.push("Run lsds_architect_consistency and lsds_impact_predict to surface downstream blast radius before proceeding.");
+  } else if (layer === "L3" || layer === "L4") {
+    recommendations.push("L3/L4 change: notify CTO and observe a 2-hour hold before QA merges.");
+    recommendations.push("Run lsds_impact_predict to verify no unexpected L1/L2 node is affected.");
+  } else {
+    recommendations.push("L5/L6 change: QA can merge autonomously — no hold required.");
+  }
+
+  return {
+    classifiedAt: new Date().toISOString(),
+    classification: { layer, confidence, reviewPath, rationale },
+    signals: signals.map((s) => ({
+      source: s.source,
+      value: s.value,
+      inferredLayer: s.inferredLayer,
+      confidence: s.confidence,
+      rationale: s.rationale,
+    })),
+    recommendations,
   };
 }
