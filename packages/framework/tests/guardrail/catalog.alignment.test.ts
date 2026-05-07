@@ -238,6 +238,28 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.rationale).toContain("configurable");
   });
 
+  it("GR-L2-001 reads BoundedContext.ubiquitous_language and config.l2.min_terms_per_context (kap. 4 field)", () => {
+    // Positive: rule reads the canonical ubiquitous_language field array and
+    // gates on the configurable threshold. PRESCRIPTIVE+ERROR blocks creation
+    // of contexts without shared vocabulary.
+    const rule = getGuardrailOrThrow("GR-L2-001");
+    expect(rule.scope.object_type).toBe("BoundedContext");
+    expect(rule.condition).toContain("object.ubiquitous_language");
+    expect(rule.condition).toContain("config.l2.min_terms_per_context");
+    expect(rule.evaluation).toBe("PRESCRIPTIVE");
+    expect(rule.severity).toBe("ERROR");
+    // Negative: drift guard — must not use shortened field names, plural
+    // 'language_terms', or camelCase variants that have appeared in earlier
+    // drafts. The canonical kap. 4 attribute is 'ubiquitous_language'.
+    expect(rule.condition).not.toContain("object.language_terms");
+    expect(rule.condition).not.toContain("object.vocabulary");
+    expect(rule.condition).not.toContain("object.terms");
+    expect(rule.condition).not.toContain("object.glossary");
+    expect(rule.condition).not.toContain("object.ubiquitousLanguage");
+    // Threshold must come from config (not a hardcoded literal).
+    expect(rule.condition).not.toMatch(/>=\s*\d+(?!\s*config)/);
+  });
+
   it("GR-L3-008 is DESCRIPTIVE+WARNING (PRESCRIPTIVE+WARNING is not a valid combination)", () => {
     const rule = getGuardrailOrThrow("GR-L3-008");
     expect(rule.evaluation).toBe("DESCRIPTIVE");
@@ -281,6 +303,24 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.scope.triggers).toContain("PERIODIC");
     expect(rule.scope.triggers).toContain("CREATE");
     expect(rule.scope.triggers).toContain("UPDATE");
+  });
+
+  it("GR-L2-005 reads DomainEvent.name via is_past_tense() (kap. 4 attribute + canonical check function)", () => {
+    // Positive: rule calls is_past_tense() on object.name — the canonical kap. 4
+    // attribute for the event identifier string. Fires on DomainEvent nodes only.
+    const rule = getGuardrailOrThrow("GR-L2-005");
+    expect(rule.scope.object_type).toBe("DomainEvent");
+    expect(rule.condition).toContain("is_past_tense(");
+    expect(rule.condition).toContain("object.name");
+    // Negative: drift guard — must not substitute the function for ad-hoc
+    // string checks, and must not read object.title or object.event_name instead
+    // of the canonical name field.
+    expect(rule.condition).not.toContain("object.title");
+    expect(rule.condition).not.toContain("object.event_name");
+    expect(rule.condition).not.toContain("is_command_form(");
+    expect(rule.condition).not.toContain('endsWith("ed")');
+    // must use is_past_tense() not a bare past_tense() variant
+    expect(rule.condition).not.toMatch(/(?<!is_)past_tense\(/);
   });
 
   it("GR-L6-006 reads Environment.environment_type and Environment.iac_reference", () => {
