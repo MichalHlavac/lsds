@@ -3,8 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
-
 export const DOMAIN_TYPES = ["CORE", "SUPPORTING", "GENERIC"] as const;
 export const DomainTypeSchema = z.enum(DOMAIN_TYPES);
 export type DomainType = z.infer<typeof DomainTypeSchema>;
@@ -31,7 +29,6 @@ export const BoundedContextSchema = TknBaseSchema.extend({
   ubiquitousLanguage: z
     .array(UbiquitousLanguageTermSchema)
     .min(3, "BoundedContext.ubiquitousLanguage must contain at least 3 terms"),
-  owner: TeamRefSchema,
   domainType: DomainTypeSchema,
   maturity: ContextMaturitySchema,
 }).superRefine((value, ctx) => {

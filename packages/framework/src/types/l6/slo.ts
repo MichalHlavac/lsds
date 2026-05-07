@@ -3,8 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
-
 // SLO (kap. 4 § L6). Each SLO traces to a QualityAttribute (L3) and
 // validates a Service / ArchitectureComponent — those graph-level edges
 // live in the relationship registry, not on the schema. The schema-level
@@ -29,7 +27,6 @@ export const SloSchema = TknBaseSchema.extend({
   measurementMethod: z
     .string()
     .min(1, "SLO.measurementMethod must describe how the metric is collected"),
-  owner: TeamRefSchema,
 }).superRefine((value, ctx) => {
   if ((value.sloType === "AVAILABILITY" || value.sloType === "ERROR_RATE") && (value.target < 0 || value.target > 100)) {
     ctx.addIssue({

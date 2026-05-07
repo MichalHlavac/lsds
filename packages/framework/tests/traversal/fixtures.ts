@@ -12,11 +12,14 @@ import type {
   RelationshipType,
 } from "../../src/relationship/types.js";
 import type { TknBase } from "../../src/shared/base.js";
+import type { TeamRef } from "../../src/shared/refs.js";
 
 let counter = 0;
 const id = (prefix: string) => `${prefix}-${++counter}`;
 
 const FIXED_TIMESTAMP = "2026-01-01T00:00:00.000Z";
+
+const FIXTURE_TEAM: TeamRef = { kind: "team", id: "team-test", name: "Test Team" };
 
 export interface NodeOpts {
   id?: string;
@@ -34,6 +37,7 @@ export function makeNode(opts: NodeOpts): TknBase {
     name: opts.name,
     version: "1.0.0",
     lifecycle: opts.lifecycle ?? "ACTIVE",
+    owner: FIXTURE_TEAM,
     createdAt: FIXED_TIMESTAMP,
     updatedAt: FIXED_TIMESTAMP,
   };
