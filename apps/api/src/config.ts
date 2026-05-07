@@ -99,4 +99,7 @@ export const config = {
     }
     return _config.lifecycleRetentionDays;
   },
+  get adminSecret(): string | undefined {
+    return process.env.LSDS_ADMIN_SECRET || undefined;
+  },
 };
