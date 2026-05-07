@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema, TechnologyRefSchema } from "../../shared/refs.js";
+import { TechnologyRefSchema } from "../../shared/refs.js";
 
 export const ARCHITECTURE_COMPONENT_TYPES = [
   "SERVICE",
@@ -37,7 +37,6 @@ export const ArchitectureComponentSchema = TknBaseSchema.extend({
   description: z.string().min(1),
   componentType: ArchitectureComponentTypeSchema,
   technology: TechnologyRefSchema,
-  owner: TeamRefSchema,
   dataClassification: DataClassificationSchema,
   scalabilityMode: ScalabilityModeSchema.optional(),
 });

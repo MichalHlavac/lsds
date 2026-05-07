@@ -3,8 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
-
 export const FEATURE_FLAG_KINDS = ["RELEASE", "EXPERIMENT", "OPS", "PERMISSION"] as const;
 export const FeatureFlagKindSchema = z.enum(FEATURE_FLAG_KINDS);
 export type FeatureFlagKind = z.infer<typeof FeatureFlagKindSchema>;
@@ -38,7 +36,6 @@ export const FeatureFlagSchema = TknBaseSchema.extend({
   description: z.string().min(1),
   kind: FeatureFlagKindSchema,
   defaultValue: FeatureFlagDefaultValueSchema,
-  owner: TeamRefSchema,
   lifecyclePlan: FeatureFlagLifecyclePlanSchema,
   expiresAt: z.string().regex(ISO_DATE, "expiresAt must be ISO date (YYYY-MM-DD)").optional(),
 }).superRefine((value, ctx) => {

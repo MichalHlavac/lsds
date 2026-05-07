@@ -59,7 +59,6 @@ export const OnCallPolicySchema = TknBaseSchema.extend({
   type: z.literal("OnCallPolicy"),
   layer: z.literal("L6"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   coverage: CoverageTypeSchema,
   escalationLevels: z
     .array(EscalationLevelSchema)

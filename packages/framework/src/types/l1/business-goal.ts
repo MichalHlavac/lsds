@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { ISO_DATE, TeamRefSchema } from "../../shared/refs.js";
+import { ISO_DATE } from "../../shared/refs.js";
 
 export const TimeHorizonSchema = z.enum(["SHORT", "MEDIUM", "LONG"]);
 export type TimeHorizon = z.infer<typeof TimeHorizonSchema>;
@@ -19,7 +19,6 @@ export const BusinessGoalSchema = TknBaseSchema.extend({
   layer: z.literal("L1"),
   name: z.string().min(1).max(100),
   description: z.string().min(50),
-  owner: TeamRefSchema,
   timeHorizon: TimeHorizonSchema,
   successMetrics: z.array(z.string().min(1)).min(1, "BusinessGoal.successMetrics must contain at least one metric"),
   status: BusinessGoalStatusSchema,

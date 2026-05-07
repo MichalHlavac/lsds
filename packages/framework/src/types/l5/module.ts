@@ -5,7 +5,6 @@ import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
 import {
   RepoRefSchema,
-  TeamRefSchema,
   TechnologyRefSchema,
 } from "../../shared/refs.js";
 
@@ -35,7 +34,6 @@ export const CodeModuleSchema = TknBaseSchema.extend({
   type: z.literal("CodeModule"),
   layer: z.literal("L5"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   language: TechnologyRefSchema,
   moduleType: ModuleTypeSchema,
   repositoryReference: CodeModuleRepositoryReferenceSchema,

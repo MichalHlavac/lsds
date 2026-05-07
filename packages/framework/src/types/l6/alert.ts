@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema, UuidSchema } from "../../shared/refs.js";
+import { UuidSchema } from "../../shared/refs.js";
 
 // Alert (kap. 4 § L6). The structural invariant the framework enforces
 // at schema level: every Alert MUST point at a Runbook via
@@ -29,6 +29,5 @@ export const AlertSchema = TknBaseSchema.extend({
     .min(1, "Alert.condition must describe the metric/threshold that fires the alert"),
   severity: AlertSeveritySchema,
   runbookReference: RunbookRefSchema,
-  owner: TeamRefSchema,
 });
 export type Alert = z.infer<typeof AlertSchema>;

@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { ISO_DATE, PersonRefSchema, TeamRefSchema } from "../../shared/refs.js";
+import { ISO_DATE, PersonRefSchema } from "../../shared/refs.js";
 
 export const EXTERNAL_SYSTEM_CRITICALITIES = ["CRITICAL", "HIGH", "MEDIUM"] as const;
 export const ExternalSystemCriticalitySchema = z.enum(EXTERNAL_SYSTEM_CRITICALITIES);
@@ -20,7 +20,6 @@ export const ExternalSystemSchema = TknBaseSchema.extend({
   contractOwner: PersonRefSchema,
   documentationUrl: z.string().url("ExternalSystem.documentationUrl must be a valid URL"),
   lastReviewDate: z.string().regex(ISO_DATE, "lastReviewDate must be ISO date (YYYY-MM-DD)").optional(),
-  owner: TeamRefSchema,
 }).superRefine((value, ctx) => {
   // kap. 4 invariants: SLA + fallback obligations scale with criticality.
   if (value.criticality === "CRITICAL" || value.criticality === "HIGH") {

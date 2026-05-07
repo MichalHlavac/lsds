@@ -3,8 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
-
 export const CapabilityMaturitySchema = z.enum([
   "INITIAL",
   "DEVELOPING",
@@ -21,7 +19,6 @@ export const BusinessCapabilitySchema = TknBaseSchema.extend({
   type: z.literal("BusinessCapability"),
   layer: z.literal("L1"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   maturity: CapabilityMaturitySchema,
   businessValue: BusinessValueSchema,
 });
