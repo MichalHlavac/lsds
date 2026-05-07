@@ -7,7 +7,6 @@ import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
 import { logger } from "./logger.js";
 import { sql, DB_POOL_MAX } from "./db/client.js";
-import { PostgresTraversalAdapter } from "./db/traversal-adapter.js";
 import { cache } from "./cache/index.js";
 import { GuardrailsRegistry } from "./guardrails/index.js";
 import { LifecycleService } from "./lifecycle/index.js";
@@ -33,7 +32,6 @@ import { requestLoggerMiddleware } from "./middleware/request-logger.js";
 import { rateLimitMiddleware } from "./middleware/rate-limit.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
-const adapter = new PostgresTraversalAdapter(sql);
 const guardrails = new GuardrailsRegistry(sql);
 const lifecycle = new LifecycleService(sql, cache);
 
@@ -95,7 +93,7 @@ app.use("/agent/*", rateLimitMiddleware);
 
 const v1 = new Hono();
 v1.route("/nodes", nodesRouter(sql, cache, lifecycle, embeddingService, guardrails));
-v1.route("/nodes", traversalRouter(sql, cache, adapter));
+v1.route("/nodes", traversalRouter(sql, cache));
 v1.route("/edges", edgesRouter(sql, cache, lifecycle, guardrails));
 v1.route("/violations", violationsRouter(sql));
 v1.route("/guardrails", guardrailsRouter(sql));

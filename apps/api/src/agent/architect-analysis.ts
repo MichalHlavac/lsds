@@ -518,7 +518,7 @@ export async function impactPredict(
   params: ImpactPredict
 ) {
   const { changeType, nodeId, proposedNode, edgeChanges, maxDepth } = params;
-  const adapter = new PostgresTraversalAdapter(sql);
+  const adapter = new PostgresTraversalAdapter(sql, tenantId);
 
   // Fetch existing node for update/delete
   let existingNode: NodeRow | null = null;
