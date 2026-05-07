@@ -16,6 +16,9 @@ export interface NodeRow {
   attributes: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+  ownerId: string;
+  ownerName: string;
+  ownerKind: string;
   deprecatedAt: Date | null;
   archivedAt: Date | null;
   purgeAfter: Date | null;
