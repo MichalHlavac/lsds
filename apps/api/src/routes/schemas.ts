@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { LayerSchema, LifecycleStatusSchema, SeveritySchema } from "@lsds/shared";
-import { RelationshipTypeSchema } from "@lsds/framework";
+import { RelationshipTypeSchema, TeamRefSchema } from "@lsds/framework";
 
 const LayerEnum = LayerSchema;
 const LifecycleEnum = LifecycleStatusSchema;
@@ -21,6 +21,7 @@ export const CreateNodeSchema = z.object({
   version: z.string().optional().default("0.1.0"),
   lifecycleStatus: LifecycleEnum.optional().default("ACTIVE"),
   attributes: z.record(z.unknown()).optional().default({}),
+  owner: TeamRefSchema.optional(),
 });
 export type CreateNode = z.infer<typeof CreateNodeSchema>;
 
@@ -159,6 +160,7 @@ export const ImpactPredictSchema = z.object({
       version: z.string().optional(),
       lifecycleStatus: LifecycleEnum.optional(),
       attributes: z.record(z.unknown()).optional().default({}),
+      owner: TeamRefSchema.optional(),
     })
     .optional(),
   edgeChanges: z

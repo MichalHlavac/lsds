@@ -81,12 +81,15 @@ export function nodesRouter(
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateNodeSchema.parse(await c.req.json());
+    const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
+    const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
     try {
       const [row] = await sql<NodeRow[]>`
-        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
+        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
         VALUES (
           ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
-          ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
+          ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)},
+          ${ownerId}, ${ownerName}
         )
         RETURNING *
       `;
@@ -104,6 +107,8 @@ export function nodesRouter(
   app.put("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateNodeSchema.parse(await c.req.json());
+    const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
+    const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
 
     const [previous] = await sql<NodeRow[]>`
       SELECT * FROM nodes
@@ -111,15 +116,18 @@ export function nodesRouter(
     `;
 
     const [row] = await sql<NodeRow[]>`
-      INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
+      INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
       VALUES (
         ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
-        ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
+        ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)},
+        ${ownerId}, ${ownerName}
       )
       ON CONFLICT (tenant_id, type, layer, name)
       DO UPDATE SET
         version = EXCLUDED.version,
         attributes = EXCLUDED.attributes,
+        owner_id = EXCLUDED.owner_id,
+        owner_name = EXCLUDED.owner_name,
         updated_at = now()
       RETURNING *
     `;
@@ -189,8 +197,8 @@ export function nodesRouter(
       version: body.version,
       lifecycleStatus: body.lifecycleStatus,
       attributes: body.attributes,
-      ownerId: '',
-      ownerName: '',
+      ownerId: (body.owner as { id?: string } | undefined)?.id ?? '',
+      ownerName: (body.owner as { name?: string } | undefined)?.name ?? '',
       ownerKind: 'team',
       createdAt: new Date(),
       updatedAt: new Date(),
