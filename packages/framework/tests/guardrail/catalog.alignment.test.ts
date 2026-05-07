@@ -509,6 +509,11 @@ describe("GR-XL cross-layer guardrail drift guards (GR-XL-001..011)", () => {
       expect(rule.remediation).toContain("owner");
     });
 
+    it("remediation does not advise PersonRef (TknBase.owner is TeamRef-only per kap. 2.6)", () => {
+      const rule = getGuardrailOrThrow("GR-XL-001");
+      expect(rule.remediation).not.toMatch(/PersonRef/);
+    });
+
     it("propagation is NONE", () => {
       const rule = getGuardrailOrThrow("GR-XL-001");
       expect(rule.propagation).toBe("NONE");

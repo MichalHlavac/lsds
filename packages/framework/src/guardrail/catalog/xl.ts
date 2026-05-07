@@ -19,7 +19,7 @@ export const XL_RULES: GuardrailRule[] = [
     rationale:
       "Unowned objects are nobody's responsibility; reviews, deprecations, and incidents all stall waiting for an accountable team or person.",
     remediation:
-      "Set owner to a TeamRef or PersonRef. If no team owns it yet, surface the question — don't paper over it.",
+      "Set owner to a TeamRef. Per kap. 2.6, primary ownership is team-only — if no team owns it yet, surface the question, don't paper over it with a person.",
     propagation: "NONE",
   },
   {
