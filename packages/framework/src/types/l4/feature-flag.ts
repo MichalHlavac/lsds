@@ -62,4 +62,3 @@ export const FeatureFlagSchema = TknBaseSchema.extend({
 });
 export type FeatureFlag = z.infer<typeof FeatureFlagSchema>;
 
-export const FEATURE_FLAG_TRAVERSAL_WEIGHT = "LAZY" as const;

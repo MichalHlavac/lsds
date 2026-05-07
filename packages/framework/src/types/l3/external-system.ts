@@ -46,4 +46,3 @@ export const ExternalSystemSchema = TknBaseSchema.extend({
 });
 export type ExternalSystem = z.infer<typeof ExternalSystemSchema>;
 
-export const EXTERNAL_SYSTEM_TRAVERSAL_WEIGHT = "EAGER" as const;

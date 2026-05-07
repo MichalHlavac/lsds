@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   FEATURE_FLAG_KINDS,
   FEATURE_FLAG_LIFECYCLE_PLANS,
-  FEATURE_FLAG_TRAVERSAL_WEIGHT,
   FeatureFlagSchema,
 } from "../../../src/types/l4/feature-flag.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -87,9 +86,6 @@ describe("FeatureFlag (kap. 4 § L4)", () => {
     );
   });
 
-  it("declares LAZY traversal weight", () => {
-    expect(FEATURE_FLAG_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 
   it("exposes 4 kinds and 2 lifecycle plans (kap. 4 closed enums)", () => {
     expect(FEATURE_FLAG_KINDS).toEqual(["RELEASE", "EXPERIMENT", "OPS", "PERMISSION"]);

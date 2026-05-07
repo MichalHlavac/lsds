@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   PACKAGE_MANAGERS,
-  PACKAGE_TRAVERSAL_WEIGHT,
   PackageSchema,
 } from "../../../src/types/l5/package.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -66,9 +65,6 @@ describe("Package (L5 — ADR A3 grain)", () => {
     );
   });
 
-  it("declares LAZY traversal weight", () => {
-    expect(PACKAGE_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 
   it("exposes 8 package managers (closed enum)", () => {
     expect(PACKAGE_MANAGERS).toHaveLength(8);

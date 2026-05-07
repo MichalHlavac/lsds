@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  EXTERNAL_DEPENDENCY_TRAVERSAL_WEIGHT,
   ExternalDependencySchema,
 } from "../../../src/types/l5/external-dependency.js";
 import { expectIssue } from "../../fixtures.js";
@@ -105,7 +104,4 @@ describe("ExternalDependency (L5 — ADR A8)", () => {
     );
   });
 
-  it("declares LAZY traversal weight", () => {
-    expect(EXTERNAL_DEPENDENCY_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 });

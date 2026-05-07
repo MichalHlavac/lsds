@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   DEPLOYMENT_UNIT_KINDS,
-  DEPLOYMENT_UNIT_TRAVERSAL_WEIGHT,
   DeploymentUnitSchema,
 } from "../../../src/types/l6/deployment-unit.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -73,9 +72,6 @@ describe("DeploymentUnit (L6)", () => {
     );
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(DEPLOYMENT_UNIT_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes 7 deployment unit kinds (closed enum)", () => {
     expect(DEPLOYMENT_UNIT_KINDS).toHaveLength(7);

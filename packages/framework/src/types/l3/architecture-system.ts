@@ -38,4 +38,3 @@ export const ArchitectureSystemSchema = TknBaseSchema.extend({
 });
 export type ArchitectureSystem = z.infer<typeof ArchitectureSystemSchema>;
 
-export const ARCHITECTURE_SYSTEM_TRAVERSAL_WEIGHT = "EAGER" as const;

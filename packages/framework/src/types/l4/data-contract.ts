@@ -71,4 +71,3 @@ export const DataContractSchema = TknBaseSchema.extend({
 });
 export type DataContract = z.infer<typeof DataContractSchema>;
 
-export const DATA_CONTRACT_TRAVERSAL_WEIGHT = "EAGER" as const;

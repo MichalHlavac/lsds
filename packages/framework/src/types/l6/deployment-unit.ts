@@ -45,4 +45,3 @@ export const DeploymentUnitSchema = TknBaseSchema.extend({
 });
 export type DeploymentUnit = z.infer<typeof DeploymentUnitSchema>;
 
-export const DEPLOYMENT_UNIT_TRAVERSAL_WEIGHT = "EAGER" as const;

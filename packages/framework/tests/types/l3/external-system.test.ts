@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   EXTERNAL_SYSTEM_CRITICALITIES,
-  EXTERNAL_SYSTEM_TRAVERSAL_WEIGHT,
   ExternalSystemSchema,
 } from "../../../src/types/l3/external-system.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -105,9 +104,6 @@ describe("ExternalSystem (kap. 4 § L3)", () => {
     );
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(EXTERNAL_SYSTEM_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes the 3 criticality levels (kap. 4 closed enum)", () => {
     expect(EXTERNAL_SYSTEM_CRITICALITIES).toEqual(["CRITICAL", "HIGH", "MEDIUM"]);

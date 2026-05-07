@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   AcceptanceCriterionSchema,
   ImpactSchema,
-  REQUIREMENT_TRAVERSAL_WEIGHT,
   RequirementSchema,
 } from "../../../src/types/l1/requirement.js";
 import { expectIssue, sampleTeam, tknBase } from "../../fixtures.js";
@@ -68,9 +67,6 @@ describe("Requirement (kap. 4 § Requirement, A5)", () => {
     );
   });
 
-  it("declares LAZY traversal weight (kap. 4)", () => {
-    expect(REQUIREMENT_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 });
 
 describe("AcceptanceCriterion (kap. 4 § Requirement)", () => {

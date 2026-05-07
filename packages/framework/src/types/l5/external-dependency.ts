@@ -38,4 +38,3 @@ export const ExternalDependencySchema = TknBaseSchema.extend({
 });
 export type ExternalDependency = z.infer<typeof ExternalDependencySchema>;
 
-export const EXTERNAL_DEPENDENCY_TRAVERSAL_WEIGHT = "LAZY" as const;

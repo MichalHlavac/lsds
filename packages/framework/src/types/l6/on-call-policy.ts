@@ -92,4 +92,3 @@ export const OnCallPolicySchema = TknBaseSchema.extend({
 });
 export type OnCallPolicy = z.infer<typeof OnCallPolicySchema>;
 
-export const ON_CALL_POLICY_TRAVERSAL_WEIGHT = "EAGER" as const;

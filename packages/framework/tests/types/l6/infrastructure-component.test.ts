@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   INFRA_COMPONENT_KINDS,
   INFRA_ENVIRONMENTS,
-  INFRASTRUCTURE_COMPONENT_TRAVERSAL_WEIGHT,
   InfrastructureComponentSchema,
 } from "../../../src/types/l6/infrastructure-component.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -105,9 +104,6 @@ describe("InfrastructureComponent (L6)", () => {
     );
   });
 
-  it("declares LAZY traversal weight", () => {
-    expect(INFRASTRUCTURE_COMPONENT_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 
   it("exposes 9 kinds and 4 environments (closed enums)", () => {
     expect(INFRA_COMPONENT_KINDS).toHaveLength(9);
