@@ -88,6 +88,35 @@ server.tool(
 );
 
 server.tool(
+  "lsds_search_by_attributes",
+  "Find knowledge graph nodes whose JSONB attributes contain all the specified key-value pairs (containment match). Use this when you know an attribute value and want to find every node that carries it — for example, all nodes with owner.id='team-payments' or criticality='CRITICAL'. Returns up to 50 matches by default.",
+  {
+    attributes: z
+      .record(z.unknown())
+      .describe("JSONB containment filter: returned nodes must have attributes that contain all specified key-value pairs"),
+    nodeType: z
+      .string()
+      .optional()
+      .describe("Optional node type filter, e.g. 'Service', 'BoundedContext'"),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe("Maximum number of results to return (default 50)"),
+  },
+  async (params) => {
+    try {
+      const data = await client.searchByAttributes(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
   "lsds_semantic_search",
   "Search for knowledge graph nodes by semantic meaning using vector similarity. Returns nodes ranked by cosine similarity to the query. Requires embeddings to have been generated (EMBEDDING_PROVIDER must be set). Use this when a keyword search would miss semantically related but differently-named nodes.",
   {
@@ -889,6 +918,49 @@ server.tool(
   async (params) => {
     try {
       const data = await client.impactPredict(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "lsds_bulk_import",
+  "Transactionally create multiple nodes and optional edges in a single request. All inserts are wrapped in one Postgres transaction — either all succeed or none are persisted (fail-fast rollback on the first constraint violation). Maximum 500 items total (nodes + edges). Use this tool for migration scripts, graph seeding, or any scenario where you need atomic multi-node creation.",
+  {
+    nodes: z
+      .array(
+        z.object({
+          type: z.string().min(1).describe("Node type, e.g. 'Service', 'BoundedContext'"),
+          layer: z.enum(["L1", "L2", "L3", "L4", "L5", "L6"]).describe("Architecture layer"),
+          name: z.string().min(1).describe("Human-readable node name"),
+          version: z.string().optional().describe("Semantic version (default '0.1.0')"),
+          lifecycleStatus: z
+            .enum(["ACTIVE", "DEPRECATED", "ARCHIVED", "PURGE"])
+            .optional()
+            .describe("Initial lifecycle status (default 'ACTIVE')"),
+          attributes: z.record(z.unknown()).optional().describe("Arbitrary JSONB metadata"),
+        })
+      )
+      .describe("Nodes to create (required, may be empty)"),
+    edges: z
+      .array(
+        z.object({
+          sourceId: z.string().uuid().describe("UUID of the source node (must already exist in DB or be in this batch — nodes are inserted before edges)"),
+          targetId: z.string().uuid().describe("UUID of the target node"),
+          type: z.string().min(1).describe("Relationship type, e.g. 'depends-on', 'implements'"),
+          layer: z.enum(["L1", "L2", "L3", "L4", "L5", "L6"]).describe("Layer the relationship belongs to"),
+          traversalWeight: z.number().positive().optional().describe("Weight for graph traversal (default 1.0)"),
+          attributes: z.record(z.unknown()).optional().describe("Arbitrary JSONB metadata"),
+        })
+      )
+      .optional()
+      .describe("Edges to create (optional; may reference nodes created in this same batch)"),
+  },
+  async ({ nodes, edges }) => {
+    try {
+      const data = await client.bulkImport({ nodes, edges });
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     } catch (e) {
       return { content: [{ type: "text", text: String(e) }], isError: true };

@@ -117,6 +117,18 @@ export function createLsdsClient(config: LsdsClientConfig) {
       limit?: number;
     }) => req("POST", "/agent/v1/search", params),
 
+    searchByAttributes: (params: {
+      nodeType?: string;
+      attributes: Record<string, unknown>;
+      limit?: number;
+    }) => {
+      const qs = new URLSearchParams();
+      qs.set("attributes", JSON.stringify(params.attributes));
+      if (params.nodeType) qs.set("type", params.nodeType);
+      if (params.limit != null) qs.set("limit", String(params.limit));
+      return req("GET", `/v1/nodes/search?${qs.toString()}`);
+    },
+
     semanticSearch: (params: {
       query: string;
       limit?: number;
@@ -333,6 +345,26 @@ export function createLsdsClient(config: LsdsClientConfig) {
       }>;
       maxDepth?: number;
     }) => req("POST", "/agent/v1/architect/impact-predict", body),
+
+    // ── Bulk Import ────────────────────────────────────────────────────────
+    bulkImport: (body: {
+      nodes: Array<{
+        type: string;
+        layer: string;
+        name: string;
+        version?: string;
+        lifecycleStatus?: string;
+        attributes?: Record<string, unknown>;
+      }>;
+      edges?: Array<{
+        sourceId: string;
+        targetId: string;
+        type: string;
+        layer: string;
+        traversalWeight?: number;
+        attributes?: Record<string, unknown>;
+      }>;
+    }) => req("POST", "/v1/import/bulk", body),
   };
 }
 

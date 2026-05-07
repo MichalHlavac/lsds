@@ -69,7 +69,17 @@ DATABASE_URL=postgres://lsds:lsds@localhost:5432/lsds_restore lsds restore /var/
 
 ## Diagnostics bundle
 
-For support troubleshooting, generate a redacted diagnostics bundle:
+For support troubleshooting, generate a redacted diagnostics bundle.
+
+**Shell script** (no Node.js required — works on any Docker Compose installation):
+
+```bash
+./scripts/support-bundle.sh --out /tmp
+```
+
+Collects: last 500 API log lines, `docker compose ps` status, DB migration version, node/edge/violation/snapshot counts, and env var presence. All secret values are replaced with `<REDACTED>` before packaging. Run `./scripts/support-bundle.sh --help` for options.
+
+**CLI** (requires the `lsds` binary or a dev checkout):
 
 ```bash
 # via pnpm (dev/local)
@@ -79,7 +89,7 @@ pnpm --filter @lsds/cli run dev diagnostics bundle --out /tmp
 lsds diagnostics bundle --out /tmp
 ```
 
-Options:
+CLI options:
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -87,14 +97,14 @@ Options:
 | `-d, --days <n>` | `7` | Include log files modified within the last N days |
 | `--log-dir <dir>` | `/var/log/lsds` | Directory containing app `*.log` files |
 
-The bundle contains:
+The CLI bundle additionally includes:
 
 - `system-info.json` — OS, Node.js version, CPU/memory
 - `config.json` — process environment with secrets **redacted**: values for `*_KEY`, `*_SECRET`, `*_TOKEN`, `PASSWORD`, `DSN` keys are replaced with `<REDACTED>`; passwords embedded in `*_URL` connection strings are also stripped (e.g. `postgres://user:<REDACTED>@host/db`)
 - `db-version.txt` + `schema-snapshot.json` — PostgreSQL version and public schema (requires `DATABASE_URL`)
 - `logs/` — `*.log` files from `--log-dir` within the requested time window
 
-No API keys, tokens, passwords, or DSN credentials are included. You can verify this by inspecting `config.json` inside the bundle before sharing it.
+No API keys, tokens, passwords, or DSN credentials are included in either bundle. You can verify this by inspecting the files inside the `.tar.gz` before sharing it.
 
 ## License
 
