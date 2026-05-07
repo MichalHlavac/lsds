@@ -37,6 +37,7 @@ const EnvSchema = z
       .transform((v) => v === "true"),
     PORT: z.coerce.number().int().positive().default(3001),
     LIFECYCLE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    LSDS_ADMIN_SECRET: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.EMBEDDING_PROVIDER === "openai" && !data.OPENAI_API_KEY) {
@@ -71,6 +72,7 @@ const EnvSchema = z
     skipMigrations: data.SKIP_MIGRATIONS,
     port: data.PORT,
     lifecycleRetentionDays: data.LIFECYCLE_RETENTION_DAYS,
+    adminSecret: data.LSDS_ADMIN_SECRET,
   }));
 
 function parseConfig() {
@@ -96,5 +98,8 @@ export const config = {
       if (Number.isFinite(n) && n >= 0) return n;
     }
     return _config.lifecycleRetentionDays;
+  },
+  get adminSecret(): string | undefined {
+    return process.env.LSDS_ADMIN_SECRET || undefined;
   },
 };

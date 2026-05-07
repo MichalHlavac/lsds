@@ -15,6 +15,6 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     environment: "node",
     globalSetup: ["./tests/setup/global-setup.ts"],
-    env: { LOG_LEVEL: "silent" },
+    env: { LOG_LEVEL: "silent", LSDS_ADMIN_SECRET: "test-admin-secret" },
   },
 });

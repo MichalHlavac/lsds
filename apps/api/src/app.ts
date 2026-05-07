@@ -26,6 +26,8 @@ import { layersRouter } from "./routes/layers.js";
 import { apiKeysRouter } from "./routes/api-keys.js";
 import { importRouter } from "./routes/import.js";
 import { tenantRouter } from "./routes/tenant.js";
+import { adminTenantsRouter } from "./routes/admin-tenants.js";
+import { adminAuthMiddleware } from "./middleware/admin-auth.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
@@ -113,6 +115,9 @@ app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle, embeddingService));
 app.route("/agent/v1/architect", architectRouter(sql, guardrails));
 app.route("/agent/v1/migration", migrationRouter(sql));
+
+app.use("/api/admin/*", adminAuthMiddleware);
+app.route("/api/admin/tenants", adminTenantsRouter(sql));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
