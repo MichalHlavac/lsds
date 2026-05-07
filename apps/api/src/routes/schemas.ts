@@ -148,6 +148,33 @@ export const KnowledgeContextSchema = z.object({
 });
 export type KnowledgeContext = z.infer<typeof KnowledgeContextSchema>;
 
+export const ImpactPredictSchema = z.object({
+  changeType: z.enum(["create", "update", "delete"]),
+  nodeId: z.string().uuid().optional(),
+  proposedNode: z
+    .object({
+      type: z.string().min(1),
+      layer: LayerEnum,
+      name: z.string().min(1),
+      version: z.string().optional(),
+      lifecycleStatus: LifecycleEnum.optional(),
+      attributes: z.record(z.unknown()).optional().default({}),
+    })
+    .optional(),
+  edgeChanges: z
+    .array(
+      z.object({
+        fromId: z.string().uuid(),
+        toId: z.string().uuid(),
+        edgeType: z.string().min(1),
+        action: z.enum(["add", "remove"]),
+      })
+    )
+    .optional(),
+  maxDepth: z.number().int().min(1).max(10).optional().default(3),
+});
+export type ImpactPredict = z.infer<typeof ImpactPredictSchema>;
+
 export const LifecycleTransitionSchema = z.object({
   transition: z.enum(["deprecate", "archive", "purge"]),
 });
@@ -157,6 +184,39 @@ export const CreateSnapshotSchema = z.object({
   nodeCount: z.number().int().min(0).optional().default(0),
   edgeCount: z.number().int().min(0).optional().default(0),
   snapshotData: z.record(z.unknown()).optional().default({}),
+});
+
+const MAX_BULK_ITEMS = 500;
+
+export const BulkImportNodeSchema = CreateNodeSchema;
+export type BulkImportNode = z.infer<typeof BulkImportNodeSchema>;
+
+export const BulkImportEdgeSchema = CreateEdgeSchema;
+export type BulkImportEdge = z.infer<typeof BulkImportEdgeSchema>;
+
+export const BulkImportSchema = z
+  .object({
+    nodes: z.array(BulkImportNodeSchema),
+    edges: z.array(BulkImportEdgeSchema).optional().default([]),
+  })
+  .refine(
+    (data) => data.nodes.length + data.edges.length <= MAX_BULK_ITEMS,
+    { message: `batch exceeds maximum of ${MAX_BULK_ITEMS} items (nodes + edges combined)` }
+  );
+export type BulkImport = z.infer<typeof BulkImportSchema>;
+
+export const SearchByAttributesSchema = z.object({
+  nodeType: z.string().min(1).optional(),
+  attributes: z.record(z.unknown()),
+  limit: z.number().int().positive().max(500).optional().default(50),
+});
+export type SearchByAttributes = z.infer<typeof SearchByAttributesSchema>;
+
+export const SimilarNodesSchema = z.object({
+  nodeId: z.string().uuid(),
+  topK: z.number().int().positive().max(100).optional().default(10),
+  threshold: z.number().min(0).max(1).optional(),
+  model: z.string().optional(),
 });
 
 export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;

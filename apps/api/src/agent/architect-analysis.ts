@@ -4,7 +4,8 @@
 import type { Sql } from "../db/client.js";
 import type { NodeRow, SnapshotRow } from "../db/types.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
-import type { AgentAnalyze } from "../routes/schemas.js";
+import type { AgentAnalyze, ImpactPredict } from "../routes/schemas.js";
+import { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
 
 export const ARCH_STRUCTURAL_TYPES = ["BoundedContext", "ArchitectureComponent", "ArchitectureSystem"];
 
@@ -502,6 +503,141 @@ export async function requirementFulfillmentScan(sql: Sql, tenantId: string) {
     summary,
     gaps: classified.filter((r) => r.fulfillmentStatus === "gap"),
     requirements: classified,
+  };
+}
+
+const HIGH_IMPACT_LAYERS = new Set(["L1", "L2"]);
+
+// Pre-change impact analysis: traverses the graph from the affected node(s),
+// simulates the proposed change in-memory, runs guardrail checks, and flags
+// any L1/L2 nodes in the blast radius (ADR A4 layer-dependent policy).
+export async function impactPredict(
+  sql: Sql,
+  guardrails: GuardrailsRegistry,
+  tenantId: string,
+  params: ImpactPredict
+) {
+  const { changeType, nodeId, proposedNode, edgeChanges, maxDepth } = params;
+  const adapter = new PostgresTraversalAdapter(sql);
+
+  // Fetch existing node for update/delete
+  let existingNode: NodeRow | null = null;
+  if (nodeId) {
+    const [row] = await sql<NodeRow[]>`
+      SELECT * FROM nodes WHERE id = ${nodeId} AND tenant_id = ${tenantId}
+    `;
+    existingNode = row ?? null;
+    if (!existingNode && (changeType === "update" || changeType === "delete")) {
+      return null; // caller handles 404
+    }
+  }
+
+  // Collect traversal roots: the changed node + any edge-change endpoints
+  const traversalRoots: string[] = [];
+  if (nodeId && existingNode) traversalRoots.push(nodeId);
+  for (const ec of edgeChanges ?? []) {
+    if (!traversalRoots.includes(ec.fromId)) traversalRoots.push(ec.fromId);
+    if (!traversalRoots.includes(ec.toId)) traversalRoots.push(ec.toId);
+  }
+
+  // Traverse neighbors up to maxDepth from each root
+  const affectedMap = new Map<string, string[]>(); // nodeId → path
+  for (const root of traversalRoots) {
+    const results = await adapter.traverseWithDepth(root, maxDepth, "both");
+    for (const r of results) {
+      if (r.nodeId !== nodeId && !affectedMap.has(r.nodeId)) {
+        affectedMap.set(r.nodeId, r.path);
+      }
+    }
+  }
+
+  // Fetch full rows for all affected neighbor nodes
+  const affectedNodeIds = Array.from(affectedMap.keys());
+  let affectedNodes: NodeRow[] = [];
+  if (affectedNodeIds.length > 0) {
+    affectedNodes = await sql<NodeRow[]>`
+      SELECT * FROM nodes WHERE id = ANY(${affectedNodeIds}) AND tenant_id = ${tenantId}
+    `;
+  }
+
+  // Build simulated subjects for guardrail evaluation:
+  //   create → synthetic node from proposedNode
+  //   update → existing node with proposed fields merged in
+  //   delete → no simulated subject (the node is gone)
+  const simulatedSubjects: NodeRow[] = [];
+
+  if (changeType === "create" && proposedNode) {
+    simulatedSubjects.push({
+      id: "00000000-0000-0000-0000-000000000000",
+      tenantId,
+      type: proposedNode.type,
+      layer: proposedNode.layer,
+      name: proposedNode.name,
+      version: proposedNode.version ?? "0.1.0",
+      lifecycleStatus: proposedNode.lifecycleStatus ?? "ACTIVE",
+      attributes: proposedNode.attributes ?? {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deprecatedAt: null,
+      archivedAt: null,
+      purgeAfter: null,
+    });
+  } else if (changeType === "update" && existingNode) {
+    simulatedSubjects.push({
+      ...existingNode,
+      name: proposedNode?.name ?? existingNode.name,
+      type: proposedNode?.type ?? existingNode.type,
+      layer: proposedNode?.layer ?? existingNode.layer,
+      version: proposedNode?.version ?? existingNode.version,
+      lifecycleStatus: proposedNode?.lifecycleStatus ?? existingNode.lifecycleStatus,
+      attributes: proposedNode?.attributes ?? existingNode.attributes,
+    });
+  }
+  // Affected neighbors are evaluated as-is
+  simulatedSubjects.push(...affectedNodes);
+
+  const { violations } = await guardrails.evaluateBatch(tenantId, simulatedSubjects);
+
+  // Flag requiresConfirmation when any L1/L2 node is in the blast radius
+  let requiresConfirmation =
+    (existingNode != null && HIGH_IMPACT_LAYERS.has(existingNode.layer)) ||
+    (proposedNode != null && HIGH_IMPACT_LAYERS.has(proposedNode.layer)) ||
+    affectedNodes.some((n) => HIGH_IMPACT_LAYERS.has(n.layer));
+
+  const predictedViolations = violations.map((v) => ({
+    ruleKey: v.ruleKey,
+    severity: v.severity,
+    nodeId: v.nodeId ?? null,
+    description: v.message,
+  }));
+
+  const errorCount = predictedViolations.filter((v) => v.severity === "ERROR").length;
+  const warnCount = predictedViolations.filter((v) => v.severity === "WARN").length;
+
+  const summary = [
+    `${changeType.toUpperCase()} affects ${affectedNodes.length} neighboring node(s).`,
+    predictedViolations.length > 0
+      ? `Predicted ${predictedViolations.length} violation(s): ${errorCount} ERROR, ${warnCount} WARN.`
+      : "No guardrail violations predicted.",
+    requiresConfirmation
+      ? "Requires confirmation — L1/L2 (Business/Domain) node(s) in blast radius."
+      : "No high-impact layer nodes in blast radius.",
+  ].join(" ");
+
+  return {
+    predictedAt: new Date().toISOString(),
+    changeType,
+    maxDepth,
+    affectedNodes: affectedNodes.map((n) => ({
+      id: n.id,
+      name: n.name,
+      type: n.type,
+      layer: n.layer,
+      relationshipPath: affectedMap.get(n.id) ?? [],
+    })),
+    predictedViolations,
+    requiresConfirmation,
+    summary,
   };
 }
 
