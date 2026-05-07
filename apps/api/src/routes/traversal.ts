@@ -4,16 +4,12 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
-import type { TraversalEngine } from "../db/traversal-adapter.js";
+import { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
 import type { NodeRow } from "../db/types.js";
 import { TraverseSchema, QueryNodesSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
 
-export function traversalRouter(
-  sql: Sql,
-  cache: LsdsCache,
-  adapter: TraversalEngine
-): Hono {
+export function traversalRouter(sql: Sql, cache: LsdsCache): Hono {
   const app = new Hono();
 
   app.post("/:id/traverse", async (c) => {
@@ -25,6 +21,7 @@ export function traversalRouter(
     const hit = cache.traversals.get(cacheKey);
     if (hit) return c.json({ data: hit, cached: true });
 
+    const adapter = new PostgresTraversalAdapter(sql, tenantId);
     const results = await adapter.traverseWithDepth(id, body.depth, body.direction, body.edgeTypes);
     const nodeIds = results.map((r) => r.nodeId).filter((nid) => nid !== id);
 

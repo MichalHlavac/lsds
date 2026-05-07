@@ -4,6 +4,7 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { createMiddleware } from "hono/factory";
 import type { JWTPayload } from "jose";
+import { config } from "../config.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -11,20 +12,16 @@ declare module "hono" {
   }
 }
 
-const ISSUER = process.env["OIDC_ISSUER"];
-const AUDIENCE = process.env["OIDC_AUDIENCE"];
-const JWKS_URI = process.env["OIDC_JWKS_URI"] ?? (ISSUER ? `${ISSUER}/.well-known/jwks.json` : undefined);
-
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function getJwks() {
-  if (!jwks && JWKS_URI) {
-    jwks = createRemoteJWKSet(new URL(JWKS_URI));
+  if (!jwks && config.oidcJwksUri) {
+    jwks = createRemoteJWKSet(new URL(config.oidcJwksUri));
   }
   return jwks;
 }
 
-export const oidcEnabled = Boolean(ISSUER);
+export const oidcEnabled = Boolean(config.oidcIssuer);
 
 export const oidcMiddleware = createMiddleware(async (c, next) => {
   const remoteJwks = getJwks();
@@ -40,8 +37,8 @@ export const oidcMiddleware = createMiddleware(async (c, next) => {
   const token = auth.slice(7);
   try {
     const { payload } = await jwtVerify(token, remoteJwks, {
-      issuer: ISSUER,
-      ...(AUDIENCE ? { audience: AUDIENCE } : {}),
+      issuer: config.oidcIssuer,
+      ...(config.oidcAudience ? { audience: config.oidcAudience } : {}),
     });
     c.set("jwtPayload", payload);
   } catch {

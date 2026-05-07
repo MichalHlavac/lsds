@@ -113,7 +113,7 @@ export function agentRouter(
     const hit = cache.traversals.get(cacheKey);
     if (hit) return c.json({ ...hit, cached: true });
 
-    const adapter = new PostgresTraversalAdapter(sql);
+    const adapter = new PostgresTraversalAdapter(sql, tenantId);
     let traversalIds: string[] = [];
 
     if (profile === "depth") {

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
+import { config } from "../config.js";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeHistoryRow, NodeRow } from "../db/types.js";
@@ -81,12 +82,15 @@ export function nodesRouter(
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateNodeSchema.parse(await c.req.json());
+    const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
+    const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
     try {
       const [row] = await sql<NodeRow[]>`
-        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
+        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
         VALUES (
           ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
-          ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
+          ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)},
+          ${ownerId}, ${ownerName}
         )
         RETURNING *
       `;
@@ -104,6 +108,8 @@ export function nodesRouter(
   app.put("/", async (c) => {
     const tenantId = getTenantId(c);
     const body = CreateNodeSchema.parse(await c.req.json());
+    const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
+    const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
 
     const [previous] = await sql<NodeRow[]>`
       SELECT * FROM nodes
@@ -111,15 +117,18 @@ export function nodesRouter(
     `;
 
     const [row] = await sql<NodeRow[]>`
-      INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
+      INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
       VALUES (
         ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
-        ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)}
+        ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)},
+        ${ownerId}, ${ownerName}
       )
       ON CONFLICT (tenant_id, type, layer, name)
       DO UPDATE SET
         version = EXCLUDED.version,
         attributes = EXCLUDED.attributes,
+        owner_id = EXCLUDED.owner_id,
+        owner_name = EXCLUDED.owner_name,
         updated_at = now()
       RETURNING *
     `;
@@ -189,8 +198,8 @@ export function nodesRouter(
       version: body.version,
       lifecycleStatus: body.lifecycleStatus,
       attributes: body.attributes,
-      ownerId: '',
-      ownerName: '',
+      ownerId: (body.owner as { id?: string } | undefined)?.id ?? '',
+      ownerName: (body.owner as { name?: string } | undefined)?.name ?? '',
       ownerKind: 'team',
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -341,7 +350,7 @@ export function nodesRouter(
       return c.json({ error: "node must be ARCHIVED before it can be purged" }, 422);
     }
 
-    const retentionDays = Number(process.env.LIFECYCLE_RETENTION_DAYS ?? 30);
+    const retentionDays = config.lifecycleRetentionDays;
     const archivedAt = existing.archivedAt ? new Date(existing.archivedAt).getTime() : 0;
     const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
     if (Date.now() - archivedAt < retentionMs) {

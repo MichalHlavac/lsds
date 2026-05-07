@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import pino from "pino";
+import { config } from "./config.js";
 
 export interface Logger {
   error(obj: Record<string, unknown>, msg: string): void;
@@ -10,7 +11,7 @@ export interface Logger {
   child(bindings: Record<string, unknown>): Logger;
 }
 
-let _pino = pino({ level: process.env["LOG_LEVEL"] ?? "info" });
+let _pino = pino({ level: config.logLevel });
 
 function wrapPino(p: pino.Logger): Logger {
   return {
