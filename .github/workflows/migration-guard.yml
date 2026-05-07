@@ -84,11 +84,34 @@ jobs:
             const ctoLogin = 'MichalHlavac';
             const token = `merge-authorized: ${prNumber}`;
 
-            const authorized = comments.some(
-              c => c.user.login === ctoLogin && c.body.includes(token)
+            // Determine the timestamp of the latest commit on this PR.
+            // Authorization is only valid if it was posted AFTER the latest push —
+            // any new commits (rebase, fixup) invalidate prior authorization.
+            const { data: allCommits } = await github.rest.pulls.listCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+              per_page: 100,
+            });
+            const latestCommit = allCommits[allCommits.length - 1];
+            const latestCommitTime = new Date(latestCommit.commit.committer.date);
+            core.info(`Latest commit on PR #${prNumber}: ${latestCommit.sha.slice(0,7)} at ${latestCommitTime.toISOString()}`);
+
+            const authComment = comments.find(
+              c => c.user.login === ctoLogin &&
+                   c.body.includes(token) &&
+                   new Date(c.created_at) >= latestCommitTime
             );
 
-            if (!authorized) {
+            if (!authComment) {
+              // Check if there's a stale (pre-push) authorization to give a better message
+              const staleAuth = comments.some(
+                c => c.user.login === ctoLogin && c.body.includes(token)
+              );
+              const reason = staleAuth
+                ? `A prior \`${token}\` authorization exists but pre-dates the latest push (${latestCommitTime.toISOString()}). Re-authorization required.`
+                : `No \`${token}\` authorization comment found from @${ctoLogin}.`;
+
               core.setFailed(
                 [
                   `⛔ L1-L2 schema migration — CTO authorization required.`,
@@ -96,7 +119,9 @@ jobs:
                   `This PR modifies \`apps/api/migrations/*.sql\` which is a schema migration`,
                   `(L1-L2 change tier, ADR A4). Only the CTO may authorize the merge.`,
                   ``,
-                  `**@${ctoLogin}** must post the following comment on this PR:`,
+                  reason,
+                  ``,
+                  `**@${ctoLogin}** must post the following comment on this PR **after the most recent push**:`,
                   ``,
                   `    merge-authorized: ${prNumber}`,
                   ``,
@@ -104,5 +129,5 @@ jobs:
                 ].join('\n')
               );
             } else {
-              core.info(`✅ CTO authorization confirmed for PR #${prNumber} — migration guard passed`);
+              core.info(`✅ CTO authorization confirmed for PR #${prNumber} (comment posted ${new Date(authComment.created_at).toISOString()}, after latest commit ${latestCommitTime.toISOString()}) — migration guard passed`);
             }
