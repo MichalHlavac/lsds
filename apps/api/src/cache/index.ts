@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import type { NodeRow, EdgeRow } from "../db/types.js";
+import { config } from "../config.js";
 
 export interface CacheEntry<T> {
   value: T;
@@ -119,6 +120,4 @@ export class LsdsCache {
   }
 }
 
-export const cache = new LsdsCache(
-  Number(process.env.CACHE_TTL_MS ?? 5 * 60 * 1000)
-);
+export const cache = new LsdsCache(config.cacheTtlMs);

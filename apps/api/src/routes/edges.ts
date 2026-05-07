@@ -8,6 +8,7 @@ import type { LsdsCache } from "../cache/index.js";
 import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
 import { recordEdgeHistory } from "../db/history.js";
+import { config } from "../config.js";
 import {
   CreateEdgeSchema,
   UpdateEdgeSchema,
@@ -320,7 +321,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       return c.json({ error: "edge must be ARCHIVED before it can be purged" }, 422);
     }
 
-    const retentionDays = Number(process.env.LIFECYCLE_RETENTION_DAYS ?? 30);
+    const retentionDays = config.lifecycleRetentionDays;
     const archivedAt = existing.archivedAt ? new Date(existing.archivedAt).getTime() : 0;
     const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
     if (Date.now() - archivedAt < retentionMs) {

@@ -518,7 +518,7 @@ export async function impactPredict(
   params: ImpactPredict
 ) {
   const { changeType, nodeId, proposedNode, edgeChanges, maxDepth } = params;
-  const adapter = new PostgresTraversalAdapter(sql);
+  const adapter = new PostgresTraversalAdapter(sql, tenantId);
 
   // Fetch existing node for update/delete
   let existingNode: NodeRow | null = null;
@@ -576,8 +576,8 @@ export async function impactPredict(
       version: proposedNode.version ?? "0.1.0",
       lifecycleStatus: proposedNode.lifecycleStatus ?? "ACTIVE",
       attributes: proposedNode.attributes ?? {},
-      ownerId: '',
-      ownerName: '',
+      ownerId: (proposedNode.owner as { id?: string } | undefined)?.id ?? '',
+      ownerName: (proposedNode.owner as { name?: string } | undefined)?.name ?? '',
       ownerKind: 'team',
       createdAt: new Date(),
       updatedAt: new Date(),
