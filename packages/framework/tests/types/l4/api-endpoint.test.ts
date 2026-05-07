@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   API_ENDPOINT_STATUSES,
-  API_ENDPOINT_TRAVERSAL_WEIGHT,
   ApiEndpointSchema,
   ErrorResponseSchema,
   HTTP_METHODS,
@@ -112,9 +111,6 @@ describe("APIEndpoint (kap. 4 § L4)", () => {
     expect(ApiEndpointSchema.parse(without)).toBeTruthy();
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(API_ENDPOINT_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes 6 HTTP methods including SUBSCRIBE for AsyncAPI / streaming", () => {
     expect(HTTP_METHODS).toEqual(["GET", "POST", "PUT", "PATCH", "DELETE", "SUBSCRIBE"]);

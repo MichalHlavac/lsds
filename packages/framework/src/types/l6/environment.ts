@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { RepoRefSchema, TeamRefSchema } from "../../shared/refs.js";
+import { RepoRefSchema } from "../../shared/refs.js";
 
 // Environment (kap. 4 § L6, lines 606–635). Named execution environment
 // where deployment units run — captures promotion chain, access control
@@ -34,7 +34,6 @@ export const EnvironmentSchema = TknBaseSchema.extend({
   layer: z.literal("L6"),
   description: z.string().min(1),
   environmentType: EnvironmentTypeSchema,
-  owner: TeamRefSchema,
   accessRestriction: AccessRestrictionSchema,
   // Required when environmentType ∈ {PRODUCTION, DR} (GR-L6-007). Free-text
   // description of what must pass before deploys reach this environment
@@ -65,4 +64,3 @@ export const EnvironmentSchema = TknBaseSchema.extend({
 });
 export type Environment = z.infer<typeof EnvironmentSchema>;
 
-export const ENVIRONMENT_TRAVERSAL_WEIGHT = "EAGER" as const;

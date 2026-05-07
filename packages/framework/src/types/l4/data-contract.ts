@@ -3,7 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
 import { JsonSchemaRefSchema } from "./api-endpoint.js";
 
 export const DATA_CONTRACT_FORMATS = [
@@ -45,7 +44,6 @@ export const DataContractSchema = TknBaseSchema.extend({
   type: z.literal("DataContract"),
   layer: z.literal("L4"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   format: DataContractFormatSchema,
   schema: JsonSchemaRefSchema,
   freshness: DataContractFreshnessSchema,
@@ -71,4 +69,3 @@ export const DataContractSchema = TknBaseSchema.extend({
 });
 export type DataContract = z.infer<typeof DataContractSchema>;
 
-export const DATA_CONTRACT_TRAVERSAL_WEIGHT = "EAGER" as const;

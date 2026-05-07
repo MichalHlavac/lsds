@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { RepoRefSchema, TeamRefSchema } from "../../shared/refs.js";
+import { RepoRefSchema } from "../../shared/refs.js";
 
 export const DEPLOYMENT_UNIT_KINDS = [
   "CONTAINER",
@@ -21,7 +21,6 @@ export const DeploymentUnitSchema = TknBaseSchema.extend({
   type: z.literal("DeploymentUnit"),
   layer: z.literal("L6"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   kind: DeploymentUnitKindSchema,
   imageReference: z.string().optional(),
   repoRef: RepoRefSchema.optional(),
@@ -45,4 +44,3 @@ export const DeploymentUnitSchema = TknBaseSchema.extend({
 });
 export type DeploymentUnit = z.infer<typeof DeploymentUnitSchema>;
 
-export const DEPLOYMENT_UNIT_TRAVERSAL_WEIGHT = "EAGER" as const;

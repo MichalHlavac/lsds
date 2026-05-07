@@ -31,6 +31,7 @@ function nodeRowToTknBase(row: NodeRow): TknBase {
     name: row.name,
     version: row.version,
     lifecycle: row.lifecycleStatus,
+    owner: { kind: 'team', id: row.ownerId, name: row.ownerName },
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

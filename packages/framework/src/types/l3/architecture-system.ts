@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema, UuidSchema } from "../../shared/refs.js";
+import { UuidSchema } from "../../shared/refs.js";
 import { QualityAttributeRefSchema } from "./quality-attribute.js";
 
 export const ArchitectureSystemRefSchema = z.object({
@@ -16,7 +16,6 @@ export const ArchitectureSystemSchema = TknBaseSchema.extend({
   type: z.literal("ArchitectureSystem"),
   layer: z.literal("L3"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   primaryUsers: z
     .array(z.string().min(1))
     .min(1, "ArchitectureSystem.primaryUsers must list at least one user role"),
@@ -38,4 +37,3 @@ export const ArchitectureSystemSchema = TknBaseSchema.extend({
 });
 export type ArchitectureSystem = z.infer<typeof ArchitectureSystemSchema>;
 
-export const ARCHITECTURE_SYSTEM_TRAVERSAL_WEIGHT = "EAGER" as const;

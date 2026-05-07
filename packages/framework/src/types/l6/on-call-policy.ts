@@ -59,7 +59,6 @@ export const OnCallPolicySchema = TknBaseSchema.extend({
   type: z.literal("OnCallPolicy"),
   layer: z.literal("L6"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   coverage: CoverageTypeSchema,
   escalationLevels: z
     .array(EscalationLevelSchema)
@@ -92,4 +91,3 @@ export const OnCallPolicySchema = TknBaseSchema.extend({
 });
 export type OnCallPolicy = z.infer<typeof OnCallPolicySchema>;
 
-export const ON_CALL_POLICY_TRAVERSAL_WEIGHT = "EAGER" as const;

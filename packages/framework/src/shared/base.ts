@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { LayerIdSchema } from "../layer/index.js";
 import { LifecycleSchema } from "../lifecycle.js";
-import { SemverSchema, UuidSchema } from "./refs.js";
+import { SemverSchema, TeamRefSchema, UuidSchema } from "./refs.js";
 
 export const TknBaseSchema = z.object({
   id: UuidSchema,
@@ -13,6 +13,7 @@ export const TknBaseSchema = z.object({
   name: z.string().min(1),
   version: SemverSchema,
   lifecycle: LifecycleSchema,
+  owner: TeamRefSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

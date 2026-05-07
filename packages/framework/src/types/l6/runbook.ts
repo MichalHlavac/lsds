@@ -3,7 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
 import { DurationSchema } from "./slo.js";
 
 // Runbook (kap. 4 § L6). Captures the on-call playbook for a known
@@ -31,7 +30,6 @@ export const RunbookSchema = TknBaseSchema.extend({
     .min(1, "Runbook.triggerCondition must describe when this runbook applies"),
   severity: RunbookSeveritySchema,
   steps: z.array(RunbookStepSchema).min(2, "Runbook.steps must contain at least 2 ordered steps"),
-  owner: TeamRefSchema,
   lastTested: z.string().date().optional(),
   estimatedResolutionTime: DurationSchema.optional(),
 }).superRefine((value, ctx) => {

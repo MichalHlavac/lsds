@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { SloRefSchema, TeamRefSchema, TestRefSchema, TknRefSchema } from "../../shared/refs.js";
+import { SloRefSchema, TestRefSchema, TknRefSchema } from "../../shared/refs.js";
 
 export const RequirementTypeSchema = z.enum(["FUNCTIONAL", "NON_FUNCTIONAL", "CONSTRAINT"]);
 export type RequirementType = z.infer<typeof RequirementTypeSchema>;
@@ -62,7 +62,6 @@ export const RequirementSchema = TknBaseSchema.extend({
   priority: RequirementPrioritySchema,
   source: z.string().min(1),
   status: RequirementStatusSchema,
-  owner: TeamRefSchema,
   acceptanceCriteria: z
     .array(AcceptanceCriterionSchema)
     .min(1, "Requirement.acceptanceCriteria must contain at least one criterion"),
@@ -70,4 +69,3 @@ export const RequirementSchema = TknBaseSchema.extend({
 });
 export type Requirement = z.infer<typeof RequirementSchema>;
 
-export const REQUIREMENT_TRAVERSAL_WEIGHT = "LAZY" as const;

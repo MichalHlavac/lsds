@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   ADR_STATUSES,
-  ADR_TRAVERSAL_WEIGHT,
   AdrSchema,
 } from "../../../src/types/l3/adr.js";
 import { expectIssue } from "../../fixtures.js";
@@ -106,9 +105,6 @@ describe("ADR (kap. 4 § L3)", () => {
     expectIssue(AdrSchema.safeParse({ ...baseAdr, status: "DRAFT" }), /Invalid enum value/);
   });
 
-  it("declares LAZY traversal weight (kap. 4)", () => {
-    expect(ADR_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 
   it("exposes the 4-state ADR status machine", () => {
     expect(ADR_STATUSES).toEqual(["PROPOSED", "ACCEPTED", "DEPRECATED", "SUPERSEDED"]);

@@ -16,6 +16,7 @@ export function tknBase(overrides: Partial<TknBase> & Pick<TknBase, "type" | "la
     id: "11111111-1111-4111-8111-111111111111",
     version: "1.0.0",
     lifecycle: "ACTIVE",
+    owner: sampleTeam,
     createdAt: "2026-04-28T12:00:00.000Z",
     updatedAt: "2026-04-28T12:00:00.000Z",
     ...overrides,

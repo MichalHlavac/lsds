@@ -47,4 +47,3 @@ export const EventContractSchema = TknBaseSchema.extend({
 });
 export type EventContract = z.infer<typeof EventContractSchema>;
 
-export const EVENT_CONTRACT_TRAVERSAL_WEIGHT = "EAGER" as const;

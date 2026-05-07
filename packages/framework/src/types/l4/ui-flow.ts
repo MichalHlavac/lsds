@@ -3,8 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
-
 export const UI_FLOW_PLATFORMS = ["WEB", "IOS", "ANDROID", "DESKTOP", "TERMINAL"] as const;
 export const UiFlowPlatformSchema = z.enum(UI_FLOW_PLATFORMS);
 export type UiFlowPlatform = z.infer<typeof UiFlowPlatformSchema>;
@@ -35,7 +33,6 @@ export const UiFlowSchema = TknBaseSchema.extend({
     .string()
     .min(1, "UIFlow.successCondition must describe what 'completed' means for this flow"),
   steps: z.array(UiFlowStepSchema).min(1, "UIFlow.steps must contain at least one step"),
-  owner: TeamRefSchema,
 }).superRefine((value, ctx) => {
   // Step ids must be unique inside a flow; nextStepIds must reference existing
   // step ids — these are the simplest invariants that catch broken flows
@@ -65,4 +62,3 @@ export const UiFlowSchema = TknBaseSchema.extend({
 });
 export type UiFlow = z.infer<typeof UiFlowSchema>;
 
-export const UI_FLOW_TRAVERSAL_WEIGHT = "LAZY" as const;

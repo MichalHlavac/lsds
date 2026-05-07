@@ -3,8 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
-
 export const SERVICE_TYPES = [
   "REST_API",
   "GRAPHQL",
@@ -38,11 +36,9 @@ export const ServiceSchema = TknBaseSchema.extend({
   type: z.literal("Service"),
   layer: z.literal("L4"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   serviceType: ServiceTypeSchema,
   versionStrategy: VersionStrategySchema,
   authentication: ServiceAuthenticationSchema,
 });
 export type Service = z.infer<typeof ServiceSchema>;
 
-export const SERVICE_TRAVERSAL_WEIGHT = "EAGER" as const;

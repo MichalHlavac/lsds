@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  CODE_MODULE_TRAVERSAL_WEIGHT,
   CodeModuleSchema,
   MODULE_TYPES,
   ModuleTypeSchema,
@@ -136,9 +135,6 @@ describe("CodeModule (L5 — kap. 4 spec, ADR A3 grain)", () => {
     expect(parsed.testCoverageTarget).toBeUndefined();
   });
 
-  it("declares LAZY traversal weight", () => {
-    expect(CODE_MODULE_TRAVERSAL_WEIGHT).toBe("LAZY");
-  });
 
   it("exposes 5 architectural module types (closed enum)", () => {
     expect(MODULE_TYPES).toHaveLength(5);

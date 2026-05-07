@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { RepoRefSchema, TeamRefSchema } from "../../shared/refs.js";
+import { RepoRefSchema } from "../../shared/refs.js";
 
 export const PACKAGE_MANAGERS = [
   "NPM",
@@ -22,7 +22,6 @@ export const PackageSchema = TknBaseSchema.extend({
   type: z.literal("Package"),
   layer: z.literal("L5"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   packageManager: PackageManagerSchema,
   packageName: z.string().min(1),
   registryUrl: z.string().url("Package.registryUrl must be a valid URL").optional(),
@@ -31,4 +30,3 @@ export const PackageSchema = TknBaseSchema.extend({
 });
 export type Package = z.infer<typeof PackageSchema>;
 
-export const PACKAGE_TRAVERSAL_WEIGHT = "LAZY" as const;

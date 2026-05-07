@@ -3,8 +3,6 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { TeamRefSchema } from "../../shared/refs.js";
-
 export const INFRA_COMPONENT_KINDS = [
   "COMPUTE",
   "STORAGE",
@@ -27,7 +25,6 @@ export const InfrastructureComponentSchema = TknBaseSchema.extend({
   type: z.literal("InfrastructureComponent"),
   layer: z.literal("L6"),
   description: z.string().min(1),
-  owner: TeamRefSchema,
   kind: InfraComponentKindSchema,
   environment: InfraEnvironmentSchema,
   provider: z.string().min(1, "InfrastructureComponent.provider must name the cloud/platform provider"),
@@ -49,4 +46,3 @@ export const InfrastructureComponentSchema = TknBaseSchema.extend({
 });
 export type InfrastructureComponent = z.infer<typeof InfrastructureComponentSchema>;
 
-export const INFRASTRUCTURE_COMPONENT_TRAVERSAL_WEIGHT = "LAZY" as const;
