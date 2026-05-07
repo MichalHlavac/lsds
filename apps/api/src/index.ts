@@ -9,6 +9,19 @@ import { warmCache } from "./cache/warm.js";
 import { warmPool } from "./db/pool-warm.js";
 import { logger } from "./logger.js";
 import { config } from "./config.js";
+import { runMigrations } from "./db/run-migrations.js";
+
+if (config.skipMigrations) {
+  logger.info({}, "SKIP_MIGRATIONS=true — skipping startup migration run");
+} else {
+  try {
+    await runMigrations(sql);
+  } catch (err) {
+    logger.error({ err }, "migrations failed — exiting");
+    await sql.end();
+    process.exit(1);
+  }
+}
 
 serve({ fetch: app.fetch, port: config.port }, (info) => {
   logger.info({ port: info.port }, "LSDS API listening");
