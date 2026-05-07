@@ -15,7 +15,7 @@
     "@hono/node-server": "^1.11.0",
     "@lsds/framework": "workspace:^",
     "@lsds/shared": "workspace:^",
-    "hono": "^4.3.0",
+    "hono": "^4.12.16",
     "jose": "^6.2.3",
     "pino": "^10.3.1",
     "postgres": "^3.4.4",
