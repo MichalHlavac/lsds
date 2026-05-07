@@ -65,4 +65,3 @@ export const UiFlowSchema = TknBaseSchema.extend({
 });
 export type UiFlow = z.infer<typeof UiFlowSchema>;
 
-export const UI_FLOW_TRAVERSAL_WEIGHT = "LAZY" as const;

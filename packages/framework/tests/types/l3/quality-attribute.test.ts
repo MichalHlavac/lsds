@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   QUALITY_ATTRIBUTE_CATEGORIES,
   QUALITY_ATTRIBUTE_PRIORITIES,
-  QUALITY_ATTRIBUTE_TRAVERSAL_WEIGHT,
   QualityAttributeSchema,
 } from "../../../src/types/l3/quality-attribute.js";
 import { expectIssue } from "../../fixtures.js";
@@ -61,9 +60,6 @@ describe("QualityAttribute (kap. 4 § L3)", () => {
     expectIssue(QualityAttributeSchema.safeParse({ ...baseQa, layer: "L2" }), /Invalid literal value/);
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(QUALITY_ATTRIBUTE_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes 7 categories and 3 priorities (kap. 4 closed enums)", () => {
     expect(QUALITY_ATTRIBUTE_CATEGORIES).toHaveLength(7);

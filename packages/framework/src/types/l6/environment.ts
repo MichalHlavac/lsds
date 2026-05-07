@@ -65,4 +65,3 @@ export const EnvironmentSchema = TknBaseSchema.extend({
 });
 export type Environment = z.infer<typeof EnvironmentSchema>;
 
-export const ENVIRONMENT_TRAVERSAL_WEIGHT = "EAGER" as const;

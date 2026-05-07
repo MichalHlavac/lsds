@@ -67,4 +67,3 @@ export const ApiEndpointSchema = TknBaseSchema.extend({
 });
 export type ApiEndpoint = z.infer<typeof ApiEndpointSchema>;
 
-export const API_ENDPOINT_TRAVERSAL_WEIGHT = "EAGER" as const;

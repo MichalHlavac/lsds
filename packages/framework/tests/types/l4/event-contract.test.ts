@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   DELIVERY_GUARANTEES,
-  EVENT_CONTRACT_TRAVERSAL_WEIGHT,
   EventContractSchema,
   ORDERING_GUARANTEES,
 } from "../../../src/types/l4/event-contract.js";
@@ -81,9 +80,6 @@ describe("EventContract (kap. 4 § L4)", () => {
     expectIssue(EventContractSchema.safeParse({ ...baseEvent, channel: "" }), /channel/);
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(EVENT_CONTRACT_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes 3 ordering and 3 delivery guarantees (kap. 4 closed enums)", () => {
     expect(ORDERING_GUARANTEES).toEqual(["NONE", "PER_KEY", "GLOBAL"]);

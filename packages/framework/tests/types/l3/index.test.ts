@@ -19,12 +19,4 @@ describe("L3 module surface", () => {
     }
   });
 
-  it("re-exports traversal weight constants for each L3 type", () => {
-    expect(l3.ARCHITECTURE_SYSTEM_TRAVERSAL_WEIGHT).toBe("EAGER");
-    expect(l3.ARCHITECTURE_COMPONENT_TRAVERSAL_WEIGHT).toBe("EAGER");
-    expect(l3.ADR_TRAVERSAL_WEIGHT).toBe("LAZY");
-    expect(l3.ARCHITECTURE_PRINCIPLE_TRAVERSAL_WEIGHT).toBe("LAZY");
-    expect(l3.QUALITY_ATTRIBUTE_TRAVERSAL_WEIGHT).toBe("EAGER");
-    expect(l3.EXTERNAL_SYSTEM_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 });

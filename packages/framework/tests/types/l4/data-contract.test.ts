@@ -6,7 +6,6 @@ import {
   DATA_CONTRACT_CLASSIFICATIONS,
   DATA_CONTRACT_FORMATS,
   DATA_CONTRACT_FRESHNESS,
-  DATA_CONTRACT_TRAVERSAL_WEIGHT,
   DataContractSchema,
 } from "../../../src/types/l4/data-contract.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -71,9 +70,6 @@ describe("DataContract (kap. 4 § L4)", () => {
     );
   });
 
-  it("declares EAGER traversal weight", () => {
-    expect(DATA_CONTRACT_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes the closed enums kap. 4 calls out", () => {
     expect(DATA_CONTRACT_FORMATS).toHaveLength(5);

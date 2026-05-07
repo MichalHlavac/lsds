@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import {
   COVERAGE_TYPES,
-  ON_CALL_POLICY_TRAVERSAL_WEIGHT,
   OnCallPolicySchema,
 } from "../../../src/types/l6/on-call-policy.js";
 import { expectIssue, sampleTeam } from "../../fixtures.js";
@@ -225,9 +224,6 @@ describe("OnCallPolicy (kap. 4 § L6, lines 637–682)", () => {
     );
   });
 
-  it("declares EAGER traversal weight (kap. 4 § L6 OnCallPolicy)", () => {
-    expect(ON_CALL_POLICY_TRAVERSAL_WEIGHT).toBe("EAGER");
-  });
 
   it("exposes all 4 coverage types (closed enum)", () => {
     expect(COVERAGE_TYPES).toEqual([

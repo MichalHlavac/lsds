@@ -53,4 +53,3 @@ export const AdrSchema = TknBaseSchema.extend({
 });
 export type Adr = z.infer<typeof AdrSchema>;
 
-export const ADR_TRAVERSAL_WEIGHT = "LAZY" as const;

@@ -43,4 +43,3 @@ export const ArchitectureComponentSchema = TknBaseSchema.extend({
 });
 export type ArchitectureComponent = z.infer<typeof ArchitectureComponentSchema>;
 
-export const ARCHITECTURE_COMPONENT_TRAVERSAL_WEIGHT = "EAGER" as const;

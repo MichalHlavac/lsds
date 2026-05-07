@@ -31,4 +31,3 @@ export const PackageSchema = TknBaseSchema.extend({
 });
 export type Package = z.infer<typeof PackageSchema>;
 
-export const PACKAGE_TRAVERSAL_WEIGHT = "LAZY" as const;
