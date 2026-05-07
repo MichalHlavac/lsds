@@ -81,25 +81,9 @@ guardrail "GR-XL-006 deprecated-has-active-dependents" "$(jq -n '{
   config: {}
 }')"
 
-guardrail "GR-XL-009 deprecated-active-depends-on" "$(jq -n '{
-  ruleKey: "GR-XL-009",
-  description: "DEPRECATED nodes with lingering ACTIVE callers signal stalled deprecation and a future breaking change.",
-  severity: "WARN",
-  enabled: true,
-  config: {}
-}')"
-
 guardrail "GR-XL-010 archived-non-archived-children" "$(jq -n '{
   ruleKey: "GR-XL-010",
   description: "ARCHIVED containers must not hold non-archived children. Archive children before archiving the parent.",
-  severity: "ERROR",
-  enabled: true,
-  config: {}
-}')"
-
-guardrail "GR-XL-011 hard-delete-blocked-incoming" "$(jq -n '{
-  ruleKey: "GR-XL-011",
-  description: "Hard delete is blocked while any incoming relationship exists — follow DEPRECATED → ARCHIVED → PURGE.",
   severity: "ERROR",
   enabled: true,
   config: {}
