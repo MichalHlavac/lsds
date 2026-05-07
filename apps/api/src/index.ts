@@ -8,9 +8,9 @@ import { cache } from "./cache/index.js";
 import { warmCache } from "./cache/warm.js";
 import { warmPool } from "./db/pool-warm.js";
 import { logger } from "./logger.js";
+import { config } from "./config.js";
 
-const port = Number(process.env["PORT"] ?? 3001);
-serve({ fetch: app.fetch, port }, (info) => {
+serve({ fetch: app.fetch, port: config.port }, (info) => {
   logger.info({ port: info.port }, "LSDS API listening");
   warmPool(sql, DB_POOL_MIN).catch((err) =>
     logger.warn({ err }, "pool warm-up failed")
