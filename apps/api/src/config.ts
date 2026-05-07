@@ -31,6 +31,10 @@ const EnvSchema = z
       .string()
       .optional()
       .transform((v) => v === "true"),
+    SKIP_MIGRATIONS: z
+      .string()
+      .optional()
+      .transform((v) => v === "true"),
     PORT: z.coerce.number().int().positive().default(3001),
     LIFECYCLE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
   })
@@ -64,6 +68,7 @@ const EnvSchema = z
     embeddingProvider: data.EMBEDDING_PROVIDER,
     openaiApiKey: data.OPENAI_API_KEY,
     apiKeyAuthEnabled: data.LSDS_API_KEY_AUTH_ENABLED,
+    skipMigrations: data.SKIP_MIGRATIONS,
     port: data.PORT,
     lifecycleRetentionDays: data.LIFECYCLE_RETENTION_DAYS,
   }));
