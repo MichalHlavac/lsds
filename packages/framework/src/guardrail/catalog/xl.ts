@@ -93,7 +93,7 @@ export const XL_RULES: GuardrailRule[] = [
       "Hard delete with incoming references guarantees dangling pointers; the lifecycle defines a soft path (ARCHIVED → PURGE) precisely to avoid this.",
     remediation:
       "Move the object through ARCHIVED with dependents migrated; only then can the lifecycle progress to PURGE.",
-    propagation: "DOWNWARD",
+    propagation: "BOTH",
   },
   {
     rule_id: "GR-XL-006",
@@ -113,7 +113,7 @@ export const XL_RULES: GuardrailRule[] = [
       "Deprecated surface with active dependents is the most reliable predictor of a painful future migration; surfacing it early gives owners a chance to act.",
     remediation:
       "Open migration tasks against each ACTIVE dependent or roll the lifecycle back to ACTIVE if the deprecation was premature.",
-    propagation: "DOWNWARD",
+    propagation: "BOTH",
   },
   {
     rule_id: "GR-XL-007",
@@ -153,26 +153,6 @@ export const XL_RULES: GuardrailRule[] = [
     propagation: "LATERAL",
   },
   {
-    rule_id: "GR-XL-009",
-    name: "DEPRECATED object still has active depends-on relationships",
-    layer: "XL",
-    origin: "STRUCTURAL",
-    evaluation: "DESCRIPTIVE",
-    severity: "WARNING",
-    scope: {
-      object_type: "*",
-      triggers: ["UPDATE", "PERIODIC"],
-      relationship_type: "depends-on",
-    },
-    condition:
-      "object.lifecycle != 'DEPRECATED' || object.incoming('depends-on').every(r => r.from.lifecycle != 'ACTIVE')",
-    rationale:
-      "Once an object is marked DEPRECATED its callers should be migrated; lingering ACTIVE callers signal that deprecation has stalled and the planned removal will break consumers.",
-    remediation:
-      "Either migrate the remaining ACTIVE consumers off this object, or revert the lifecycle to ACTIVE if deprecation was premature.",
-    propagation: "UPWARD",
-  },
-  {
     rule_id: "GR-XL-010",
     name: "ARCHIVED object has non-archived contains children",
     layer: "XL",
@@ -191,23 +171,5 @@ export const XL_RULES: GuardrailRule[] = [
     remediation:
       "Archive (or migrate) every contained child before archiving the parent, or restore the parent to DEPRECATED until children are dealt with.",
     propagation: "DOWNWARD",
-  },
-  {
-    rule_id: "GR-XL-011",
-    name: "Hard delete blocked while incoming relationships exist",
-    layer: "XL",
-    origin: "STRUCTURAL",
-    evaluation: "PRESCRIPTIVE",
-    severity: "ERROR",
-    scope: {
-      object_type: "*",
-      triggers: ["DELETE"],
-    },
-    condition: "object.incoming_relationships.length == 0",
-    rationale:
-      "Skipping the lifecycle (ACTIVE → DEPRECATED → ARCHIVED → PURGE) while incoming references exist silently breaks the graph; consumers and audit trails point at a nonexistent object.",
-    remediation:
-      "Move the object through DEPRECATED → ARCHIVED first so consumers can migrate; only the PURGE retention job is allowed to physically delete.",
-    propagation: "UPWARD",
   },
 ];
