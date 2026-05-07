@@ -3,6 +3,7 @@
 
 import type { Sql } from "../db/client.js";
 import { logger } from "../logger.js";
+import { config } from "../config.js";
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[]>;
@@ -41,15 +42,11 @@ class StubEmbeddingProvider implements EmbeddingProvider {
 }
 
 export function createEmbeddingProvider(): EmbeddingProvider | null {
-  const provider = process.env["EMBEDDING_PROVIDER"];
+  const provider = config.embeddingProvider;
   if (!provider || provider === "disabled") return null;
   if (provider === "stub") return new StubEmbeddingProvider();
-  if (provider === "openai") {
-    const apiKey = process.env["OPENAI_API_KEY"];
-    if (!apiKey) throw new Error("OPENAI_API_KEY is required when EMBEDDING_PROVIDER=openai");
-    return new OpenAIEmbeddingProvider(apiKey);
-  }
-  throw new Error(`Unknown EMBEDDING_PROVIDER: ${provider}`);
+  // config validation guarantees openaiApiKey is present when provider === "openai"
+  return new OpenAIEmbeddingProvider(config.openaiApiKey!);
 }
 
 export class EmbeddingService {

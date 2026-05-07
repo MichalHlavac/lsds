@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
+import { config } from "../config.js";
 import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeHistoryRow, NodeRow } from "../db/types.js";
@@ -349,7 +350,7 @@ export function nodesRouter(
       return c.json({ error: "node must be ARCHIVED before it can be purged" }, 422);
     }
 
-    const retentionDays = Number(process.env.LIFECYCLE_RETENTION_DAYS ?? 30);
+    const retentionDays = config.lifecycleRetentionDays;
     const archivedAt = existing.archivedAt ? new Date(existing.archivedAt).getTime() : 0;
     const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
     if (Date.now() - archivedAt < retentionMs) {
