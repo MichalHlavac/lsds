@@ -4,7 +4,7 @@
 // Tenant provisioning bootstrap — first-run setup.
 // Provisions: admin user + first API key for a fresh deployment.
 //
-// Usage (local dev): ADMIN_EMAIL=... ADMIN_PASSWORD=... tsx scripts/bootstrap.ts
+// Usage (local dev): ADMIN_EMAIL=... tsx scripts/bootstrap.ts
 // Usage (Docker):    node apps/api/dist/bootstrap-cli.js
 
 import { fileURLToPath } from "node:url";
@@ -53,7 +53,7 @@ export async function bootstrap(
     return { alreadyProvisioned: true };
   }
 
-  // Create admin user (upsert — safe to re-run)
+  // Create admin user (upsert — safe to re-run; treat 409 as "already exists, continue")
   const userRes = await fetcher(`${opts.apiUrl}/v1/users`, {
     method: "POST",
     headers,
@@ -64,7 +64,7 @@ export async function bootstrap(
       role: "admin",
     }),
   });
-  if (!userRes.ok) {
+  if (!userRes.ok && userRes.status !== 409) {
     throw new Error(
       `Failed to create admin user (${userRes.status}): ${await userRes.text()}`,
     );
@@ -86,26 +86,24 @@ export async function bootstrap(
   return { alreadyProvisioned: false, apiKey: keyData.key };
 }
 
-export async function run(): Promise<void> {
-  const apiUrl = process.env["API_URL"] ?? "http://localhost:3001";
-  const tenantId = process.env["TENANT_ID"] ?? "00000000-0000-0000-0000-000000000001";
-  const tenantName = process.env["TENANT_NAME"] ?? "default";
-  const adminEmail = process.env["ADMIN_EMAIL"];
-  const adminPassword = process.env["ADMIN_PASSWORD"];
+export async function run(
+  fetcher: FetchFn = fetch,
+  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
+): Promise<void> {
+  const apiUrl = env["API_URL"] ?? "http://localhost:3001";
+  const tenantId = env["TENANT_ID"] ?? "00000000-0000-0000-0000-000000000001";
+  const tenantName = env["TENANT_NAME"] ?? "default";
+  const adminEmail = env["ADMIN_EMAIL"];
 
   if (!adminEmail) {
     console.log("skipping: ADMIN_EMAIL not set — set ADMIN_EMAIL in .env to provision");
     process.exit(0);
   }
-  if (!adminPassword) {
-    console.error("Error: ADMIN_PASSWORD is required when ADMIN_EMAIL is set");
-    process.exit(1);
-  }
 
   // Verify API reachability (API checks DB internally; 503 = DB unreachable)
   let healthRes: Response;
   try {
-    healthRes = await fetch(`${apiUrl}/health`, { signal: AbortSignal.timeout(10_000) });
+    healthRes = await fetcher(`${apiUrl}/health`, { signal: AbortSignal.timeout(10_000) });
   } catch (err) {
     console.error(`Error: API not reachable at ${apiUrl}/health — is the database up?`);
     console.error(err instanceof Error ? err.message : String(err));
@@ -122,7 +120,7 @@ export async function run(): Promise<void> {
 
   let result: BootstrapResult;
   try {
-    result = await bootstrap({ apiUrl, tenantId, tenantName, adminEmail });
+    result = await bootstrap({ apiUrl, tenantId, tenantName, adminEmail }, fetcher);
   } catch (err) {
     console.error("Error:", err instanceof Error ? err.message : String(err));
     process.exit(1);

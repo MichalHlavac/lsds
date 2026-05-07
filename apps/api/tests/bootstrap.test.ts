@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { app } from "../src/app.js";
 import { sql } from "../src/db/client.js";
-import { bootstrap } from "../src/bootstrap-cli.js";
+import { bootstrap, run } from "../src/bootstrap-cli.js";
 import { cleanTenant } from "./test-helpers.js";
 
 // Routes app.request() through the Hono app so bootstrap() can be tested
@@ -143,5 +143,71 @@ describe("bootstrap — admin user", () => {
     const admin = data.find((u) => u.email === "admin@test.example");
     expect(admin).toBeDefined();
     expect(admin!.role).toBe("admin");
+  });
+});
+
+// ── run: DB unreachable ───────────────────────────────────────────────────────
+
+describe("run — DB unreachable", () => {
+  it("exits with code 1 when health check returns 503", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const mockFetcher = async (url: string): Promise<Response> => {
+      if (url.includes("/health")) {
+        return new Response(JSON.stringify({ status: "error", db: "unreachable" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch call to ${url}`);
+    };
+
+    try {
+      await expect(
+        run(mockFetcher, { API_URL: "http://localhost:3001", ADMIN_EMAIL: "admin@test.example" }),
+      ).rejects.toThrow("process.exit(1)");
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("health check failed"),
+      );
+    } finally {
+      exitSpy.mockRestore();
+      consoleSpy.mockRestore();
+    }
+  });
+});
+
+// ── bootstrap: partial-failure idempotency ────────────────────────────────────
+
+describe("bootstrap — partial-failure idempotency", () => {
+  it("issues key when admin user already exists (simulates user-created-but-key-failed)", async () => {
+    const tenantId = freshTenant();
+    const fetcher = makeTestFetcher(tenantId);
+    const opts = {
+      apiUrl: "http://test",
+      tenantId,
+      tenantName: "acme",
+      adminEmail: "admin@test.example",
+    };
+
+    // Pre-create the admin user (simulates partial run: user created, key creation crashed)
+    const userRes = await fetcher(`${opts.apiUrl}/v1/users`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        externalId: opts.adminEmail,
+        displayName: opts.adminEmail,
+        email: opts.adminEmail,
+        role: "admin",
+      }),
+    });
+    expect(userRes.status).toBe(201);
+
+    // Bootstrap must recover: upsert user (non-fatal) and issue key
+    const result = await bootstrap(opts, fetcher);
+    expect(result.alreadyProvisioned).toBe(false);
+    expect(result.apiKey).toMatch(/^lsds_[0-9a-f]{32}$/);
   });
 });
