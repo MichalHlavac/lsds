@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
+import { readFileSync, readdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
@@ -35,6 +38,37 @@ import { requestLoggerMiddleware } from "./middleware/request-logger.js";
 import { rateLimitMiddleware } from "./middleware/rate-limit.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const migrationsDir = join(__dirname, "../migrations");
+
+// Migrations that depend on optional extensions (pgvector, etc.) may be skipped
+// in environments without those extensions. Compute this set once at startup.
+const optionalMigrations = (() => {
+  const optional = new Set<string>();
+  try {
+    for (const file of readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"))) {
+      try {
+        const content = readFileSync(join(migrationsDir, file), "utf8");
+        if (/CREATE\s+EXTENSION|vector\s*\(/i.test(content)) optional.add(file);
+      } catch { /* ignore unreadable files */ }
+    }
+  } catch { /* ignore missing migrations dir */ }
+  return optional;
+})();
+
+async function checkMigrationStatus(): Promise<"current" | "pending"> {
+  try {
+    const applied = new Set(
+      (await sql`SELECT filename FROM _migrations`).map((r) => r.filename as string)
+    );
+    const files = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"));
+    const pendingRequired = files.filter((f) => !applied.has(f) && !optionalMigrations.has(f));
+    return pendingRequired.length === 0 ? "current" : "pending";
+  } catch {
+    return "pending";
+  }
+}
+
 const guardrails = new GuardrailsRegistry(sql);
 const lifecycle = new LifecycleService(sql, cache);
 
@@ -58,6 +92,42 @@ app.use(
 
 app.use("*", requestIdMiddleware);
 app.use("*", requestLoggerMiddleware);
+
+app.get("/health/live", (c) => {
+  return c.json({ status: "alive", ts: new Date().toISOString() });
+});
+
+app.get("/health/ready", async (c) => {
+  try {
+    await sql`SELECT 1`;
+  } catch {
+    return c.json({ status: "not_ready", db: "unreachable", ts: new Date().toISOString() }, 503);
+  }
+
+  const migrations = await checkMigrationStatus();
+
+  const [poolRow] = await sql<[{ idle: string; waiting: string }]>`
+    SELECT
+      count(*) FILTER (WHERE state = 'idle') AS idle,
+      count(*) FILTER (WHERE state = 'active' AND wait_event IS NOT NULL) AS waiting
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+      AND application_name = 'lsds-api'
+      AND pid != pg_backend_pid()
+  `;
+
+  const db = {
+    poolSize: DB_POOL_MAX,
+    idleCount: Number(poolRow.idle),
+    waitingCount: Number(poolRow.waiting),
+  };
+
+  if (migrations === "pending") {
+    return c.json({ status: "not_ready", db, migrations, ts: new Date().toISOString() }, 503);
+  }
+
+  return c.json({ status: "ready", db, migrations, ts: new Date().toISOString() });
+});
 
 app.get("/health", async (c) => {
   try {
