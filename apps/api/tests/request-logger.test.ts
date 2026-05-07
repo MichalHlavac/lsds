@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
+import { Hono } from "hono";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { app } from "../src/app.js";
 import { logger } from "../src/logger.js";
 import type { Logger } from "../src/logger.js";
+import { requestLoggerMiddleware } from "../src/middleware/request-logger.js";
 
 describe("request-logger middleware", () => {
   let logged: Array<{ obj: Record<string, unknown>; msg: string }>;
@@ -70,5 +72,25 @@ describe("request-logger middleware", () => {
     const entry = logged.find((l) => l.msg === "request");
     expect(entry).toBeDefined();
     expect(entry!.obj.method).toBe("POST");
+  });
+
+  it("includes tenantId from context when X-Tenant-Id header is absent (API-key-authed path)", async () => {
+    const testApp = new Hono();
+    testApp.use(async (c, next) => {
+      c.set("log", logger.child({ requestId: "test-rid" }));
+      await next();
+    });
+    testApp.use(requestLoggerMiddleware);
+    testApp.use(async (c, next) => {
+      c.set("tenantId", "context-tenant-xyz");
+      await next();
+    });
+    testApp.get("/probe", (c) => c.json({ ok: true }));
+
+    await testApp.request("/probe");
+
+    const entry = logged.find((l) => l.msg === "request");
+    expect(entry).toBeDefined();
+    expect(entry!.obj.tenantId).toBe("context-tenant-xyz");
   });
 });

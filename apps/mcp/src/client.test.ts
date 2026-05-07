@@ -350,6 +350,62 @@ describe("createLsdsClient", () => {
     expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
   });
 
+  it("bulkImport sends POST to /v1/import/bulk with nodes and edges", async () => {
+    const created = { nodes: ["id-1", "id-2"], edges: ["eid-1"] };
+    const fetch = mockFetch({ data: { created, errors: [] } }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.bulkImport({
+      nodes: [
+        { type: "Service", layer: "L4", name: "svc-a" },
+        { type: "Service", layer: "L4", name: "svc-b" },
+      ],
+      edges: [
+        {
+          sourceId: "00000000-0000-0000-0000-000000000001",
+          targetId: "00000000-0000-0000-0000-000000000002",
+          type: "depends-on",
+          layer: "L4",
+        },
+      ],
+    });
+
+    expect(result).toEqual({ created, errors: [] });
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/import/bulk");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body.nodes).toHaveLength(2);
+    expect(body.edges).toHaveLength(1);
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("bulkImport sends POST with nodes only (no edges)", async () => {
+    const fetch = mockFetch({ data: { created: { nodes: ["id-1"], edges: [] }, errors: [] } }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.bulkImport({ nodes: [{ type: "Service", layer: "L4", name: "svc-a" }] });
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/import/bulk");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body.nodes).toHaveLength(1);
+    expect(body.edges).toBeUndefined();
+  });
+
+  it("bulkImport throws on 400 (oversized batch)", async () => {
+    const fetch = mockFetch({ error: "validation error", issues: [] }, 400);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(
+      client.bulkImport({ nodes: [{ type: "Service", layer: "L4", name: "svc" }] })
+    ).rejects.toThrow("400");
+  });
+
   it("architectAnalyze sends POST with empty body when no params given", async () => {
     const fetch = mockFetch({ data: { summary: {} } });
     vi.stubGlobal("fetch", fetch);
@@ -412,6 +468,161 @@ describe("createLsdsClient", () => {
     expect(result).toEqual(response);
     const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://localhost:3001/agent/v1/architect/debt");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("impactPredict sends POST to /agent/v1/architect/impact-predict with body", async () => {
+    const response = {
+      predictedAt: "2026-01-01T00:00:00.000Z",
+      changeType: "update",
+      maxDepth: 3,
+      affectedNodes: [],
+      predictedViolations: [],
+      requiresConfirmation: false,
+      summary: "UPDATE affects 0 neighboring node(s). No guardrail violations predicted. No high-impact layer nodes in blast radius.",
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.impactPredict({
+      changeType: "update",
+      nodeId: "00000000-0000-0000-0000-000000000001",
+      proposedNode: { type: "Service", layer: "L3", name: "auth-svc-v2" },
+    });
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/impact-predict");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body as string)).toMatchObject({
+      changeType: "update",
+      nodeId: "00000000-0000-0000-0000-000000000001",
+      proposedNode: { type: "Service", layer: "L3", name: "auth-svc-v2" },
+    });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("impactPredict — requiresConfirmation=true when L1/L2 nodes in blast radius", async () => {
+    const response = {
+      predictedAt: "2026-01-01T00:00:00.000Z",
+      changeType: "delete",
+      maxDepth: 3,
+      affectedNodes: [
+        { id: "00000000-0000-0000-0000-000000000010", name: "BusinessCapability-A", type: "BoundedContext", layer: "L1", relationshipPath: [] },
+      ],
+      predictedViolations: [],
+      requiresConfirmation: true,
+      summary: "DELETE affects 1 neighboring node(s). No guardrail violations predicted. Requires confirmation — L1/L2 (Business/Domain) node(s) in blast radius.",
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.impactPredict({
+      changeType: "delete",
+      nodeId: "00000000-0000-0000-0000-000000000002",
+    });
+
+    expect((result as typeof response).requiresConfirmation).toBe(true);
+    expect((result as typeof response).affectedNodes).toHaveLength(1);
+    expect((result as typeof response).affectedNodes[0].layer).toBe("L1");
+  });
+
+  it("impactPredict — returns predictedViolations for create scenario", async () => {
+    const response = {
+      predictedAt: "2026-01-01T00:00:00.000Z",
+      changeType: "create",
+      maxDepth: 3,
+      affectedNodes: [],
+      predictedViolations: [
+        { ruleKey: "naming.node.min_length", severity: "WARN", nodeId: null, description: "Node name 'xy' is shorter than minimum 3" },
+      ],
+      requiresConfirmation: false,
+      summary: "CREATE affects 0 neighboring node(s). Predicted 1 violation(s): 0 ERROR, 1 WARN. No high-impact layer nodes in blast radius.",
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.impactPredict({
+      changeType: "create",
+      proposedNode: { type: "Service", layer: "L4", name: "xy" },
+    });
+
+    expect((result as typeof response).predictedViolations).toHaveLength(1);
+    expect((result as typeof response).predictedViolations[0].ruleKey).toBe("naming.node.min_length");
+    expect((result as typeof response).requiresConfirmation).toBe(false);
+  });
+
+  it("impactPredict — includes edgeChanges in request body", async () => {
+    const response = {
+      predictedAt: "2026-01-01T00:00:00.000Z",
+      changeType: "create",
+      maxDepth: 2,
+      affectedNodes: [],
+      predictedViolations: [],
+      requiresConfirmation: false,
+      summary: "CREATE affects 0 neighboring node(s). No guardrail violations predicted. No high-impact layer nodes in blast radius.",
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.impactPredict({
+      changeType: "create",
+      proposedNode: { type: "Service", layer: "L3", name: "new-svc" },
+      edgeChanges: [
+        { fromId: "00000000-0000-0000-0000-000000000001", toId: "00000000-0000-0000-0000-000000000002", edgeType: "DEPENDS_ON", action: "add" },
+      ],
+      maxDepth: 2,
+    });
+
+    const [, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string);
+    expect(body.edgeChanges).toHaveLength(1);
+    expect(body.edgeChanges[0].action).toBe("add");
+    expect(body.maxDepth).toBe(2);
+  });
+
+  it("architectAdrCoverage sends GET to /agent/v1/architect/adr-coverage without minEdges", async () => {
+    const response = { scannedAt: "2026-01-01T00:00:00.000Z", uncoveredNodes: [], coveragePercent: 100 };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectAdrCoverage();
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/adr-coverage");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("architectAdrCoverage appends ?minEdges when provided", async () => {
+    const fetch = mockFetch({ data: { scannedAt: "2026-01-01T00:00:00.000Z", uncoveredNodes: [], coveragePercent: 80 } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.architectAdrCoverage(5);
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/adr-coverage?minEdges=5");
+  });
+
+  it("architectRequirementFulfillment sends GET to /agent/v1/architect/requirement-fulfillment", async () => {
+    const response = { scannedAt: "2026-01-01T00:00:00.000Z", requirements: [], fulfilledCount: 0, totalCount: 0 };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectRequirementFulfillment();
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/requirement-fulfillment");
     expect(opts.method).toBe("GET");
     expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
   });

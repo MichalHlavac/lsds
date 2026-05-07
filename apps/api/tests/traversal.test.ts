@@ -22,11 +22,11 @@ async function createNode(layer: string, name: string) {
   return (await res.json()).data;
 }
 
-async function createEdge(sourceId: string, targetId: string) {
+async function createEdge(sourceId: string, targetId: string, traversalWeight?: number) {
   const res = await app.request("/v1/edges", {
     method: "POST",
     headers: h(),
-    body: JSON.stringify({ sourceId, targetId, type: "contains", layer: "L4" }),
+    body: JSON.stringify({ sourceId, targetId, type: "contains", layer: "L4", ...(traversalWeight !== undefined && { traversalWeight }) }),
   });
   return (await res.json()).data;
 }
@@ -108,6 +108,89 @@ describe("POST /v1/nodes/:id/traverse", () => {
       body: JSON.stringify({ direction: "sideways" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+// ── traversalWeight / cost ordering ──────────────────────────────────────────
+
+describe("traversalWeight cost ordering", () => {
+  it("traversal result includes totalCost for each reachable node", async () => {
+    const root = await createNode("L4", "root");
+    const child = await createNode("L4", "child");
+    await createEdge(root.id, child.id, 2.5);
+
+    const res = await app.request(`/v1/nodes/${root.id}/traverse`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ depth: 1, direction: "outbound" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const childEntry = data.traversal.find((r: any) => r.nodeId === child.id);
+    expect(childEntry).toBeDefined();
+    expect(childEntry.totalCost).toBeCloseTo(2.5);
+  });
+
+  it("root node has totalCost 0", async () => {
+    const root = await createNode("L4", "root");
+    const res = await app.request(`/v1/nodes/${root.id}/traverse`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ depth: 1, direction: "outbound" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const rootEntry = data.traversal.find((r: any) => r.nodeId === root.id);
+    expect(rootEntry).toBeDefined();
+    expect(rootEntry.totalCost).toBe(0);
+  });
+
+  it("default weight (1.0) gives totalCost equal to depth", async () => {
+    // root -> A -> B, all default weight
+    const root = await createNode("L4", "root");
+    const a = await createNode("L4", "a");
+    const b = await createNode("L4", "b");
+    await createEdge(root.id, a.id);
+    await createEdge(a.id, b.id);
+
+    const res = await app.request(`/v1/nodes/${root.id}/traverse`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ depth: 2, direction: "outbound" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const aEntry = data.traversal.find((r: any) => r.nodeId === a.id);
+    const bEntry = data.traversal.find((r: any) => r.nodeId === b.id);
+    expect(aEntry.totalCost).toBeCloseTo(1.0);
+    expect(bEntry.totalCost).toBeCloseTo(2.0);
+  });
+
+  it("cheapest path wins when two routes reach the same node", async () => {
+    // Topology: root -> cheap -> target (weight 0.1 + 0.1)
+    //           root -> expensive -> target (weight 5.0 + 5.0)
+    // Both paths reach `target` in 2 hops; cheapest-cost path should win.
+    const root = await createNode("L4", "root");
+    const cheap = await createNode("L4", "cheap");
+    const expensive = await createNode("L4", "expensive");
+    const target = await createNode("L4", "target");
+
+    await createEdge(root.id, cheap.id, 0.1);
+    await createEdge(cheap.id, target.id, 0.1);
+    await createEdge(root.id, expensive.id, 5.0);
+    await createEdge(expensive.id, target.id, 5.0);
+
+    const res = await app.request(`/v1/nodes/${root.id}/traverse`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ depth: 2, direction: "outbound" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const targetEntry = data.traversal.find((r: any) => r.nodeId === target.id);
+    expect(targetEntry).toBeDefined();
+    // Should have kept the cheap path (0.1 + 0.1 = 0.2), not the expensive one (10.0)
+    expect(targetEntry.totalCost).toBeCloseTo(0.2);
   });
 });
 
