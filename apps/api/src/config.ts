@@ -18,7 +18,7 @@ const EnvSchema = z
     CACHE_WARMUP_LIMIT: z.coerce.number().int().positive().default(500),
     CORS_ORIGIN: z.string().default("http://localhost:3000"),
     LSDS_RATE_LIMIT_ENABLED: z
-      .enum(["true", "false"])
+      .string()
       .optional()
       .transform((v) => v === "true"),
     LSDS_RATE_LIMIT_RPM: z.coerce.number().int().positive().default(600),
@@ -28,7 +28,7 @@ const EnvSchema = z
     EMBEDDING_PROVIDER: z.enum(["disabled", "stub", "openai"]).optional(),
     OPENAI_API_KEY: z.string().optional(),
     LSDS_API_KEY_AUTH_ENABLED: z
-      .enum(["true", "false"])
+      .string()
       .optional()
       .transform((v) => v === "true"),
     PORT: z.coerce.number().int().positive().default(3001),
@@ -80,4 +80,16 @@ function parseConfig() {
   return result.data;
 }
 
-export const config = parseConfig();
+const _config = parseConfig();
+
+export const config = {
+  ..._config,
+  get lifecycleRetentionDays(): number {
+    const raw = process.env.LIFECYCLE_RETENTION_DAYS;
+    if (raw !== undefined) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    return _config.lifecycleRetentionDays;
+  },
+};
