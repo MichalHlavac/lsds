@@ -3,7 +3,14 @@
 
 import { z } from "zod";
 import { LayerSchema, LifecycleStatusSchema, SeveritySchema } from "@lsds/shared";
-import { RelationshipTypeSchema, TeamRefSchema } from "@lsds/framework";
+import {
+  RelationshipTypeSchema,
+  TeamRefSchema,
+  ObjectLayerSchema,
+  ChangeKindSchema,
+  ChangeOverrideSchema,
+  ChangeConfirmationSchema,
+} from "@lsds/framework";
 
 const LayerEnum = LayerSchema;
 const LifecycleEnum = LifecycleStatusSchema;
@@ -176,6 +183,17 @@ export const ImpactPredictSchema = z.object({
   maxDepth: z.number().int().min(1).max(10).optional().default(3),
 });
 export type ImpactPredict = z.infer<typeof ImpactPredictSchema>;
+
+// POST /agent/v1/architect/analyze-change — ADR A4 layer-dependent policy gate.
+// Wraps decideChange(): given layer + kind (+ optional override/confirmation),
+// returns the decision outcome (policy, severity, propagation, decision status).
+export const AnalyzeChangeSchema = z.object({
+  layer: ObjectLayerSchema,
+  kind: ChangeKindSchema,
+  override: ChangeOverrideSchema.optional(),
+  confirmation: ChangeConfirmationSchema.optional(),
+});
+export type AnalyzeChange = z.infer<typeof AnalyzeChangeSchema>;
 
 export const LifecycleTransitionSchema = z.object({
   transition: z.enum(["deprecate", "archive", "purge"]),

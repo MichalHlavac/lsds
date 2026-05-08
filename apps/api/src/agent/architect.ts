@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getTenantId } from "../routes/util.js";
-import { AgentAnalyzeSchema, ImpactPredictSchema } from "../routes/schemas.js";
+import { AgentAnalyzeSchema, AnalyzeChangeSchema, ImpactPredictSchema } from "../routes/schemas.js";
 import {
   analyzeNodes,
   consistencyScan,
@@ -17,6 +17,7 @@ import {
   requirementFulfillmentScan,
   SnapshotNotFoundError,
 } from "./architect-analysis.js";
+import { decideChange } from "@lsds/framework";
 
 // Architect Agent API (kap. 6.3) — aggregated graph views for architectural
 // analysis. All endpoints work on the full tenant graph, not individual nodes.
@@ -109,6 +110,21 @@ export function architectRouter(sql: Sql, guardrails: GuardrailsRegistry): Hono 
     const tenantId = getTenantId(c);
     const data = await requirementFulfillmentScan(sql, tenantId);
     return c.json({ data });
+  });
+
+  // ── ADR A4 layer-dependent change policy gate ────────────────────────────────
+  // Accepts { layer, kind, override?, confirmation? } and returns the policy
+  // decision: PENDING_CONFIRMATION (L1-L2 without confirmation), APPLIED
+  // (AUTO_APPLIED or CONFIRMED or OVERRIDDEN), or 422 on contradictory input.
+  // Does not write to the database — pure classification endpoint.
+  app.post("/analyze-change", async (c) => {
+    const body = AnalyzeChangeSchema.parse(await c.req.json());
+    try {
+      const data = decideChange(body);
+      return c.json({ data });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 422);
+    }
   });
 
   return app;
