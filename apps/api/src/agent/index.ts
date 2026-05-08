@@ -99,7 +99,7 @@ export function agentRouter(
   //   semantic — cosine-similarity neighbourhood; falls back to breadth if no embedding
   app.post("/context", async (c) => {
     const tenantId = getTenantId(c);
-    const body = KnowledgeContextSchema.parse(await c.req.json());
+    const body = KnowledgeContextSchema.parse(await c.req.json().catch(() => ({})));
     const { nodeId, profile, maxNodes, minSimilarity } = body;
 
     const [root] = await sql<NodeRow[]>`
