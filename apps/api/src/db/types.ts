@@ -136,6 +136,33 @@ export interface ApiKeyRow {
   expiresAt: Date | null;
 }
 
+export type AuditOperation =
+  | "node.create"
+  | "node.update"
+  | "node.delete"
+  | "node.deprecate"
+  | "node.archive"
+  | "node.purge"
+  | "edge.create"
+  | "edge.update"
+  | "edge.delete";
+
+export interface AuditDiff {
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+export interface AuditLogRow {
+  id: string;
+  tenantId: string;
+  apiKeyId: string | null;
+  operation: AuditOperation;
+  entityType: string;
+  entityId: string;
+  diff: AuditDiff | null;
+  createdAt: Date;
+}
+
 export interface TenantRow {
   id: string;
   name: string;

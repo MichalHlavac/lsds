@@ -9,6 +9,13 @@ import type { NodeHistoryRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
 import { recordNodeHistory } from "../db/history.js";
 import {
+  insertAuditLog,
+  nodeCreateDiff,
+  nodeUpdateDiff,
+  nodeDeleteDiff,
+  nodeLifecycleDiff,
+} from "../db/audit.js";
+import {
   CreateNodeSchema,
   UpdateNodeSchema,
   LifecycleTransitionSchema,
@@ -81,6 +88,7 @@ export function nodesRouter(
 
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateNodeSchema.parse(await c.req.json());
     const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
     const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
@@ -95,6 +103,7 @@ export function nodesRouter(
         RETURNING *
       `;
       await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
+      await insertAuditLog(sql, tenantId, apiKeyId, "node.create", row.type, row.id, nodeCreateDiff(row));
       embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
       return c.json({ data: row }, 201);
     } catch (err: unknown) {
@@ -107,6 +116,7 @@ export function nodesRouter(
 
   app.put("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateNodeSchema.parse(await c.req.json());
     const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
     const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
@@ -135,6 +145,9 @@ export function nodesRouter(
 
     const op = previous ? "UPDATE" : "CREATE";
     await recordNodeHistory(sql, tenantId, row.id, op, previous ?? null, row);
+    const auditOp = previous ? "node.update" : "node.create";
+    const auditDiff = previous ? nodeUpdateDiff(previous, row) : nodeCreateDiff(row);
+    await insertAuditLog(sql, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
     embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
     return c.json({ data: row }, previous ? 200 : 201);
   });
@@ -266,6 +279,7 @@ export function nodesRouter(
 
   app.patch("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
     const body = UpdateNodeSchema.parse(await c.req.json());
 
@@ -296,6 +310,7 @@ export function nodesRouter(
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
     cache.invalidateNode(tenantId, id, neighborIds);
     await recordNodeHistory(sql, tenantId, id, "UPDATE", previous, row);
+    await insertAuditLog(sql, tenantId, apiKeyId, "node.update", row.type, id, nodeUpdateDiff(previous, row));
     // `type` and `layer` are not in UpdateNodeSchema (immutable after creation), so
     // only `name` and `attributes` can affect the embedded text.
     if (body.name !== undefined || body.attributes !== undefined) {
@@ -306,6 +321,7 @@ export function nodesRouter(
 
   app.patch("/:id/lifecycle", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
     const body = LifecycleTransitionSchema.parse(await c.req.json());
 
@@ -317,6 +333,10 @@ export function nodesRouter(
       const row = await lifecycle.transitionNode(tenantId, id, body.transition);
       if (previous) {
         await recordNodeHistory(sql, tenantId, id, "LIFECYCLE_TRANSITION", previous, row);
+        const auditOp = body.transition === "deprecate" ? "node.deprecate"
+          : body.transition === "archive" ? "node.archive"
+          : "node.purge";
+        await insertAuditLog(sql, tenantId, apiKeyId, auditOp, row.type, id, nodeLifecycleDiff(previous, row));
       }
       return c.json({ data: row });
     } catch (e) {
@@ -340,6 +360,7 @@ export function nodesRouter(
 
   app.delete("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
 
     const [existing] = await sql<NodeRow[]>`
@@ -364,6 +385,7 @@ export function nodesRouter(
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
     await sql`DELETE FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
     cache.invalidateNode(tenantId, id, neighborIds);
+    await insertAuditLog(sql, tenantId, apiKeyId, "node.delete", existing.type, id, nodeDeleteDiff(existing));
     return c.json({ data: { id } });
   });
 
