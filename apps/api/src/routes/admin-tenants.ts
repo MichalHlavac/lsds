@@ -6,6 +6,13 @@ import { z } from "zod";
 import type { Sql } from "../db/client.js";
 import { generateApiKey, sha256hex } from "../auth/api-key.js";
 
+const PatchTenantRateLimitsSchema = z.object({
+  rateLimitRpm: z.number().int().positive(),
+  rateLimitBurst: z.number().int().positive(),
+}).partial().refine((data) => Object.keys(data).length > 0, {
+  message: "at least one field must be provided",
+});
+
 const CreateTenantSchema = z.object({
   name: z.string().min(1).max(200),
   slug: z.string().min(1).max(100).regex(/^[a-z0-9-]+$/, "slug must be lowercase alphanumeric with hyphens"),
@@ -60,6 +67,25 @@ export function adminTenantsRouter(sql: Sql): Hono {
       },
       201
     );
+  });
+
+  // PATCH /:tenantId — update tenant-level rate limit defaults
+  app.patch("/:tenantId", async (c) => {
+    const { tenantId } = c.req.param();
+    const body = PatchTenantRateLimitsSchema.parse(await c.req.json());
+
+    const [row] = await sql<[{ id: string; rateLimitRpm: number; rateLimitBurst: number }?]>`
+      UPDATE tenants
+      SET
+        ${body.rateLimitRpm !== undefined ? sql`rate_limit_rpm = ${body.rateLimitRpm},` : sql``}
+        ${body.rateLimitBurst !== undefined ? sql`rate_limit_burst = ${body.rateLimitBurst},` : sql``}
+        updated_at = now()
+      WHERE id = ${tenantId}
+      RETURNING id, rate_limit_rpm, rate_limit_burst
+    `;
+
+    if (!row) return c.json({ error: "tenant not found" }, 404);
+    return c.json({ data: row });
   });
 
   // PATCH /:tenantId/api-keys — rotate: revoke all active keys, issue new one
