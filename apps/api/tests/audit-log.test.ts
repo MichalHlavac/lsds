@@ -68,6 +68,37 @@ describe("audit log — node mutations", () => {
     expect(entry.diff.before.layer).toBeUndefined();
   });
 
+  it("records node.delete when DELETE /v1/nodes/:id succeeds", async () => {
+    const orig = process.env.LIFECYCLE_RETENTION_DAYS;
+    process.env.LIFECYCLE_RETENTION_DAYS = "0";
+    try {
+      const node = await createNode("del-node");
+      await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+      });
+      await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+      });
+      const delRes = await app.request(`/v1/nodes/${node.id}`, {
+        method: "DELETE",
+        headers: h(),
+      });
+      expect(delRes.status).toBe(200);
+      const res = await getAuditLog({ entity_id: node.id, operation: "node.delete" });
+      expect(res.status).toBe(200);
+      const { items } = await res.json();
+      expect(items.length).toBeGreaterThanOrEqual(1);
+      const entry = items[0];
+      expect(entry.operation).toBe("node.delete");
+      expect(entry.entityId).toBe(node.id);
+      expect(entry.diff.before).not.toBeNull();
+      expect(entry.diff.after).toBeNull();
+    } finally {
+      if (orig === undefined) delete process.env.LIFECYCLE_RETENTION_DAYS;
+      else process.env.LIFECYCLE_RETENTION_DAYS = orig;
+    }
+  });
+
   it("records node.update via PUT /v1/nodes (upsert on existing)", async () => {
     const node = await createNode("gamma");
     const putRes = await app.request("/v1/nodes", {
@@ -140,6 +171,32 @@ describe("audit log — lifecycle transitions", () => {
     const { items } = await audit.json();
     expect(items.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("records node.purge when DELETE /v1/lifecycle/nodes/:id/purge succeeds (hard purge)", async () => {
+    const node = await createNode("purge-hard");
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+    await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, { method: "POST", headers: h() });
+    await app.request(`/v1/lifecycle/nodes/${node.id}/mark-purge`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ purgeAfterDays: 0 }),
+    });
+    const purgeRes = await app.request(`/v1/lifecycle/nodes/${node.id}/purge`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(purgeRes.status).toBe(200);
+    const res = await getAuditLog({ entity_id: node.id, operation: "node.purge" });
+    expect(res.status).toBe(200);
+    const { items } = await res.json();
+    // Hard-purge entry has diff.after === null; mark-purge entry has diff.after with lifecycle status
+    const hardPurgeEntry = items.find((e: { diff: { after: unknown } }) => e.diff.after === null);
+    expect(hardPurgeEntry).toBeDefined();
+    expect(hardPurgeEntry.operation).toBe("node.purge");
+    expect(hardPurgeEntry.entityId).toBe(node.id);
+    expect(hardPurgeEntry.diff.before).not.toBeNull();
+    expect(hardPurgeEntry.diff.after).toBeNull();
+  });
 });
 
 // ── write path — edges ───────────────────────────────────────────────────────
@@ -161,6 +218,45 @@ describe("audit log — edge mutations", () => {
     expect(items.length).toBeGreaterThanOrEqual(1);
     expect(items[0].operation).toBe("edge.create");
     expect(items[0].diff.before).toBeNull();
+  });
+
+  it("records edge.delete when DELETE /v1/edges/:id succeeds", async () => {
+    const orig = process.env.LIFECYCLE_RETENTION_DAYS;
+    process.env.LIFECYCLE_RETENTION_DAYS = "0";
+    try {
+      const src = await createNode("ed-src");
+      const tgt = await createNode("ed-tgt");
+      const edgeRes = await app.request("/v1/edges", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+      });
+      expect(edgeRes.status).toBe(201);
+      const edge = (await edgeRes.json()).data;
+      await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+      });
+      await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+      });
+      const delRes = await app.request(`/v1/edges/${edge.id}`, {
+        method: "DELETE",
+        headers: h(),
+      });
+      expect(delRes.status).toBe(200);
+      const res = await getAuditLog({ entity_id: edge.id, operation: "edge.delete" });
+      expect(res.status).toBe(200);
+      const { items } = await res.json();
+      expect(items.length).toBeGreaterThanOrEqual(1);
+      const entry = items[0];
+      expect(entry.operation).toBe("edge.delete");
+      expect(entry.entityId).toBe(edge.id);
+      expect(entry.diff.before).not.toBeNull();
+      expect(entry.diff.after).toBeNull();
+    } finally {
+      if (orig === undefined) delete process.env.LIFECYCLE_RETENTION_DAYS;
+      else process.env.LIFECYCLE_RETENTION_DAYS = orig;
+    }
   });
 
   it("records edge.update when PATCH /v1/edges/:id succeeds", async () => {
