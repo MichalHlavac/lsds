@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ReactFlow,
@@ -89,16 +89,21 @@ export default function GraphPage() {
 
   const loadedNodeIds = useMemo(() => new Set(rfNodes.map((n) => n.id)), [rfNodes]);
 
+  const hasMoreNodesRef = useRef(hasMoreNodes);
+  hasMoreNodesRef.current = hasMoreNodes;
+  const hasMoreEdgesRef = useRef(hasMoreEdges);
+  hasMoreEdgesRef.current = hasMoreEdges;
+
   const loadBatch = useCallback(
     async (nOffset: number, eOffset: number) => {
       setLoading(true);
       setError(null);
       try {
         const [nodesRes, edgesRes] = await Promise.all([
-          hasMoreNodes
+          hasMoreNodesRef.current
             ? api.nodes.list({ limit: NODE_BATCH, offset: nOffset })
             : Promise.resolve(null),
-          hasMoreEdges
+          hasMoreEdgesRef.current
             ? api.edges.list({ limit: EDGE_BATCH, offset: eOffset })
             : Promise.resolve(null),
         ]);
@@ -132,14 +137,12 @@ export default function GraphPage() {
         setInitialLoad(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasMoreNodes, hasMoreEdges],
+    [setRfNodes, setRfEdges],
   );
 
   useEffect(() => {
     loadBatch(0, 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadBatch]);
 
   const onNodeClick: NodeMouseHandler = useCallback(
     (_, node) => router.push(`/nodes/${node.id}`),
