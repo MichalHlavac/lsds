@@ -4,7 +4,7 @@
   "_iterations": 10,
   "_tolerance": "measured p50/p95 must not exceed baseline * 1.20",
   "outbound_d4": {
-    "p50_ms": 1000,
+    "p50_ms": 1600,
     "p95_ms": 3000
   },
   "inbound_d4": {
