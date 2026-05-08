@@ -115,33 +115,33 @@ export class PostgresTraversalAdapter implements TraversalEngine {
           `
           WITH RECURSIVE traversal AS (
             SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path, 0.0::float AS "totalCost"
-            FROM nodes n WHERE n.id = $1
+            FROM nodes n WHERE n.id = $1 AND n.tenant_id = $4::uuid
             UNION ALL
             SELECT target.id, t.depth + 1, t.path || target.id::text, t."totalCost" + e.traversal_weight
             FROM traversal t
-            JOIN edges e ON e.source_id = t."nodeId"::uuid AND e.type = ANY($3::text[])
-            JOIN nodes target ON target.id = e.target_id
+            JOIN edges e ON e.source_id = t."nodeId"::uuid AND e.type = ANY($3::text[]) AND e.tenant_id = $4::uuid
+            JOIN nodes target ON target.id = e.target_id AND target.tenant_id = $4::uuid
             WHERE t.depth < $2 AND NOT (target.id::text = ANY(t.path))
           )
           SELECT "nodeId", depth, path, "totalCost" FROM traversal ORDER BY "totalCost", depth, "nodeId"
         `,
-          [rootId, maxDepth, edgeTypes],
+          [rootId, maxDepth, edgeTypes, this.tenantId],
         )
       : await this.sql.unsafe(
           `
           WITH RECURSIVE traversal AS (
             SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path, 0.0::float AS "totalCost"
-            FROM nodes n WHERE n.id = $1
+            FROM nodes n WHERE n.id = $1 AND n.tenant_id = $3::uuid
             UNION ALL
             SELECT target.id, t.depth + 1, t.path || target.id::text, t."totalCost" + e.traversal_weight
             FROM traversal t
-            JOIN edges e ON e.source_id = t."nodeId"::uuid
-            JOIN nodes target ON target.id = e.target_id
+            JOIN edges e ON e.source_id = t."nodeId"::uuid AND e.tenant_id = $3::uuid
+            JOIN nodes target ON target.id = e.target_id AND target.tenant_id = $3::uuid
             WHERE t.depth < $2 AND NOT (target.id::text = ANY(t.path))
           )
           SELECT "nodeId", depth, path, "totalCost" FROM traversal ORDER BY "totalCost", depth, "nodeId"
         `,
-          [rootId, maxDepth],
+          [rootId, maxDepth, this.tenantId],
         );
     const seen = new Map<string, TraversalResult>();
     for (const r of rows) {
@@ -174,33 +174,33 @@ export class PostgresTraversalAdapter implements TraversalEngine {
           `
           WITH RECURSIVE traversal AS (
             SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path, 0.0::float AS "totalCost"
-            FROM nodes n WHERE n.id = $1
+            FROM nodes n WHERE n.id = $1 AND n.tenant_id = $4::uuid
             UNION ALL
             SELECT source.id, t.depth + 1, t.path || source.id::text, t."totalCost" + e.traversal_weight
             FROM traversal t
-            JOIN edges e ON e.target_id = t."nodeId"::uuid AND e.type = ANY($3::text[])
-            JOIN nodes source ON source.id = e.source_id
+            JOIN edges e ON e.target_id = t."nodeId"::uuid AND e.type = ANY($3::text[]) AND e.tenant_id = $4::uuid
+            JOIN nodes source ON source.id = e.source_id AND source.tenant_id = $4::uuid
             WHERE t.depth < $2 AND NOT (source.id::text = ANY(t.path))
           )
           SELECT "nodeId", depth, path, "totalCost" FROM traversal ORDER BY "totalCost", depth, "nodeId"
         `,
-          [rootId, maxDepth, edgeTypes],
+          [rootId, maxDepth, edgeTypes, this.tenantId],
         )
       : await this.sql.unsafe(
           `
           WITH RECURSIVE traversal AS (
             SELECT n.id AS "nodeId", 0 AS depth, ARRAY[n.id::text] AS path, 0.0::float AS "totalCost"
-            FROM nodes n WHERE n.id = $1
+            FROM nodes n WHERE n.id = $1 AND n.tenant_id = $3::uuid
             UNION ALL
             SELECT source.id, t.depth + 1, t.path || source.id::text, t."totalCost" + e.traversal_weight
             FROM traversal t
-            JOIN edges e ON e.target_id = t."nodeId"::uuid
-            JOIN nodes source ON source.id = e.source_id
+            JOIN edges e ON e.target_id = t."nodeId"::uuid AND e.tenant_id = $3::uuid
+            JOIN nodes source ON source.id = e.source_id AND source.tenant_id = $3::uuid
             WHERE t.depth < $2 AND NOT (source.id::text = ANY(t.path))
           )
           SELECT "nodeId", depth, path, "totalCost" FROM traversal ORDER BY "totalCost", depth, "nodeId"
         `,
-          [rootId, maxDepth],
+          [rootId, maxDepth, this.tenantId],
         );
     const seen = new Map<string, TraversalResult>();
     for (const r of rows) {
