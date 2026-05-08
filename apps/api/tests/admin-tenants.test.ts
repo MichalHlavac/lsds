@@ -101,10 +101,16 @@ describe("POST /api/admin/tenants", () => {
   // ── Zod body validation contract ──────────────────────────────────────────
 
   describe("body validation (Zod schema contract)", () => {
+    // Use isolated IPs so these tests don't consume the shared rate-limit bucket
+    // used by the rest of the suite (which relies on the default "unknown" IP).
+    function validationIp(): string {
+      return `10.88.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
+    }
+
     it("returns 400 when name field is missing", async () => {
       const res = await app.request("/api/admin/tenants", {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(validationIp()),
         body: JSON.stringify({ slug: uniqueSlug(), plan: "trial" }),
       });
       expect(res.status).toBe(400);
@@ -116,7 +122,7 @@ describe("POST /api/admin/tenants", () => {
     it("returns 400 when name is a number (non-string)", async () => {
       const res = await app.request("/api/admin/tenants", {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(validationIp()),
         body: JSON.stringify({ name: 42, slug: uniqueSlug(), plan: "trial" }),
       });
       expect(res.status).toBe(400);
@@ -130,7 +136,7 @@ describe("POST /api/admin/tenants", () => {
       const slug = uniqueSlug();
       const res = await app.request("/api/admin/tenants", {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(validationIp()),
         body: JSON.stringify({ name: "Extra Corp", slug, plan: "trial", unknownField: "ignored" }),
       });
       expect(res.status).toBe(201);
@@ -142,7 +148,7 @@ describe("POST /api/admin/tenants", () => {
       const slug = uniqueSlug();
       const res = await app.request("/api/admin/tenants", {
         method: "POST",
-        headers: adminHeaders(),
+        headers: adminHeaders(validationIp()),
         body: JSON.stringify({ name: "Valid Corp", slug, plan: "trial" }),
       });
       expect(res.status).toBe(201);
