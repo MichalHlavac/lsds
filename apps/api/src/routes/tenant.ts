@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { Sql } from "../db/client.js";
 import type { TenantRow } from "../db/types.js";
 import { getTenantId } from "./util.js";
+import { tenantApiKeysRouter } from "./tenant-api-keys.js";
 
 const PatchTenantSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -20,6 +21,8 @@ interface TenantStats {
 
 export function tenantRouter(sql: Sql): Hono {
   const app = new Hono();
+
+  app.route("/api-keys", tenantApiKeysRouter(sql));
 
   app.get("/", async (c) => {
     const tenantId = getTenantId(c);

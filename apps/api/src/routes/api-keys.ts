@@ -18,7 +18,7 @@ export function apiKeysRouter(sql: Sql): Hono {
   app.get("/", async (c) => {
     const tenantId = getTenantId(c);
     const rows = await sql<Omit<ApiKeyRow, "keyHash">[]>`
-      SELECT id, tenant_id, name, key_prefix, created_at, revoked_at
+      SELECT id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at
       FROM api_keys
       WHERE tenant_id = ${tenantId}
       ORDER BY created_at DESC
@@ -37,7 +37,7 @@ export function apiKeysRouter(sql: Sql): Hono {
     const [row] = await sql<Omit<ApiKeyRow, "keyHash">[]>`
       INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix)
       VALUES (${tenantId}, ${body.name}, ${hash}, ${prefix})
-      RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at
+      RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at
     `;
 
     // raw key returned once — caller must store it; hash is never exposed
