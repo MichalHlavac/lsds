@@ -8,6 +8,12 @@ import type { LsdsCache } from "../cache/index.js";
 import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
 import { recordEdgeHistory } from "../db/history.js";
+import {
+  insertAuditLog,
+  edgeCreateDiff,
+  edgeUpdateDiff,
+  edgeDeleteDiff,
+} from "../db/audit.js";
 import { config } from "../config.js";
 import {
   CreateEdgeSchema,
@@ -73,6 +79,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateEdgeSchema.parse(await c.req.json());
 
     const [sourceNode] = await sql<NodeRow[]>`
@@ -112,6 +119,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       `;
       cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
       await recordEdgeHistory(sql, tenantId, row.id, "CREATE", null, row);
+      await insertAuditLog(sql, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row));
       return c.json({ data: row }, 201);
     } catch (err: unknown) {
       if ((err as { code?: string })?.code === "23505") {
@@ -123,6 +131,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.put("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateEdgeSchema.parse(await c.req.json());
 
     const [sourceNode] = await sql<NodeRow[]>`
@@ -173,6 +182,9 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
     const op = previous ? "UPDATE" : "CREATE";
     await recordEdgeHistory(sql, tenantId, row.id, op, previous ?? null, row);
+    const auditOp = previous ? "edge.update" : "edge.create";
+    const auditDiff = previous ? edgeUpdateDiff(previous, row) : edgeCreateDiff(row);
+    await insertAuditLog(sql, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
     return c.json({ data: row }, previous ? 200 : 201);
   });
 
@@ -248,6 +260,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.patch("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
     const body = UpdateEdgeSchema.parse(await c.req.json());
 
@@ -272,6 +285,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
     await recordEdgeHistory(sql, tenantId, id, "UPDATE", previous, row);
+    await insertAuditLog(sql, tenantId, apiKeyId, "edge.update", row.type, id, edgeUpdateDiff(previous, row));
     return c.json({ data: row });
   });
 
@@ -311,6 +325,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.delete("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
 
     const [existing] = await sql<EdgeRow[]>`
@@ -330,6 +345,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     await sql`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
     cache.invalidateEdge(tenantId, existing.id, existing.sourceId, existing.targetId);
+    await insertAuditLog(sql, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
     return c.json({ data: { id } });
   });
 
