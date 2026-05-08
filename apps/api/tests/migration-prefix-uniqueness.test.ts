@@ -165,10 +165,10 @@ describe("apps/api/migrations/ — prefix uniqueness guard", () => {
     expect(files011).toHaveLength(2);
   });
 
-  it("confirms grandfathered prefix 012 has exactly 2 files", () => {
+  it("confirms grandfathered prefix 012 has exactly 3 files", () => {
     const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
     const files012 = files.filter((f) => extractPrefix(f) === "012");
-    expect(files012).toHaveLength(2);
+    expect(files012).toHaveLength(3);
   });
 
   it("all sql files have a numeric prefix", () => {
