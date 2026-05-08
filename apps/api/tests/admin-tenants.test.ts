@@ -98,6 +98,59 @@ describe("POST /api/admin/tenants", () => {
     expect(res.status).toBe(401);
   });
 
+  // ── Zod body validation contract ──────────────────────────────────────────
+
+  describe("body validation (Zod schema contract)", () => {
+    it("returns 400 when name field is missing", async () => {
+      const res = await app.request("/api/admin/tenants", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ slug: uniqueSlug(), plan: "trial" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; issues: Array<{ path: string[] }> };
+      expect(body.error).toBe("validation error");
+      expect(body.issues.some((i) => i.path.includes("name"))).toBe(true);
+    });
+
+    it("returns 400 when name is a number (non-string)", async () => {
+      const res = await app.request("/api/admin/tenants", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ name: 42, slug: uniqueSlug(), plan: "trial" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; issues: Array<{ path: string[] }> };
+      expect(body.error).toBe("validation error");
+      expect(body.issues.some((i) => i.path.includes("name"))).toBe(true);
+    });
+
+    it("silently drops unknown extra fields and returns 201 (schema uses z.object, not .strict)", async () => {
+      // CreateTenantSchema is z.object() — Zod strips unrecognised keys rather than rejecting them.
+      const slug = uniqueSlug();
+      const res = await app.request("/api/admin/tenants", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ name: "Extra Corp", slug, plan: "trial", unknownField: "ignored" }),
+      });
+      expect(res.status).toBe(201);
+      const { data } = (await res.json()) as { data: { tenant: { id: string } } };
+      createdTenantIds.push(data.tenant.id);
+    });
+
+    it("returns 201 for a valid request (regression guard)", async () => {
+      const slug = uniqueSlug();
+      const res = await app.request("/api/admin/tenants", {
+        method: "POST",
+        headers: adminHeaders(),
+        body: JSON.stringify({ name: "Valid Corp", slug, plan: "trial" }),
+      });
+      expect(res.status).toBe(201);
+      const { data } = (await res.json()) as { data: { tenant: { id: string } } };
+      createdTenantIds.push(data.tenant.id);
+    });
+  });
+
   it("returns 429 after the 11th request from the same IP within one minute", async () => {
     // Use a unique IP so this test's rate-limit window doesn't bleed into others.
     const ip = `10.99.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
