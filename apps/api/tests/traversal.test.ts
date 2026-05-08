@@ -194,6 +194,101 @@ describe("traversalWeight cost ordering", () => {
   });
 });
 
+// ── Cross-tenant isolation (traversal CTE) ───────────────────────────────────
+
+describe("cross-tenant isolation in traversal", () => {
+  let tidB: string;
+
+  beforeEach(() => { tidB = randomUUID(); });
+  afterEach(async () => { await cleanTenant(sql, tidB); });
+
+  it("traversal from tenant A does not expose nodes owned by tenant B", async () => {
+    // Tenant A: root -> child
+    const root = await createNode("L4", "root-a");
+    const childA = await createNode("L4", "child-a");
+    const res1 = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: root.id, targetId: childA.id, type: "contains", layer: "L4" }),
+    });
+    expect(res1.status).toBe(201);
+
+    // Tenant B: insert a node and edge pointing FROM the same root.id (cross-tenant edge)
+    // This simulates data corruption or deliberate injection across tenants.
+    const nodeB = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-tenant-id": tidB },
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "secret-b" }),
+    });
+    const nodeBData = (await nodeB.json()).data;
+    // Directly insert a cross-tenant edge (bypassing API validation) to prove the DB filter holds
+    await sql`
+      INSERT INTO edges (id, tenant_id, source_id, target_id, type, layer, traversal_weight, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${tidB}, ${root.id}::uuid, ${nodeBData.id}::uuid, 'contains', 'L4', 1.0, now(), now())
+    `;
+
+    const res = await app.request(`/v1/nodes/${root.id}/traverse`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ depth: 3, direction: "outbound" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const nodeIds = data.nodes.map((n: any) => n.id);
+    expect(nodeIds).not.toContain(nodeBData.id);
+    expect(nodeIds).toContain(childA.id);
+  });
+
+  it("traversal from tenant A with edgeTypes filter does not expose nodes owned by tenant B", async () => {
+    const root = await createNode("L4", "root-a2");
+    const nodeB = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-tenant-id": tidB },
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "secret-b2" }),
+    });
+    const nodeBData = (await nodeB.json()).data;
+    await sql`
+      INSERT INTO edges (id, tenant_id, source_id, target_id, type, layer, traversal_weight, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${tidB}, ${root.id}::uuid, ${nodeBData.id}::uuid, 'contains', 'L4', 1.0, now(), now())
+    `;
+
+    const res = await app.request(`/v1/nodes/${root.id}/traverse`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ depth: 3, direction: "outbound", edgeTypes: ["contains"] }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const nodeIds = data.nodes.map((n: any) => n.id);
+    expect(nodeIds).not.toContain(nodeBData.id);
+  });
+
+  it("inbound traversal from tenant A does not expose nodes owned by tenant B", async () => {
+    const root = await createNode("L4", "root-a3");
+    const nodeB = await app.request("/v1/nodes", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-tenant-id": tidB },
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "secret-b3" }),
+    });
+    const nodeBData = (await nodeB.json()).data;
+    // Cross-tenant edge pointing INTO root from tenant B's node
+    await sql`
+      INSERT INTO edges (id, tenant_id, source_id, target_id, type, layer, traversal_weight, created_at, updated_at)
+      VALUES (gen_random_uuid(), ${tidB}, ${nodeBData.id}::uuid, ${root.id}::uuid, 'contains', 'L4', 1.0, now(), now())
+    `;
+
+    const res = await app.request(`/v1/nodes/${root.id}/traverse`, {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ depth: 3, direction: "inbound" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    const nodeIds = data.nodes.map((n: any) => n.id);
+    expect(nodeIds).not.toContain(nodeBData.id);
+  });
+});
+
 // ── POST /v1/query/nodes ──────────────────────────────────────────────────────
 
 describe("POST /v1/query/nodes", () => {
