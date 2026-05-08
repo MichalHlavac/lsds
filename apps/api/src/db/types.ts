@@ -133,6 +133,7 @@ export interface ApiKeyRow {
   keyPrefix: string;
   createdAt: Date;
   revokedAt: Date | null;
+  expiresAt: Date | null;
 }
 
 export interface TenantRow {

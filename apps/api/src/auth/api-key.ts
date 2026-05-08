@@ -44,7 +44,10 @@ export function apiKeyMiddleware(sql: Sql) {
 
     const hash = await sha256hex(key);
     const [row] = await sql<ApiKeyRow[]>`
-      SELECT * FROM api_keys WHERE key_hash = ${hash} AND revoked_at IS NULL
+      SELECT * FROM api_keys
+      WHERE key_hash = ${hash}
+        AND revoked_at IS NULL
+        AND (expires_at IS NULL OR expires_at > now())
     `;
 
     if (!row) {
