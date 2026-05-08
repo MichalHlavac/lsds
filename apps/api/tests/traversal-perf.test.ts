@@ -136,7 +136,7 @@ describe("PostgresTraversalAdapter — 10k nodes / 50k edges smoke test", () => 
   it(
     "outbound traversal from interior node (depth 4) completes within time bound",
     async () => {
-      const adapter = new PostgresTraversalAdapter(sql);
+      const adapter = new PostgresTraversalAdapter(sql, TENANT_ID);
       const startId = nodeIds[interiorIdx]!;
 
       const t0 = performance.now();
@@ -165,7 +165,7 @@ describe("PostgresTraversalAdapter — 10k nodes / 50k edges smoke test", () => 
   it(
     "inbound traversal from a leaf node (depth 5) completes within time bound",
     async () => {
-      const adapter = new PostgresTraversalAdapter(sql);
+      const adapter = new PostgresTraversalAdapter(sql, TENANT_ID);
 
       // Pick a node deep in the 5-ary tree: last node is close to a leaf.
       const leafId = nodeIds[nodeIds.length - 1]!;
@@ -186,7 +186,7 @@ describe("PostgresTraversalAdapter — 10k nodes / 50k edges smoke test", () => 
   it(
     "bidirectional traversal from interior node (depth 4) completes within time bound",
     async () => {
-      const adapter = new PostgresTraversalAdapter(sql);
+      const adapter = new PostgresTraversalAdapter(sql, TENANT_ID);
       const startId = nodeIds[interiorIdx]!;
 
       const t0 = performance.now();
@@ -204,7 +204,7 @@ describe("PostgresTraversalAdapter — 10k nodes / 50k edges smoke test", () => 
   it(
     "edge-type-filtered traversal returns only nodes reachable via 'contains'",
     async () => {
-      const adapter = new PostgresTraversalAdapter(sql);
+      const adapter = new PostgresTraversalAdapter(sql, TENANT_ID);
       const startId = nodeIds[0]!; // root
 
       const t0 = performance.now();
