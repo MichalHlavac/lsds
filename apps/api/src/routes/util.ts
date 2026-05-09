@@ -17,6 +17,6 @@ export function getTenantId(c: Context): string {
 
 // Typed wrapper for sql.json() — avoids scattered `as any` casts.
 // Values come from Zod-validated JSON (z.record(z.unknown())), so serialization is safe.
-export function jsonb(sql: AnySql, value: Record<string, unknown>): postgres.Parameter<postgres.JSONValue> {
+export function jsonb(sql: AnySql, value: Record<string, unknown>): postgres.Parameter {
   return sql.json(value as postgres.JSONValue);
 }

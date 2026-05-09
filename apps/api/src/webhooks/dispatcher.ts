@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { logger } from "../logger.js";
+import type { Sql } from "../db/client.js";
 import { insertAuditLog } from "../db/audit.js";
 import {
   pollPendingDeliveries,
