@@ -118,7 +118,7 @@ export function architectRouter(sql: Sql, guardrails: GuardrailsRegistry): Hono 
   //   L1-L2 → REQUIRE_CONFIRMATION
   //   L3-L4 → AUTO_WITH_OVERRIDE
   //   L5-L6 → AUTO
-  app.post("/analyze-change", async (c) => {
+  app.post("/classify-change", async (c) => {
     const tenantId = getTenantId(c);
     const body = AnalyzeChangeSchema.parse(await c.req.json());
     const data = await analyzeChange(sql, tenantId, body);

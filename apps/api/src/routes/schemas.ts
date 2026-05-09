@@ -221,7 +221,7 @@ export const SimilarNodesSchema = z.object({
   model: z.string().optional(),
 });
 
-// POST /agent/v1/architect/analyze-change — change classification input (ADR A4).
+// POST /agent/v1/architect/classify-change — change classification input (ADR A4).
 // Accepts a unified diff, file-path list, node types, or node IDs (at least one required).
 export const AnalyzeChangeSchema = z
   .object({

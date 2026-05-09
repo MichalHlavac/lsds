@@ -943,11 +943,11 @@ describe("pickLayer", () => {
   });
 });
 
-// ── POST /agent/v1/architect/analyze-change ───────────────────────────────────
+// ── POST /agent/v1/architect/classify-change ─────────────────────────────────
 
-describe("POST /agent/v1/architect/analyze-change", () => {
+describe("POST /agent/v1/architect/classify-change", () => {
   it("returns 400 when x-tenant-id header is missing", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ filePaths: ["apps/api/src/routes/nodes.ts"] }),
@@ -956,7 +956,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("returns 400 when body has no valid input field", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({}),
@@ -965,7 +965,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("returns 200 with classifiedAt and classification shape", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ filePaths: ["apps/api/src/routes/nodes.ts"] }),
@@ -983,7 +983,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("classifies framework/types path as L1 REQUIRE_CONFIRMATION", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({
@@ -999,7 +999,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("classifies L5 file path as AUTO", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ filePaths: ["apps/web/src/pages/index.tsx"] }),
@@ -1011,7 +1011,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("classifies SQL DDL diff as L1 REQUIRE_CONFIRMATION", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({
@@ -1029,7 +1029,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("classifies BoundedContext nodeType as L1", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ nodeTypes: ["BoundedContext"] }),
@@ -1041,7 +1041,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("classifies Service nodeType as L5 AUTO", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ nodeTypes: ["Service"] }),
@@ -1062,7 +1062,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
     expect(createRes.status).toBe(201);
     const { data: node } = await createRes.json();
 
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ nodeIds: [node.id] }),
@@ -1079,7 +1079,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("returns no signals for unknown nodeId (not in DB)", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ nodeIds: [randomUUID()] }),
@@ -1092,7 +1092,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("picks worst-case layer when filePaths span multiple layers", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({
@@ -1109,7 +1109,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("includes L1/L2 recommendations for REQUIRE_CONFIRMATION paths", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ filePaths: ["packages/framework/src/types.ts"] }),
@@ -1121,7 +1121,7 @@ describe("POST /agent/v1/architect/analyze-change", () => {
   });
 
   it("includes AUTO recommendation for L5/L6 paths", async () => {
-    const res = await app.request("/agent/v1/architect/analyze-change", {
+    const res = await app.request("/agent/v1/architect/classify-change", {
       method: "POST",
       headers: h(),
       body: JSON.stringify({ filePaths: ["apps/web/src/pages/index.tsx"] }),
