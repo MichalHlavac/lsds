@@ -9,11 +9,11 @@ import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
 import { recordEdgeHistory } from "../db/history.js";
 import {
-  insertAuditLog,
   edgeCreateDiff,
   edgeUpdateDiff,
   edgeDeleteDiff,
 } from "../db/audit.js";
+import { insertAuditLogAndEnqueue } from "../webhooks/hooks.js";
 import { config } from "../config.js";
 import {
   CreateEdgeSchema,
@@ -120,7 +120,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
           RETURNING *
         `;
         await recordEdgeHistory(db, tenantId, row.id, "CREATE", null, row);
-        await insertAuditLog(db, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row));
+        await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row));
         return row;
       });
       cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
@@ -189,7 +189,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       await recordEdgeHistory(db, tenantId, row.id, op, previous ?? null, row);
       const auditOp = previous ? "edge.update" : "edge.create";
       const auditDiff = previous ? edgeUpdateDiff(previous, row) : edgeCreateDiff(row);
-      await insertAuditLog(db, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
       return row;
     });
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
@@ -294,7 +294,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       `;
       if (!row) return null;
       await recordEdgeHistory(db, tenantId, id, "UPDATE", previous, row);
-      await insertAuditLog(db, tenantId, apiKeyId, "edge.update", row.type, id, edgeUpdateDiff(previous, row));
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.update", row.type, id, edgeUpdateDiff(previous, row));
       return row;
     });
     if (!row) return c.json({ error: "not found" }, 404);
@@ -363,7 +363,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     await sql.begin(async (tx) => {
       const db = tx as unknown as Sql;
       await db`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
-      await insertAuditLog(db, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
     });
     cache.invalidateEdge(tenantId, existing.id, existing.sourceId, existing.targetId);
     return c.json({ data: { id } });

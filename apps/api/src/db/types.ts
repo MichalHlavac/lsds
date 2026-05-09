@@ -148,7 +148,10 @@ export type AuditOperation =
   | "edge.create"
   | "edge.update"
   | "edge.delete"
-  | "rate_limit_hit";
+  | "rate_limit_hit"
+  | "webhook.attempt"
+  | "webhook.delivered"
+  | "webhook.exhausted";
 
 export interface AuditDiff {
   before: Record<string, unknown> | null;

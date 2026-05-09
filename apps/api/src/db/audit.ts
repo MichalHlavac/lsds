@@ -14,8 +14,8 @@ export async function insertAuditLog(
   entityType: string,
   entityId: string,
   diff: AuditDiff | null,
-): Promise<void> {
-  await sql`
+): Promise<string> {
+  const [row] = await sql<[{ id: string }]>`
     INSERT INTO audit_log (tenant_id, api_key_id, operation, entity_type, entity_id, diff)
     VALUES (
       ${tenantId},
@@ -25,7 +25,9 @@ export async function insertAuditLog(
       ${entityId},
       ${diff ? sql.json(diff as unknown as Parameters<Sql["json"]>[0]) : null}
     )
+    RETURNING id
   `;
+  return row!.id;
 }
 
 // ── diff builders ─────────────────────────────────────────────────────────────

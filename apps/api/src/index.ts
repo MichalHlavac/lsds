@@ -10,6 +10,8 @@ import { warmPool } from "./db/pool-warm.js";
 import { logger } from "./logger.js";
 import { config } from "./config.js";
 import { runMigrations } from "./db/run-migrations.js";
+import { createWebhookDispatcher } from "./webhooks/dispatcher.js";
+import { isWebhookEncryptionKeySet } from "./webhooks/crypto.js";
 
 if (config.skipMigrations) {
   logger.info({}, "SKIP_MIGRATIONS=true — skipping startup migration run");
@@ -31,4 +33,12 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
   warmCache(sql, cache).catch((err) =>
     logger.warn({ err }, "cache warm-up failed")
   );
+
+  if (isWebhookEncryptionKeySet()) {
+    const dispatcher = createWebhookDispatcher(sql);
+    dispatcher.start();
+    logger.info({}, "webhook dispatcher started");
+  } else {
+    logger.warn({}, "LSDS_WEBHOOK_ENCRYPTION_KEY is not set — webhook subsystem disabled");
+  }
 });
