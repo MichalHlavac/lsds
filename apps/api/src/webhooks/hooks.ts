@@ -18,7 +18,7 @@ export async function insertAuditLogAndEnqueue(
   entityType: string,
   entityId: string,
   diff: AuditDiff | null,
-): Promise<void> {
+): Promise<string> {
   const auditLogId = await insertAuditLog(sql, tenantId, apiKeyId, operation, entityType, entityId, diff);
   const payload: Record<string, unknown> = {
     id: auditLogId,
@@ -27,4 +27,5 @@ export async function insertAuditLogAndEnqueue(
     data: { entityType, entityId, diff },
   };
   await enqueueDeliveries(sql, tenantId, auditLogId, operation, payload);
+  return auditLogId;
 }
