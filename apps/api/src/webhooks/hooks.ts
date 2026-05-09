@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "../db/client.js";
+import type { AnySql } from "../db/client.js";
 import type { AuditDiff, AuditOperation } from "../db/types.js";
 import { insertAuditLog } from "../db/audit.js";
 import { enqueueDeliveries } from "./db.js";
@@ -11,7 +11,7 @@ import { enqueueDeliveries } from "./db.js";
 // nodes.ts / edges.ts already open an outer transaction, so no nested
 // savepoint is needed (and postgres.js tx objects don't expose .begin()).
 export async function insertAuditLogAndEnqueue(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   apiKeyId: string | null,
   operation: AuditOperation,

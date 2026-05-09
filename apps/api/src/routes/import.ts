@@ -44,7 +44,6 @@ export function importRouter(sql: Sql): Hono {
 
     try {
       const result = await sql.begin(async (tx) => {
-        const txSql = tx as unknown as Sql;
         const createdNodeIds: string[] = [];
         const createdEdgeIds: string[] = [];
         let lastAuditLogId: string | undefined;
@@ -54,7 +53,7 @@ export function importRouter(sql: Sql): Hono {
             INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes)
             VALUES (
               ${tenantId}, ${node.type}, ${node.layer}, ${node.name},
-              ${node.version}, ${node.lifecycleStatus}, ${jsonb(txSql, node.attributes)}
+              ${node.version}, ${node.lifecycleStatus}, ${jsonb(tx, node.attributes)}
             )
             RETURNING *
           `;
@@ -62,7 +61,7 @@ export function importRouter(sql: Sql): Hono {
             INSERT INTO node_history (node_id, tenant_id, op, previous, current)
             VALUES (
               ${row.id}, ${tenantId}, 'CREATE', NULL,
-              ${jsonb(txSql, row as unknown as Record<string, unknown>)}
+              ${jsonb(tx, row as unknown as Record<string, unknown>)}
             )
           `;
           lastAuditLogId = await insertAuditLogAndEnqueue(
@@ -103,7 +102,7 @@ export function importRouter(sql: Sql): Hono {
             INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
             VALUES (
               ${tenantId}, ${edge.sourceId}, ${edge.targetId}, ${edge.type},
-              ${edge.layer}, ${edge.traversalWeight}, ${jsonb(txSql, edge.attributes)}
+              ${edge.layer}, ${edge.traversalWeight}, ${jsonb(tx, edge.attributes)}
             )
             RETURNING *
           `;
@@ -111,7 +110,7 @@ export function importRouter(sql: Sql): Hono {
             INSERT INTO edge_history (edge_id, tenant_id, op, previous, current)
             VALUES (
               ${row.id}, ${tenantId}, 'CREATE', NULL,
-              ${jsonb(txSql, row as unknown as Record<string, unknown>)}
+              ${jsonb(tx, row as unknown as Record<string, unknown>)}
             )
           `;
           lastAuditLogId = await insertAuditLogAndEnqueue(
