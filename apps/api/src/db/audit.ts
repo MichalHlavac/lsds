@@ -3,6 +3,7 @@
 
 import type { Sql } from "./client.js";
 import type { AuditDiff, AuditOperation, EdgeRow, NodeRow } from "./types.js";
+import { jsonb } from "../routes/util.js";
 
 export type { AuditDiff, AuditOperation };
 
@@ -23,7 +24,7 @@ export async function insertAuditLog(
       ${operation},
       ${entityType},
       ${entityId},
-      ${diff ? sql.json(diff as unknown as Parameters<Sql["json"]>[0]) : null}
+      ${diff ? jsonb(sql, diff) : null}
     )
     RETURNING id
   `;

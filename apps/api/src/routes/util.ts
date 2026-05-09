@@ -14,8 +14,7 @@ export function getTenantId(c: Context): string {
   return tenantId;
 }
 
-// Typed wrapper for sql.json() — avoids scattered `as any` casts.
-// Values come from Zod-validated JSON (z.record(z.unknown())), so serialization is safe.
-export function jsonb(sql: Sql, value: Record<string, unknown>): ReturnType<Sql["json"]> {
+// Typed wrapper for sql.json() — avoids scattered `as any` casts at call sites.
+export function jsonb(sql: Sql, value: object): ReturnType<Sql["json"]> {
   return sql.json(value as Parameters<Sql["json"]>[0]);
 }
