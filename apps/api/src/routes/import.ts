@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { validateRelationshipEdge } from "@lsds/framework";
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { EdgeRow, NodeRow } from "../db/types.js";
 import { nodeCreateDiff, edgeCreateDiff } from "../db/audit.js";
 import { BulkImportSchema } from "./schemas.js";
@@ -44,7 +44,7 @@ export function importRouter(sql: Sql): Hono {
 
     try {
       const result = await sql.begin(async (tx) => {
-        const txSql = tx as unknown as Sql;
+        const txSql: AnySql = tx;
         const createdNodeIds: string[] = [];
         const createdEdgeIds: string[] = [];
         let lastAuditLogId: string | undefined;

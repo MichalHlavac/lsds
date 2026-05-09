@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 
 export interface WebhookRow {
   id: string;
@@ -123,7 +123,7 @@ export async function deleteWebhook(
 }
 
 export async function enqueueDeliveries(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   auditLogId: string,
   eventType: string,
@@ -139,13 +139,13 @@ export async function enqueueDeliveries(
 
   await sql`
     INSERT INTO webhook_deliveries (webhook_id, tenant_id, audit_log_id, event_type, payload)
-    SELECT w.id, ${tenantId}, ${auditLogId}, ${eventType}, ${sql.json(payload as Parameters<Sql["json"]>[0])}
+    SELECT w.id, ${tenantId}, ${auditLogId}, ${eventType}, ${sql.json(payload as Parameters<AnySql["json"]>[0])}
     FROM unnest(${sql.array(webhooks.map((w) => w.id))}::uuid[]) AS w(id)
   `;
 }
 
 export async function pollPendingDeliveries(
-  sql: Sql,
+  sql: AnySql,
   limit = 50,
 ): Promise<WebhookDeliveryRow[]> {
   return sql<WebhookDeliveryRow[]>`

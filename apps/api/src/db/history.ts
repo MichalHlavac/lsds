@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "./client.js";
+import type { AnySql } from "./client.js";
 import type { EdgeRow, HistoryOp, NodeRow } from "./types.js";
 import { jsonb } from "../routes/util.js";
 
 export async function recordNodeHistory(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   nodeId: string,
   op: HistoryOp,
@@ -26,7 +26,7 @@ export async function recordNodeHistory(
 }
 
 export async function recordEdgeHistory(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   edgeId: string,
   op: HistoryOp,
