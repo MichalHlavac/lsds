@@ -196,7 +196,7 @@ export const AnalyzeChangeSchema = z.object({
 export type AnalyzeChange = z.infer<typeof AnalyzeChangeSchema>;
 
 export const LifecycleTransitionSchema = z.object({
-  transition: z.enum(["deprecate", "archive", "purge"]),
+  transition: z.enum(["deprecate", "archive", "purge", "reactivate"]),
 });
 
 export const CreateSnapshotSchema = z.object({

@@ -5,11 +5,11 @@ import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeRow, LifecycleStatus, NodeRow } from "../db/types.js";
 
-export type LifecycleTransitionName = "deprecate" | "archive" | "purge";
+export type LifecycleTransitionName = "deprecate" | "archive" | "purge" | "reactivate";
 
 const ALLOWED_TRANSITIONS: Record<LifecycleStatus, LifecycleTransitionName[]> = {
   ACTIVE: ["deprecate"],
-  DEPRECATED: ["archive"],
+  DEPRECATED: ["reactivate", "archive"],
   ARCHIVED: ["purge"],
   PURGE: [],
 };
@@ -139,15 +139,35 @@ export class LifecycleService {
     this.cache.invalidateNode(tenantId, nodeId, neighborIds);
   }
 
+  async reactivate(tenantId: string, nodeId: string): Promise<NodeRow> {
+    const neighborIds = await this.#fetchNeighborIds(tenantId, nodeId);
+    const [row] = await this.sql<NodeRow[]>`
+      UPDATE nodes
+      SET lifecycle_status = 'ACTIVE',
+          deprecated_at = NULL,
+          updated_at = now()
+      WHERE id = ${nodeId} AND tenant_id = ${tenantId}
+        AND lifecycle_status = 'DEPRECATED'
+      RETURNING *
+    `;
+    if (!row) {
+      const current = await this.#nodeStatus(tenantId, nodeId);
+      throw new LifecycleTransitionError(current, "reactivate", ALLOWED_TRANSITIONS[current]);
+    }
+    this.cache.invalidateNode(tenantId, nodeId, neighborIds);
+    return row;
+  }
+
   async transitionNode(
     tenantId: string,
     nodeId: string,
     transition: LifecycleTransitionName
   ): Promise<NodeRow> {
     switch (transition) {
-      case "deprecate": return this.deprecate(tenantId, nodeId);
-      case "archive":   return this.archive(tenantId, nodeId);
-      case "purge":     return this.markForPurge(tenantId, nodeId);
+      case "deprecate":   return this.deprecate(tenantId, nodeId);
+      case "archive":     return this.archive(tenantId, nodeId);
+      case "purge":       return this.markForPurge(tenantId, nodeId);
+      case "reactivate":  return this.reactivate(tenantId, nodeId);
     }
   }
 
