@@ -7,6 +7,20 @@ import type { Sql } from "../db/client.js";
 import type { TenantRow } from "../db/types.js";
 import { getTenantId } from "./util.js";
 import { tenantApiKeysRouter } from "./tenant-api-keys.js";
+import { TtlCache } from "../cache/index.js";
+
+const USAGE_TTL_MS = 60_000;
+
+interface UsagePayload {
+  nodes: { total: number; byType: Record<string, number> };
+  edges: { total: number; byType: Record<string, number> };
+  violations: { total: number; open: number };
+  apiKeys: { active: number; expired: number };
+  snapshots: { count: number; oldestAt: string | null; newestAt: string | null };
+  computedAt: string;
+}
+
+const usageCache = new TtlCache<UsagePayload>(USAGE_TTL_MS);
 
 const PatchTenantSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -44,6 +58,58 @@ export function tenantRouter(sql: Sql): Hono {
     `;
 
     return c.json({ data: { ...tenant, stats } });
+  });
+
+  app.get("/usage", async (c) => {
+    const tenantId = getTenantId(c);
+    const cacheKey = `usage:${tenantId}`;
+    const cached = usageCache.get(cacheKey);
+    if (cached) return c.json({ data: cached });
+
+    interface UsageRow {
+      nodesTotal: number;
+      nodesByType: Record<string, number> | null;
+      edgesTotal: number;
+      edgesByType: Record<string, number> | null;
+      violationsTotal: number;
+      violationsOpen: number;
+      apiKeysActive: number;
+      apiKeysExpired: number;
+      snapshotsCount: number;
+      snapshotsOldestAt: Date | null;
+      snapshotsNewestAt: Date | null;
+    }
+
+    const [row] = await sql<[UsageRow]>`
+      SELECT
+        (SELECT count(*)::int FROM nodes WHERE tenant_id = ${tenantId})                                           AS "nodesTotal",
+        (SELECT jsonb_object_agg(type, cnt) FROM (SELECT type, count(*)::int AS cnt FROM nodes WHERE tenant_id = ${tenantId} GROUP BY type) _n) AS "nodesByType",
+        (SELECT count(*)::int FROM edges WHERE tenant_id = ${tenantId})                                           AS "edgesTotal",
+        (SELECT jsonb_object_agg(type, cnt) FROM (SELECT type, count(*)::int AS cnt FROM edges WHERE tenant_id = ${tenantId} GROUP BY type) _e) AS "edgesByType",
+        (SELECT count(*)::int FROM violations WHERE tenant_id = ${tenantId})                                      AS "violationsTotal",
+        (SELECT count(*)::int FROM violations WHERE tenant_id = ${tenantId} AND resolved = false)                 AS "violationsOpen",
+        (SELECT count(*)::int FROM api_keys WHERE tenant_id = ${tenantId} AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())) AS "apiKeysActive",
+        (SELECT count(*)::int FROM api_keys WHERE tenant_id = ${tenantId} AND (revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at <= now()))) AS "apiKeysExpired",
+        (SELECT count(*)::int FROM snapshots WHERE tenant_id = ${tenantId})                                       AS "snapshotsCount",
+        (SELECT min(created_at) FROM snapshots WHERE tenant_id = ${tenantId})                                     AS "snapshotsOldestAt",
+        (SELECT max(created_at) FROM snapshots WHERE tenant_id = ${tenantId})                                     AS "snapshotsNewestAt"
+    `;
+
+    const payload: UsagePayload = {
+      nodes: { total: row.nodesTotal, byType: row.nodesByType ?? {} },
+      edges: { total: row.edgesTotal, byType: row.edgesByType ?? {} },
+      violations: { total: row.violationsTotal, open: row.violationsOpen },
+      apiKeys: { active: row.apiKeysActive, expired: row.apiKeysExpired },
+      snapshots: {
+        count: row.snapshotsCount,
+        oldestAt: row.snapshotsOldestAt ? row.snapshotsOldestAt.toISOString() : null,
+        newestAt: row.snapshotsNewestAt ? row.snapshotsNewestAt.toISOString() : null,
+      },
+      computedAt: new Date().toISOString(),
+    };
+
+    usageCache.set(cacheKey, payload);
+    return c.json({ data: payload });
   });
 
   app.patch("/", async (c) => {
