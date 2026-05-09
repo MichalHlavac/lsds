@@ -3,7 +3,7 @@
 
 import { Hono } from "hono";
 import { validateRelationshipEdge } from "@lsds/framework";
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
@@ -110,7 +110,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const [row] = await db<EdgeRow[]>`
           INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
           VALUES (
@@ -170,7 +170,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     `;
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<EdgeRow[]>`
         INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
         VALUES (
@@ -282,7 +282,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     }
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<EdgeRow[]>`
         UPDATE edges SET
           ${body.type !== undefined ? db`type = ${body.type},` : db``}
@@ -313,7 +313,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const result = await lifecycle.withTransaction(db).transitionEdge(tenantId, id, body.transition);
         if (previous) {
           await recordEdgeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
@@ -361,7 +361,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     }
 
     await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       await db`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
       await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
     });

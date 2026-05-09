@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeRow, LifecycleStatus, NodeRow } from "../db/types.js";
 
@@ -38,14 +38,14 @@ const DEFAULT_RETENTION: RetentionPolicy = {
 
 export class LifecycleService {
   constructor(
-    private readonly sql: Sql,
+    private readonly sql: AnySql,
     private readonly cache: LsdsCache,
     private readonly retention: RetentionPolicy = DEFAULT_RETENTION
   ) {}
 
   // Returns a LifecycleService whose writes execute on txSql, enabling callers
   // to include lifecycle mutations in an outer sql.begin() transaction.
-  withTransaction(txSql: Sql): LifecycleService {
+  withTransaction(txSql: AnySql): LifecycleService {
     return new LifecycleService(txSql, this.cache, this.retention);
   }
 

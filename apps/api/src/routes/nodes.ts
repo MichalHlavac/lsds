@@ -3,7 +3,7 @@
 
 import { Hono } from "hono";
 import { config } from "../config.js";
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeHistoryRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
@@ -94,7 +94,7 @@ export function nodesRouter(
     const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const [row] = await db<NodeRow[]>`
           INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
           VALUES (
@@ -131,7 +131,7 @@ export function nodesRouter(
     `;
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<NodeRow[]>`
         INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
         VALUES (
@@ -306,7 +306,7 @@ export function nodesRouter(
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<NodeRow[]>`
         UPDATE nodes SET
           ${body.name !== undefined ? db`name = ${body.name},` : db``}
@@ -344,7 +344,7 @@ export function nodesRouter(
 
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const result = await lifecycle.withTransaction(db).transitionNode(tenantId, id, body.transition);
         if (previous) {
           await recordNodeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
@@ -402,7 +402,7 @@ export function nodesRouter(
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
 
     await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       await db`DELETE FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
       await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.delete", existing.type, id, nodeDeleteDiff(existing));
     });
