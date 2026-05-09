@@ -6,8 +6,10 @@ import type { AuditDiff, AuditOperation } from "../db/types.js";
 import { insertAuditLog } from "../db/audit.js";
 import { enqueueDeliveries } from "./db.js";
 
-// Wraps audit_log INSERT + webhook_deliveries enqueue in a single transaction.
-// If delivery enqueue fails, the audit log entry also rolls back.
+// Inserts an audit log entry and enqueues webhook deliveries atomically.
+// Must be called inside the caller's sql.begin() transaction — callers in
+// nodes.ts / edges.ts already open an outer transaction, so no nested
+// savepoint is needed (and postgres.js tx objects don't expose .begin()).
 export async function insertAuditLogAndEnqueue(
   sql: Sql,
   tenantId: string,
@@ -17,15 +19,12 @@ export async function insertAuditLogAndEnqueue(
   entityId: string,
   diff: AuditDiff | null,
 ): Promise<void> {
-  await sql.begin(async (tx) => {
-    const txSql = tx as unknown as Sql;
-    const auditLogId = await insertAuditLog(txSql, tenantId, apiKeyId, operation, entityType, entityId, diff);
-    const payload: Record<string, unknown> = {
-      id: auditLogId,
-      event: operation,
-      timestamp: new Date().toISOString(),
-      data: { entityType, entityId, diff },
-    };
-    await enqueueDeliveries(txSql, tenantId, auditLogId, operation, payload);
-  });
+  const auditLogId = await insertAuditLog(sql, tenantId, apiKeyId, operation, entityType, entityId, diff);
+  const payload: Record<string, unknown> = {
+    id: auditLogId,
+    event: operation,
+    timestamp: new Date().toISOString(),
+    data: { entityType, entityId, diff },
+  };
+  await enqueueDeliveries(sql, tenantId, auditLogId, operation, payload);
 }
