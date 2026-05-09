@@ -4,7 +4,7 @@
 import type { Sql } from "../db/client.js";
 import type { NodeRow, SnapshotRow } from "../db/types.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
-import type { AgentAnalyze, AnalyzeChange, ImpactPredict } from "../routes/schemas.js";
+import type { AgentAnalyze, ClassifyChange, ImpactPredict } from "../routes/schemas.js";
 import { PostgresTraversalAdapter } from "../db/traversal-adapter.js";
 
 export const ARCH_STRUCTURAL_TYPES = ["BoundedContext", "ArchitectureComponent", "ArchitectureSystem"];
@@ -853,7 +853,7 @@ export function pickLayer(signals: ChangeSignal[]): { layer: ChangeLayer; confid
 export async function analyzeChange(
   sql: Sql,
   tenantId: string,
-  params: AnalyzeChange
+  params: ClassifyChange
 ): Promise<{
   classifiedAt: string;
   classification: { layer: ChangeLayer; confidence: SignalConfidence; reviewPath: ReviewPath; rationale: string };

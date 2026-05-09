@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getTenantId } from "../routes/util.js";
-import { AgentAnalyzeSchema, AnalyzeChangeSchema, ImpactPredictSchema } from "../routes/schemas.js";
+import { AgentAnalyzeSchema, ClassifyChangeSchema, ImpactPredictSchema } from "../routes/schemas.js";
 import {
   analyzeNodes,
   analyzeChange,
@@ -120,7 +120,7 @@ export function architectRouter(sql: Sql, guardrails: GuardrailsRegistry): Hono 
   //   L5-L6 → AUTO
   app.post("/classify-change", async (c) => {
     const tenantId = getTenantId(c);
-    const body = AnalyzeChangeSchema.parse(await c.req.json());
+    const body = ClassifyChangeSchema.parse(await c.req.json());
     const data = await analyzeChange(sql, tenantId, body);
     return c.json({ data });
   });

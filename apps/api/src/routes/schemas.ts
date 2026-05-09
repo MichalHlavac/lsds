@@ -223,7 +223,7 @@ export const SimilarNodesSchema = z.object({
 
 // POST /agent/v1/architect/classify-change — change classification input (ADR A4).
 // Accepts a unified diff, file-path list, node types, or node IDs (at least one required).
-export const AnalyzeChangeSchema = z
+export const ClassifyChangeSchema = z
   .object({
     diff: z.string().optional(),
     filePaths: z.array(z.string().min(1)).optional(),
@@ -238,7 +238,7 @@ export const AnalyzeChangeSchema = z
       (d.nodeIds !== undefined && d.nodeIds.length > 0),
     { message: "at least one of diff, filePaths, nodeTypes, or nodeIds is required" }
   );
-export type AnalyzeChange = z.infer<typeof AnalyzeChangeSchema>;
+export type ClassifyChange = z.infer<typeof ClassifyChangeSchema>;
 
 export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;
 export type NodeSortField = (typeof NODE_SORT_FIELDS)[number];

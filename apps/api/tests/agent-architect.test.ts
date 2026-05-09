@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant } from "./test-helpers";
-import { AnalyzeChangeSchema } from "../src/routes/schemas";
+import { ClassifyChangeSchema } from "../src/routes/schemas";
 import {
   classifyFilePath,
   pickLayer,
@@ -734,30 +734,30 @@ describe("GET /agent/v1/architect/requirement-fulfillment", () => {
   });
 });
 
-// ── AnalyzeChangeSchema contract ──────────────────────────────────────────────
+// ── ClassifyChangeSchema contract ──────────────────────────────────────────────
 
-describe("AnalyzeChangeSchema", () => {
+describe("ClassifyChangeSchema", () => {
   it("accepts a non-empty diff string", () => {
     expect(() =>
-      AnalyzeChangeSchema.parse({ diff: "- old line\n+ new line" })
+      ClassifyChangeSchema.parse({ diff: "- old line\n+ new line" })
     ).not.toThrow();
   });
 
   it("accepts a non-empty filePaths array", () => {
     expect(() =>
-      AnalyzeChangeSchema.parse({ filePaths: ["apps/api/src/routes/nodes.ts"] })
+      ClassifyChangeSchema.parse({ filePaths: ["apps/api/src/routes/nodes.ts"] })
     ).not.toThrow();
   });
 
   it("accepts a non-empty nodeTypes array", () => {
     expect(() =>
-      AnalyzeChangeSchema.parse({ nodeTypes: ["BoundedContext"] })
+      ClassifyChangeSchema.parse({ nodeTypes: ["BoundedContext"] })
     ).not.toThrow();
   });
 
   it("accepts a non-empty nodeIds array of valid UUIDs", () => {
     expect(() =>
-      AnalyzeChangeSchema.parse({
+      ClassifyChangeSchema.parse({
         nodeIds: ["550e8400-e29b-41d4-a716-446655440000"],
       })
     ).not.toThrow();
@@ -765,7 +765,7 @@ describe("AnalyzeChangeSchema", () => {
 
   it("accepts all four fields combined", () => {
     expect(() =>
-      AnalyzeChangeSchema.parse({
+      ClassifyChangeSchema.parse({
         diff: "+ add",
         filePaths: ["apps/api/src/x.ts"],
         nodeTypes: ["Service"],
@@ -775,28 +775,28 @@ describe("AnalyzeChangeSchema", () => {
   });
 
   it("rejects empty object — at least one field required", () => {
-    expect(() => AnalyzeChangeSchema.parse({})).toThrow();
+    expect(() => ClassifyChangeSchema.parse({})).toThrow();
   });
 
   it("rejects diff that is an empty string", () => {
-    expect(() => AnalyzeChangeSchema.parse({ diff: "" })).toThrow();
+    expect(() => ClassifyChangeSchema.parse({ diff: "" })).toThrow();
   });
 
   it("rejects filePaths that is an empty array", () => {
-    expect(() => AnalyzeChangeSchema.parse({ filePaths: [] })).toThrow();
+    expect(() => ClassifyChangeSchema.parse({ filePaths: [] })).toThrow();
   });
 
   it("rejects nodeTypes that is an empty array", () => {
-    expect(() => AnalyzeChangeSchema.parse({ nodeTypes: [] })).toThrow();
+    expect(() => ClassifyChangeSchema.parse({ nodeTypes: [] })).toThrow();
   });
 
   it("rejects nodeIds that is an empty array", () => {
-    expect(() => AnalyzeChangeSchema.parse({ nodeIds: [] })).toThrow();
+    expect(() => ClassifyChangeSchema.parse({ nodeIds: [] })).toThrow();
   });
 
   it("rejects nodeIds containing a non-UUID string", () => {
     expect(() =>
-      AnalyzeChangeSchema.parse({ nodeIds: ["not-a-uuid"] })
+      ClassifyChangeSchema.parse({ nodeIds: ["not-a-uuid"] })
     ).toThrow();
   });
 });
