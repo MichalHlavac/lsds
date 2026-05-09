@@ -9,7 +9,8 @@ const ADMIN_RPM = 10;
 const RETRY_AFTER = "60";
 
 // In-memory sliding window keyed by IP — acceptable for low-volume admin surface.
-const windows = new Map<string, number[]>();
+// Exported so tests can reset state between runs without module re-import.
+export const rateLimitWindows = new Map<string, number[]>();
 
 function getClientIp(req: Request): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
@@ -30,10 +31,10 @@ export const adminAuthMiddleware = createMiddleware(async (c, next) => {
   const now = Date.now();
   const cutoff = now - WINDOW_MS;
 
-  let timestamps = windows.get(ip);
+  let timestamps = rateLimitWindows.get(ip);
   if (!timestamps) {
     timestamps = [];
-    windows.set(ip, timestamps);
+    rateLimitWindows.set(ip, timestamps);
   }
 
   let i = 0;
