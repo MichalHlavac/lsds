@@ -134,6 +134,8 @@ export interface ApiKeyRow {
   createdAt: Date;
   revokedAt: Date | null;
   expiresAt: Date | null;
+  rateLimitRpm: number | null;
+  rateLimitBurst: number | null;
 }
 
 export type AuditOperation =
@@ -145,7 +147,8 @@ export type AuditOperation =
   | "node.purge"
   | "edge.create"
   | "edge.update"
-  | "edge.delete";
+  | "edge.delete"
+  | "rate_limit_hit";
 
 export interface AuditDiff {
   before: Record<string, unknown> | null;
@@ -169,6 +172,8 @@ export interface TenantRow {
   slug: string | null;
   plan: string;
   retentionDays: number;
+  rateLimitRpm: number;
+  rateLimitBurst: number;
   createdAt: Date;
   updatedAt: Date;
 }

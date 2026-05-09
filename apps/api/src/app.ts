@@ -164,8 +164,8 @@ app.use("/v1/*", apiKeyMiddleware(sql));
 app.use("/agent/*", apiKeyMiddleware(sql));
 app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
-app.use("/v1/*", rateLimitMiddleware);
-app.use("/agent/*", rateLimitMiddleware);
+app.use("/v1/*", rateLimitMiddleware(sql));
+app.use("/agent/*", rateLimitMiddleware(sql));
 
 const v1 = new Hono();
 v1.route("/nodes", nodesRouter(sql, cache, lifecycle, embeddingService, guardrails));

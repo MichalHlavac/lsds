@@ -12,9 +12,16 @@ const RotateApiKeySchema = z.object({
   name: z.string().min(1).max(200).optional(),
 });
 
-const PatchApiKeySchema = z.object({
-  expiresAt: z.string().datetime().nullable(),
-}).strict();
+const PatchApiKeySchema = z
+  .object({
+    expiresAt: z.string().datetime().nullable().optional(),
+    rateLimitRpm: z.number().int().positive().nullable().optional(),
+    rateLimitBurst: z.number().int().positive().nullable().optional(),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "at least one field must be provided",
+  });
 
 export function tenantApiKeysRouter(sql: Sql): Hono {
   const app = new Hono();
@@ -39,7 +46,8 @@ export function tenantApiKeysRouter(sql: Sql): Hono {
       return tx<Omit<ApiKeyRow, "keyHash">[]>`
         INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix)
         VALUES (${tenantId}, ${name}, ${hash}, ${prefix})
-        RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at
+        RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at,
+                  rate_limit_rpm, rate_limit_burst
       `;
     });
 
@@ -47,19 +55,29 @@ export function tenantApiKeysRouter(sql: Sql): Hono {
     return c.json({ data: { ...row, key: rawKey } }, 201);
   });
 
-  // PATCH /:keyId — set or clear expiresAt on an active key
+  // PATCH /:keyId — update expiresAt and/or per-key rate limits
   app.patch("/:keyId", async (c) => {
     const tenantId = getTenantId(c);
     const keyId = c.req.param("keyId");
     const body = PatchApiKeySchema.parse(await c.req.json());
 
-    const expiresAt = body.expiresAt !== null ? new Date(body.expiresAt) : null;
+    const expiresAt =
+      body.expiresAt !== undefined
+        ? body.expiresAt !== null
+          ? new Date(body.expiresAt)
+          : null
+        : undefined;
 
     const [row] = await sql<Omit<ApiKeyRow, "keyHash">[]>`
       UPDATE api_keys
-      SET expires_at = ${expiresAt}
+      SET
+        ${expiresAt !== undefined ? sql`expires_at = ${expiresAt},` : sql``}
+        ${body.rateLimitRpm !== undefined ? sql`rate_limit_rpm = ${body.rateLimitRpm},` : sql``}
+        ${body.rateLimitBurst !== undefined ? sql`rate_limit_burst = ${body.rateLimitBurst},` : sql``}
+        name = name
       WHERE id = ${keyId} AND tenant_id = ${tenantId} AND revoked_at IS NULL
-      RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at
+      RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at,
+                rate_limit_rpm, rate_limit_burst
     `;
 
     if (!row) return c.json({ error: "not found" }, 404);
