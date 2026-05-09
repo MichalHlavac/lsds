@@ -65,7 +65,7 @@ export function importRouter(sql: Sql): Hono {
             )
           `;
           lastAuditLogId = await insertAuditLogAndEnqueue(
-            txSql, tenantId, apiKeyId, "node.create", row.type, row.id, nodeCreateDiff(row)
+            tx, tenantId, apiKeyId, "node.create", row.type, row.id, nodeCreateDiff(row)
           );
           createdNodeIds.push(row.id);
         }
@@ -114,7 +114,7 @@ export function importRouter(sql: Sql): Hono {
             )
           `;
           lastAuditLogId = await insertAuditLogAndEnqueue(
-            txSql, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row)
+            tx, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row)
           );
           createdEdgeIds.push(row.id);
         }
