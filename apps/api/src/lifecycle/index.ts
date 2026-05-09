@@ -234,9 +234,14 @@ export class LifecycleService {
     transition: LifecycleTransitionName
   ): Promise<EdgeRow> {
     switch (transition) {
-      case "deprecate": return this.deprecateEdge(tenantId, edgeId);
-      case "archive":   return this.archiveEdge(tenantId, edgeId);
-      case "purge":     return this.markEdgeForPurge(tenantId, edgeId);
+      case "deprecate":   return this.deprecateEdge(tenantId, edgeId);
+      case "archive":     return this.archiveEdge(tenantId, edgeId);
+      case "purge":       return this.markEdgeForPurge(tenantId, edgeId);
+      case "reactivate":  throw new Error("Edge reactivation is not supported");
+      default: {
+        const _: never = transition;
+        throw new Error(`Unknown transition: ${_}`);
+      }
     }
   }
 
