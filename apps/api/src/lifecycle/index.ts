@@ -43,6 +43,12 @@ export class LifecycleService {
     private readonly retention: RetentionPolicy = DEFAULT_RETENTION
   ) {}
 
+  // Returns a LifecycleService whose writes execute on txSql, enabling callers
+  // to include lifecycle mutations in an outer sql.begin() transaction.
+  withTransaction(txSql: Sql): LifecycleService {
+    return new LifecycleService(txSql, this.cache, this.retention);
+  }
+
   // ── nodes ──────────────────────────────────────────────────────────────────
 
   async deprecate(tenantId: string, nodeId: string): Promise<NodeRow> {
