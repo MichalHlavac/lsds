@@ -110,17 +110,16 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
-        const [row] = await db<EdgeRow[]>`
+        const [row] = await tx<EdgeRow[]>`
           INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
           VALUES (
             ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
-            ${body.layer}, ${body.traversalWeight}, ${jsonb(db, body.attributes)}
+            ${body.layer}, ${body.traversalWeight}, ${jsonb(tx, body.attributes)}
           )
           RETURNING *
         `;
-        await recordEdgeHistory(db, tenantId, row.id, "CREATE", null, row);
-        await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row));
+        await recordEdgeHistory(tx, tenantId, row.id, "CREATE", null, row);
+        await insertAuditLogAndEnqueue(tx, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row));
         return row;
       });
       cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
@@ -170,12 +169,11 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     `;
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
-      const [row] = await db<EdgeRow[]>`
+      const [row] = await tx<EdgeRow[]>`
         INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
         VALUES (
           ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
-          ${body.layer}, ${body.traversalWeight}, ${jsonb(db, body.attributes)}
+          ${body.layer}, ${body.traversalWeight}, ${jsonb(tx, body.attributes)}
         )
         ON CONFLICT (tenant_id, source_id, target_id, type)
         DO UPDATE SET
@@ -186,10 +184,10 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         RETURNING *
       `;
       const op = previous ? "UPDATE" : "CREATE";
-      await recordEdgeHistory(db, tenantId, row.id, op, previous ?? null, row);
+      await recordEdgeHistory(tx, tenantId, row.id, op, previous ?? null, row);
       const auditOp = previous ? "edge.update" : "edge.create";
       const auditDiff = previous ? edgeUpdateDiff(previous, row) : edgeCreateDiff(row);
-      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
+      await insertAuditLogAndEnqueue(tx, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
       return row;
     });
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
@@ -282,19 +280,18 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     }
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
-      const [row] = await db<EdgeRow[]>`
+      const [row] = await tx<EdgeRow[]>`
         UPDATE edges SET
-          ${body.type !== undefined ? db`type = ${body.type},` : db``}
-          ${body.traversalWeight !== undefined ? db`traversal_weight = ${body.traversalWeight},` : db``}
-          ${body.attributes !== undefined ? db`attributes = ${jsonb(db, body.attributes)},` : db``}
+          ${body.type !== undefined ? tx`type = ${body.type},` : tx``}
+          ${body.traversalWeight !== undefined ? tx`traversal_weight = ${body.traversalWeight},` : tx``}
+          ${body.attributes !== undefined ? tx`attributes = ${jsonb(tx, body.attributes)},` : tx``}
           updated_at = now()
         WHERE id = ${id} AND tenant_id = ${tenantId}
         RETURNING *
       `;
       if (!row) return null;
-      await recordEdgeHistory(db, tenantId, id, "UPDATE", previous, row);
-      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.update", row.type, id, edgeUpdateDiff(previous, row));
+      await recordEdgeHistory(tx, tenantId, id, "UPDATE", previous, row);
+      await insertAuditLogAndEnqueue(tx, tenantId, apiKeyId, "edge.update", row.type, id, edgeUpdateDiff(previous, row));
       return row;
     });
     if (!row) return c.json({ error: "not found" }, 404);
@@ -313,10 +310,9 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
-        const result = await lifecycle.withTransaction(db).transitionEdge(tenantId, id, body.transition);
+        const result = await lifecycle.withTransaction(tx).transitionEdge(tenantId, id, body.transition);
         if (previous) {
-          await recordEdgeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
+          await recordEdgeHistory(tx, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
         }
         return result;
       });
@@ -361,9 +357,8 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     }
 
     await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
-      await db`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
-      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
+      await tx`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
+      await insertAuditLogAndEnqueue(tx, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
     });
     cache.invalidateEdge(tenantId, existing.id, existing.sourceId, existing.targetId);
     return c.json({ data: { id } });

@@ -37,3 +37,4 @@ export const sql = postgres(config.databaseUrl, {
 });
 
 export type Sql = typeof sql;
+export type AnySql = Sql | postgres.TransactionSql<Record<string, unknown>>;

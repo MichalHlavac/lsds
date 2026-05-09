@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "../db/client.js";
 import { logger } from "../logger.js";
 import { insertAuditLog } from "../db/audit.js";
 import {
@@ -142,7 +141,7 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
     async poll() {
       let deliveries: WebhookDeliveryRow[];
       try {
-        deliveries = await sql.begin((tx) => pollPendingDeliveries(tx as unknown as Sql));
+        deliveries = await sql.begin((tx) => pollPendingDeliveries(tx));
       } catch (err) {
         logger.error({ err }, "webhook dispatcher poll failed");
         return;

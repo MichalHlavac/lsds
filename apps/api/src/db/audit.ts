@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "./client.js";
+import postgres from "postgres";
+import type { AnySql } from "./client.js";
 import type { AuditDiff, AuditOperation, EdgeRow, NodeRow } from "./types.js";
 
 export type { AuditDiff, AuditOperation };
 
 export async function insertAuditLog(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   apiKeyId: string | null,
   operation: AuditOperation,
@@ -23,7 +24,7 @@ export async function insertAuditLog(
       ${operation},
       ${entityType},
       ${entityId},
-      ${diff ? sql.json(diff as unknown as Parameters<Sql["json"]>[0]) : null}
+      ${diff ? sql.json(diff as unknown as postgres.JSONValue) : null}
     )
     RETURNING id
   `;
