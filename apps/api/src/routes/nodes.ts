@@ -350,6 +350,7 @@ export function nodesRouter(
           await recordNodeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
           const auditOp = body.transition === "deprecate" ? "node.deprecate"
             : body.transition === "archive" ? "node.archive"
+            : body.transition === "reactivate" ? "node.reactivate"
             : "node.purge";
           await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, result.type, id, nodeLifecycleDiff(previous, result));
         }

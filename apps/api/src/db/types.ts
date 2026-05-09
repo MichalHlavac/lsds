@@ -145,6 +145,7 @@ export type AuditOperation =
   | "node.deprecate"
   | "node.archive"
   | "node.purge"
+  | "node.reactivate"
   | "edge.create"
   | "edge.update"
   | "edge.delete"

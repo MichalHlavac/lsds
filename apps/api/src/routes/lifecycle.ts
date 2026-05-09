@@ -27,6 +27,22 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
     }
   });
 
+  app.post("/nodes/:id/reactivate", async (c) => {
+    const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
+    const { id } = c.req.param();
+    const [before] = await sql<NodeRow[]>`SELECT * FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
+    try {
+      const row = await svc.reactivate(tenantId, id);
+      if (before) {
+        await insertAuditLog(sql, tenantId, apiKeyId, "node.reactivate", row.type, id, nodeLifecycleDiff(before, row));
+      }
+      return c.json({ data: row });
+    } catch (e) {
+      return c.json({ error: String(e) }, 400);
+    }
+  });
+
   app.post("/nodes/:id/archive", async (c) => {
     const tenantId = getTenantId(c);
     const apiKeyId = c.get("apiKeyId") ?? null;
