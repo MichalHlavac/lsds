@@ -9,12 +9,12 @@ import type { NodeHistoryRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
 import { recordNodeHistory } from "../db/history.js";
 import {
-  insertAuditLog,
   nodeCreateDiff,
   nodeUpdateDiff,
   nodeDeleteDiff,
   nodeLifecycleDiff,
 } from "../db/audit.js";
+import { insertAuditLogAndEnqueue } from "../webhooks/hooks.js";
 import {
   CreateNodeSchema,
   UpdateNodeSchema,
@@ -105,7 +105,7 @@ export function nodesRouter(
           RETURNING *
         `;
         await recordNodeHistory(db, tenantId, row.id, "CREATE", null, row);
-        await insertAuditLog(db, tenantId, apiKeyId, "node.create", row.type, row.id, nodeCreateDiff(row));
+        await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.create", row.type, row.id, nodeCreateDiff(row));
         return row;
       });
       embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
@@ -152,7 +152,7 @@ export function nodesRouter(
       await recordNodeHistory(db, tenantId, row.id, op, previous ?? null, row);
       const auditOp = previous ? "node.update" : "node.create";
       const auditDiff = previous ? nodeUpdateDiff(previous, row) : nodeCreateDiff(row);
-      await insertAuditLog(db, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
       return row;
     });
     embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
@@ -319,7 +319,7 @@ export function nodesRouter(
       `;
       if (!row) return null;
       await recordNodeHistory(db, tenantId, id, "UPDATE", previous, row);
-      await insertAuditLog(db, tenantId, apiKeyId, "node.update", row.type, id, nodeUpdateDiff(previous, row));
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.update", row.type, id, nodeUpdateDiff(previous, row));
       return row;
     });
     if (!row) return c.json({ error: "not found" }, 404);
@@ -351,7 +351,7 @@ export function nodesRouter(
           const auditOp = body.transition === "deprecate" ? "node.deprecate"
             : body.transition === "archive" ? "node.archive"
             : "node.purge";
-          await insertAuditLog(db, tenantId, apiKeyId, auditOp, result.type, id, nodeLifecycleDiff(previous, result));
+          await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, result.type, id, nodeLifecycleDiff(previous, result));
         }
         return result;
       });
@@ -404,7 +404,7 @@ export function nodesRouter(
     await sql.begin(async (tx) => {
       const db = tx as unknown as Sql;
       await db`DELETE FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
-      await insertAuditLog(db, tenantId, apiKeyId, "node.delete", existing.type, id, nodeDeleteDiff(existing));
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.delete", existing.type, id, nodeDeleteDiff(existing));
     });
     cache.invalidateNode(tenantId, id, neighborIds);
     return c.json({ data: { id } });
