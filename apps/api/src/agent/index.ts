@@ -11,7 +11,7 @@ import type { Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
-import type { NodeRow, EdgeRow, ViolationRow } from "../db/types.js";
+import type { NodeRow, EdgeRow, ViolationRow, Layer, LifecycleStatus, Severity } from "../db/types.js";
 
 // json_agg serializes PG timestamps as ISO 8601 strings, not Date objects.
 // These DTOs reflect the actual runtime shape returned by the single-CTE query.
@@ -158,18 +158,61 @@ export function agentRouter(
       }
     }
 
-    // Single CTE: collapse nodes + edges + violations into one round-trip.
-    // json_agg preserves DB column names (snake_case); sc2cc converts them to
-    // camelCase. T is one of the Context*Row DTOs above — dates are strings.
-    const sc2cc = <T>(rows: Array<Record<string, unknown>>): T[] =>
-      rows.map((r) =>
-        Object.fromEntries(
-          Object.entries(r).map(([k, v]) => [
-            k.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase()),
-            v,
-          ])
-        )
-      ) as unknown as T[];
+    // Typed mappers for json_agg results. postgres.js (transform: postgres.camel)
+    // recursively camelCases keys inside JSON/JSONB columns via createJsonTransform,
+    // so inner objects already have camelCase keys. Individual field casts replace
+    // the blanket `as unknown as T[]` with narrowly-scoped casts whose DB column
+    // types are statically known.
+    const mapNode = (r: Record<string, unknown>): ContextNodeRow => ({
+      id: r.id as string,
+      tenantId: r.tenantId as string,
+      type: r.type as string,
+      layer: r.layer as Layer,
+      name: r.name as string,
+      version: r.version as string,
+      lifecycleStatus: r.lifecycleStatus as LifecycleStatus,
+      attributes: r.attributes as Record<string, unknown>,
+      ownerId: r.ownerId as string,
+      ownerName: r.ownerName as string,
+      ownerKind: r.ownerKind as string,
+      createdAt: r.createdAt as string,
+      updatedAt: r.updatedAt as string,
+      deprecatedAt: r.deprecatedAt as string | null,
+      archivedAt: r.archivedAt as string | null,
+      purgeAfter: r.purgeAfter as string | null,
+    });
+    const mapEdge = (r: Record<string, unknown>): ContextEdgeRow => ({
+      id: r.id as string,
+      tenantId: r.tenantId as string,
+      sourceId: r.sourceId as string,
+      targetId: r.targetId as string,
+      type: r.type as string,
+      layer: r.layer as Layer,
+      traversalWeight: r.traversalWeight as number,
+      lifecycleStatus: r.lifecycleStatus as LifecycleStatus,
+      attributes: r.attributes as Record<string, unknown>,
+      createdAt: r.createdAt as string,
+      updatedAt: r.updatedAt as string,
+      deprecatedAt: r.deprecatedAt as string | null,
+      archivedAt: r.archivedAt as string | null,
+      purgeAfter: r.purgeAfter as string | null,
+    });
+    const mapViolation = (r: Record<string, unknown>): ContextViolationRow => ({
+      id: r.id as string,
+      tenantId: r.tenantId as string,
+      nodeId: r.nodeId as string | null,
+      edgeId: r.edgeId as string | null,
+      sourceNodeId: r.sourceNodeId as string | null,
+      targetNodeId: r.targetNodeId as string | null,
+      ruleKey: r.ruleKey as string,
+      severity: r.severity as Severity,
+      message: r.message as string,
+      attributes: r.attributes as Record<string, unknown>,
+      resolved: r.resolved as boolean,
+      resolvedAt: r.resolvedAt as string | null,
+      createdAt: r.createdAt as string,
+      updatedAt: r.updatedAt as string,
+    });
 
     const [ctx] = await sql<[{
       nodesJson: Array<Record<string, unknown>> | null;
@@ -200,14 +243,14 @@ export function agentRouter(
             AND v.resolved = FALSE), '[]'::json)                                   AS violations_json
     `;
 
-    let nodes = sc2cc<ContextNodeRow>(ctx.nodesJson ?? []);
+    let nodes = (ctx.nodesJson ?? []).map(mapNode);
     const truncated = nodes.length > maxNodes;
     if (truncated) nodes = nodes.slice(0, maxNodes);
 
     const allIdSet = new Set([nodeId, ...nodes.map((n) => n.id)]);
-    const edges = sc2cc<ContextEdgeRow>(ctx.edgesJson ?? [])
+    const edges = (ctx.edgesJson ?? []).map(mapEdge)
       .filter((e) => allIdSet.has(e.sourceId) && allIdSet.has(e.targetId));
-    const violations = sc2cc<ContextViolationRow>(ctx.violationsJson ?? [])
+    const violations = (ctx.violationsJson ?? []).map(mapViolation)
       .filter((v) => v.nodeId != null && allIdSet.has(v.nodeId));
 
     const payload = { root, nodes, edges, violations, profile, truncated };
