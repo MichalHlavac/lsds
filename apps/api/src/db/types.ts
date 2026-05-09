@@ -134,6 +134,40 @@ export interface ApiKeyRow {
   createdAt: Date;
   revokedAt: Date | null;
   expiresAt: Date | null;
+  rateLimitRpm: number | null;
+  rateLimitBurst: number | null;
+}
+
+export type AuditOperation =
+  | "node.create"
+  | "node.update"
+  | "node.delete"
+  | "node.deprecate"
+  | "node.archive"
+  | "node.purge"
+  | "node.reactivate"
+  | "edge.create"
+  | "edge.update"
+  | "edge.delete"
+  | "rate_limit_hit"
+  | "webhook.attempt"
+  | "webhook.delivered"
+  | "webhook.exhausted";
+
+export interface AuditDiff {
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+}
+
+export interface AuditLogRow {
+  id: string;
+  tenantId: string;
+  apiKeyId: string | null;
+  operation: AuditOperation;
+  entityType: string;
+  entityId: string;
+  diff: AuditDiff | null;
+  createdAt: Date;
 }
 
 export interface TenantRow {
@@ -142,6 +176,8 @@ export interface TenantRow {
   slug: string | null;
   plan: string;
   retentionDays: number;
+  rateLimitRpm: number;
+  rateLimitBurst: number;
   createdAt: Date;
   updatedAt: Date;
 }

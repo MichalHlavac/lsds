@@ -10,6 +10,8 @@ import { generateApiKey, sha256hex } from "../auth/api-key.js";
 
 const CreateApiKeySchema = z.object({
   name: z.string().min(1).max(200),
+  rateLimitRpm: z.number().int().positive().nullable().optional(),
+  rateLimitBurst: z.number().int().positive().nullable().optional(),
 });
 
 export function apiKeysRouter(sql: Sql): Hono {
@@ -18,7 +20,8 @@ export function apiKeysRouter(sql: Sql): Hono {
   app.get("/", async (c) => {
     const tenantId = getTenantId(c);
     const rows = await sql<Omit<ApiKeyRow, "keyHash">[]>`
-      SELECT id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at
+      SELECT id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at,
+             rate_limit_rpm, rate_limit_burst
       FROM api_keys
       WHERE tenant_id = ${tenantId}
       ORDER BY created_at DESC
@@ -35,9 +38,17 @@ export function apiKeysRouter(sql: Sql): Hono {
     const prefix = rawKey.slice(0, 8);
 
     const [row] = await sql<Omit<ApiKeyRow, "keyHash">[]>`
-      INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix)
-      VALUES (${tenantId}, ${body.name}, ${hash}, ${prefix})
-      RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at
+      INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, rate_limit_rpm, rate_limit_burst)
+      VALUES (
+        ${tenantId},
+        ${body.name},
+        ${hash},
+        ${prefix},
+        ${body.rateLimitRpm ?? null},
+        ${body.rateLimitBurst ?? null}
+      )
+      RETURNING id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at,
+                rate_limit_rpm, rate_limit_burst
     `;
 
     // raw key returned once — caller must store it; hash is never exposed

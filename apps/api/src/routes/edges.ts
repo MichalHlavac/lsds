@@ -3,11 +3,17 @@
 
 import { Hono } from "hono";
 import { validateRelationshipEdge } from "@lsds/framework";
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
 import { recordEdgeHistory } from "../db/history.js";
+import {
+  edgeCreateDiff,
+  edgeUpdateDiff,
+  edgeDeleteDiff,
+} from "../db/audit.js";
+import { insertAuditLogAndEnqueue } from "../webhooks/hooks.js";
 import { config } from "../config.js";
 import {
   CreateEdgeSchema,
@@ -73,6 +79,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateEdgeSchema.parse(await c.req.json());
 
     const [sourceNode] = await sql<NodeRow[]>`
@@ -102,16 +109,21 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     }
 
     try {
-      const [row] = await sql<EdgeRow[]>`
-        INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
-        VALUES (
-          ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
-          ${body.layer}, ${body.traversalWeight}, ${jsonb(sql, body.attributes)}
-        )
-        RETURNING *
-      `;
+      const row = await sql.begin(async (tx) => {
+        const db: AnySql = tx;
+        const [row] = await db<EdgeRow[]>`
+          INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
+          VALUES (
+            ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
+            ${body.layer}, ${body.traversalWeight}, ${jsonb(db, body.attributes)}
+          )
+          RETURNING *
+        `;
+        await recordEdgeHistory(db, tenantId, row.id, "CREATE", null, row);
+        await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row));
+        return row;
+      });
       cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
-      await recordEdgeHistory(sql, tenantId, row.id, "CREATE", null, row);
       return c.json({ data: row }, 201);
     } catch (err: unknown) {
       if ((err as { code?: string })?.code === "23505") {
@@ -123,6 +135,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.put("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateEdgeSchema.parse(await c.req.json());
 
     const [sourceNode] = await sql<NodeRow[]>`
@@ -156,23 +169,30 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       WHERE tenant_id = ${tenantId} AND source_id = ${body.sourceId} AND target_id = ${body.targetId} AND type = ${body.type}
     `;
 
-    const [row] = await sql<EdgeRow[]>`
-      INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
-      VALUES (
-        ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
-        ${body.layer}, ${body.traversalWeight}, ${jsonb(sql, body.attributes)}
-      )
-      ON CONFLICT (tenant_id, source_id, target_id, type)
-      DO UPDATE SET
-        layer = EXCLUDED.layer,
-        traversal_weight = EXCLUDED.traversal_weight,
-        attributes = EXCLUDED.attributes,
-        updated_at = now()
-      RETURNING *
-    `;
+    const row = await sql.begin(async (tx) => {
+      const db: AnySql = tx;
+      const [row] = await db<EdgeRow[]>`
+        INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
+        VALUES (
+          ${tenantId}, ${body.sourceId}, ${body.targetId}, ${body.type},
+          ${body.layer}, ${body.traversalWeight}, ${jsonb(db, body.attributes)}
+        )
+        ON CONFLICT (tenant_id, source_id, target_id, type)
+        DO UPDATE SET
+          layer = EXCLUDED.layer,
+          traversal_weight = EXCLUDED.traversal_weight,
+          attributes = EXCLUDED.attributes,
+          updated_at = now()
+        RETURNING *
+      `;
+      const op = previous ? "UPDATE" : "CREATE";
+      await recordEdgeHistory(db, tenantId, row.id, op, previous ?? null, row);
+      const auditOp = previous ? "edge.update" : "edge.create";
+      const auditDiff = previous ? edgeUpdateDiff(previous, row) : edgeCreateDiff(row);
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
+      return row;
+    });
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
-    const op = previous ? "UPDATE" : "CREATE";
-    await recordEdgeHistory(sql, tenantId, row.id, op, previous ?? null, row);
     return c.json({ data: row }, previous ? 200 : 201);
   });
 
@@ -248,6 +268,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.patch("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
     const body = UpdateEdgeSchema.parse(await c.req.json());
 
@@ -260,18 +281,24 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       return c.json({ error: "attributes are immutable on DEPRECATED edges" }, 422);
     }
 
-    const [row] = await sql<EdgeRow[]>`
-      UPDATE edges SET
-        ${body.type !== undefined ? sql`type = ${body.type},` : sql``}
-        ${body.traversalWeight !== undefined ? sql`traversal_weight = ${body.traversalWeight},` : sql``}
-        ${body.attributes !== undefined ? sql`attributes = ${jsonb(sql, body.attributes)},` : sql``}
-        updated_at = now()
-      WHERE id = ${id} AND tenant_id = ${tenantId}
-      RETURNING *
-    `;
+    const row = await sql.begin(async (tx) => {
+      const db: AnySql = tx;
+      const [row] = await db<EdgeRow[]>`
+        UPDATE edges SET
+          ${body.type !== undefined ? db`type = ${body.type},` : db``}
+          ${body.traversalWeight !== undefined ? db`traversal_weight = ${body.traversalWeight},` : db``}
+          ${body.attributes !== undefined ? db`attributes = ${jsonb(db, body.attributes)},` : db``}
+          updated_at = now()
+        WHERE id = ${id} AND tenant_id = ${tenantId}
+        RETURNING *
+      `;
+      if (!row) return null;
+      await recordEdgeHistory(db, tenantId, id, "UPDATE", previous, row);
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.update", row.type, id, edgeUpdateDiff(previous, row));
+      return row;
+    });
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
-    await recordEdgeHistory(sql, tenantId, id, "UPDATE", previous, row);
     return c.json({ data: row });
   });
 
@@ -285,10 +312,14 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     `;
 
     try {
-      const row = await lifecycle.transitionEdge(tenantId, id, body.transition);
-      if (previous) {
-        await recordEdgeHistory(sql, tenantId, id, "LIFECYCLE_TRANSITION", previous, row);
-      }
+      const row = await sql.begin(async (tx) => {
+        const db: AnySql = tx;
+        const result = await lifecycle.withTransaction(db).transitionEdge(tenantId, id, body.transition);
+        if (previous) {
+          await recordEdgeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
+        }
+        return result;
+      });
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {
@@ -311,6 +342,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.delete("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
 
     const [existing] = await sql<EdgeRow[]>`
@@ -328,7 +360,11 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       return c.json({ error: `retention period of ${retentionDays} days has not elapsed since archival` }, 422);
     }
 
-    await sql`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
+    await sql.begin(async (tx) => {
+      const db: AnySql = tx;
+      await db`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
+    });
     cache.invalidateEdge(tenantId, existing.id, existing.sourceId, existing.targetId);
     return c.json({ data: { id } });
   });

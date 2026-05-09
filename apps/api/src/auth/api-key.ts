@@ -9,6 +9,7 @@ import { config } from "../config.js";
 declare module "hono" {
   interface ContextVariableMap {
     tenantId: string;
+    apiKeyId: string;
   }
 }
 
@@ -55,6 +56,7 @@ export function apiKeyMiddleware(sql: Sql) {
     }
 
     c.set("tenantId", row.tenantId);
+    c.set("apiKeyId", row.id);
     return next();
   });
 }

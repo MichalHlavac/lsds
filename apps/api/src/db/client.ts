@@ -37,3 +37,7 @@ export const sql = postgres(config.databaseUrl, {
 });
 
 export type Sql = typeof sql;
+// ISql is the common base for both the pool (Sql) and TransactionSql.
+// Using a union would produce incompatible tagged-template overloads in TypeScript.
+// TTypes={} matches the pool's actual generic, keeping Sql<{}> and TransactionSql<{}> assignable here.
+export type AnySql = postgres.ISql<{}>;

@@ -10,6 +10,7 @@ import { app } from "../src/app.js";
 import { sql } from "../src/db/client.js";
 import { sha256hex } from "../src/auth/api-key.js";
 import { cleanTenant } from "./test-helpers.js";
+import { rateLimitWindows } from "../src/middleware/admin-auth.js";
 
 const TEST_SECRET = "test-admin-secret";
 
@@ -34,6 +35,7 @@ afterEach(async () => {
     await sql`DELETE FROM tenants WHERE id = ${tid}`;
   }
   vi.unstubAllEnvs();
+  rateLimitWindows.clear();
 });
 
 // ── POST /api/admin/tenants ───────────────────────────────────────────────────

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "./client.js";
+import type { AnySql } from "./client.js";
 import type { EdgeRow, HistoryOp, NodeRow } from "./types.js";
 import { jsonb } from "../routes/util.js";
 
 export async function recordNodeHistory(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   nodeId: string,
   op: HistoryOp,
@@ -19,14 +19,14 @@ export async function recordNodeHistory(
       ${nodeId},
       ${tenantId},
       ${op},
-      ${previous ? jsonb(sql, previous as unknown as Record<string, unknown>) : null},
-      ${jsonb(sql, current as unknown as Record<string, unknown>)}
+      ${previous ? jsonb(sql, previous) : null},
+      ${jsonb(sql, current)}
     )
   `;
 }
 
 export async function recordEdgeHistory(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   edgeId: string,
   op: HistoryOp,
@@ -39,8 +39,8 @@ export async function recordEdgeHistory(
       ${edgeId},
       ${tenantId},
       ${op},
-      ${previous ? jsonb(sql, previous as unknown as Record<string, unknown>) : null},
-      ${jsonb(sql, current as unknown as Record<string, unknown>)}
+      ${previous ? jsonb(sql, previous) : null},
+      ${jsonb(sql, current)}
     )
   `;
 }

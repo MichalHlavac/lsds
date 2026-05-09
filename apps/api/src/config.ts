@@ -38,6 +38,7 @@ const EnvSchema = z
     PORT: z.coerce.number().int().positive().default(3001),
     LIFECYCLE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
     LSDS_ADMIN_SECRET: z.string().optional(),
+    LSDS_WEBHOOK_ENCRYPTION_KEY: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.EMBEDDING_PROVIDER === "openai" && !data.OPENAI_API_KEY) {

@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
+import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { validateRelationshipEdge } from "@lsds/framework";
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { EdgeRow, NodeRow } from "../db/types.js";
+import { nodeCreateDiff, edgeCreateDiff } from "../db/audit.js";
 import { BulkImportSchema } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
+import { insertAuditLogAndEnqueue } from "../webhooks/hooks.js";
+import { enqueueDeliveries } from "../webhooks/db.js";
+import { logger } from "../logger.js";
+
+const ROW_CAP = 50_000;
 
 class BulkImportError extends Error {
   constructor(
@@ -24,13 +31,23 @@ export function importRouter(sql: Sql): Hono {
 
   app.post("/bulk", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = BulkImportSchema.parse(await c.req.json());
+
+    const total = body.nodes.length + body.edges.length;
+    if (total > ROW_CAP) {
+      return c.json(
+        { error: `batch exceeds the ${ROW_CAP.toLocaleString()}-row cap`, total },
+        422
+      );
+    }
 
     try {
       const result = await sql.begin(async (tx) => {
-        const txSql = tx as unknown as Sql;
+        const txSql: AnySql = tx;
         const createdNodeIds: string[] = [];
         const createdEdgeIds: string[] = [];
+        let lastAuditLogId: string | undefined;
 
         for (const node of body.nodes) {
           const [row] = await tx<NodeRow[]>`
@@ -48,6 +65,9 @@ export function importRouter(sql: Sql): Hono {
               ${jsonb(txSql, row as unknown as Record<string, unknown>)}
             )
           `;
+          lastAuditLogId = await insertAuditLogAndEnqueue(
+            txSql, tenantId, apiKeyId, "node.create", row.type, row.id, nodeCreateDiff(row)
+          );
           createdNodeIds.push(row.id);
         }
 
@@ -94,13 +114,34 @@ export function importRouter(sql: Sql): Hono {
               ${jsonb(txSql, row as unknown as Record<string, unknown>)}
             )
           `;
+          lastAuditLogId = await insertAuditLogAndEnqueue(
+            txSql, tenantId, apiKeyId, "edge.create", row.type, row.id, edgeCreateDiff(row)
+          );
           createdEdgeIds.push(row.id);
         }
 
-        return { nodes: createdNodeIds, edges: createdEdgeIds };
+        return { nodes: createdNodeIds, edges: createdEdgeIds, lastAuditLogId };
       });
 
-      return c.json({ data: { created: result, errors: [] } }, 201);
+      // Dispatch a single import.completed webhook after the transaction commits.
+      // Best-effort: a delivery enqueue failure must not turn a committed import into a 500.
+      // Uses the last audit_log entry from the transaction to satisfy the FK constraint.
+      if (result.lastAuditLogId) {
+        try {
+          await enqueueDeliveries(sql, tenantId, result.lastAuditLogId, "import.completed", {
+            event: "import.completed",
+            importId: randomUUID(),
+            tenantId,
+            nodeCount: result.nodes.length,
+            edgeCount: result.edges.length,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          logger.error({ err }, "failed to enqueue import.completed webhook delivery");
+        }
+      }
+
+      return c.json({ data: { created: { nodes: result.nodes, edges: result.edges }, errors: [] } }, 201);
     } catch (err: unknown) {
       if (err instanceof BulkImportError) {
         return c.json(
@@ -111,10 +152,13 @@ export function importRouter(sql: Sql): Hono {
           err.statusCode as 422
         );
       }
-      const pgErr = err as { code?: string };
+      const pgErr = err as { code?: string; detail?: string };
       if (pgErr.code === "23505") {
         return c.json(
-          { error: "duplicate item in batch; (type, layer, name) must be unique per node and (sourceId, targetId, type) must be unique per edge" },
+          {
+            error: "duplicate item in batch; (type, layer, name) must be unique per node and (sourceId, targetId, type) must be unique per edge",
+            detail: pgErr.detail ?? null,
+          },
           409
         );
       }

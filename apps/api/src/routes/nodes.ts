@@ -3,11 +3,18 @@
 
 import { Hono } from "hono";
 import { config } from "../config.js";
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeHistoryRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
 import { recordNodeHistory } from "../db/history.js";
+import {
+  nodeCreateDiff,
+  nodeUpdateDiff,
+  nodeDeleteDiff,
+  nodeLifecycleDiff,
+} from "../db/audit.js";
+import { insertAuditLogAndEnqueue } from "../webhooks/hooks.js";
 import {
   CreateNodeSchema,
   UpdateNodeSchema,
@@ -81,20 +88,26 @@ export function nodesRouter(
 
   app.post("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateNodeSchema.parse(await c.req.json());
     const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
     const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
     try {
-      const [row] = await sql<NodeRow[]>`
-        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
-        VALUES (
-          ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
-          ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)},
-          ${ownerId}, ${ownerName}
-        )
-        RETURNING *
-      `;
-      await recordNodeHistory(sql, tenantId, row.id, "CREATE", null, row);
+      const row = await sql.begin(async (tx) => {
+        const db: AnySql = tx;
+        const [row] = await db<NodeRow[]>`
+          INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
+          VALUES (
+            ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
+            ${body.version}, ${body.lifecycleStatus}, ${jsonb(db, body.attributes)},
+            ${ownerId}, ${ownerName}
+          )
+          RETURNING *
+        `;
+        await recordNodeHistory(db, tenantId, row.id, "CREATE", null, row);
+        await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.create", row.type, row.id, nodeCreateDiff(row));
+        return row;
+      });
       embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
       return c.json({ data: row }, 201);
     } catch (err: unknown) {
@@ -107,6 +120,7 @@ export function nodesRouter(
 
   app.put("/", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const body = CreateNodeSchema.parse(await c.req.json());
     const ownerId = (body.owner as { id?: string } | undefined)?.id ?? '';
     const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
@@ -116,25 +130,31 @@ export function nodesRouter(
       WHERE tenant_id = ${tenantId} AND type = ${body.type} AND layer = ${body.layer} AND name = ${body.name}
     `;
 
-    const [row] = await sql<NodeRow[]>`
-      INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
-      VALUES (
-        ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
-        ${body.version}, ${body.lifecycleStatus}, ${jsonb(sql, body.attributes)},
-        ${ownerId}, ${ownerName}
-      )
-      ON CONFLICT (tenant_id, type, layer, name)
-      DO UPDATE SET
-        version = EXCLUDED.version,
-        attributes = EXCLUDED.attributes,
-        owner_id = EXCLUDED.owner_id,
-        owner_name = EXCLUDED.owner_name,
-        updated_at = now()
-      RETURNING *
-    `;
-
-    const op = previous ? "UPDATE" : "CREATE";
-    await recordNodeHistory(sql, tenantId, row.id, op, previous ?? null, row);
+    const row = await sql.begin(async (tx) => {
+      const db: AnySql = tx;
+      const [row] = await db<NodeRow[]>`
+        INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
+        VALUES (
+          ${tenantId}, ${body.type}, ${body.layer}, ${body.name},
+          ${body.version}, ${body.lifecycleStatus}, ${jsonb(db, body.attributes)},
+          ${ownerId}, ${ownerName}
+        )
+        ON CONFLICT (tenant_id, type, layer, name)
+        DO UPDATE SET
+          version = EXCLUDED.version,
+          attributes = EXCLUDED.attributes,
+          owner_id = EXCLUDED.owner_id,
+          owner_name = EXCLUDED.owner_name,
+          updated_at = now()
+        RETURNING *
+      `;
+      const op = previous ? "UPDATE" : "CREATE";
+      await recordNodeHistory(db, tenantId, row.id, op, previous ?? null, row);
+      const auditOp = previous ? "node.update" : "node.create";
+      const auditDiff = previous ? nodeUpdateDiff(previous, row) : nodeCreateDiff(row);
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, row.type, row.id, auditDiff);
+      return row;
+    });
     embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
     return c.json({ data: row }, previous ? 200 : 201);
   });
@@ -266,6 +286,7 @@ export function nodesRouter(
 
   app.patch("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
     const body = UpdateNodeSchema.parse(await c.req.json());
 
@@ -278,24 +299,31 @@ export function nodesRouter(
       return c.json({ error: "attributes are immutable on DEPRECATED nodes" }, 422);
     }
 
-    const [row] = await sql<NodeRow[]>`
-      UPDATE nodes SET
-        ${body.name !== undefined ? sql`name = ${body.name},` : sql``}
-        ${body.version !== undefined ? sql`version = ${body.version},` : sql``}
-        ${body.lifecycleStatus !== undefined ? sql`lifecycle_status = ${body.lifecycleStatus},` : sql``}
-        ${body.attributes !== undefined ? sql`attributes = ${jsonb(sql, body.attributes)},` : sql``}
-        updated_at = now()
-      WHERE id = ${id} AND tenant_id = ${tenantId}
-      RETURNING *
-    `;
-    if (!row) return c.json({ error: "not found" }, 404);
     const neighborEdges = await sql<{ sourceId: string; targetId: string }[]>`
       SELECT DISTINCT source_id, target_id FROM edges
       WHERE tenant_id = ${tenantId} AND (source_id = ${id} OR target_id = ${id})
     `;
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
+
+    const row = await sql.begin(async (tx) => {
+      const db: AnySql = tx;
+      const [row] = await db<NodeRow[]>`
+        UPDATE nodes SET
+          ${body.name !== undefined ? db`name = ${body.name},` : db``}
+          ${body.version !== undefined ? db`version = ${body.version},` : db``}
+          ${body.lifecycleStatus !== undefined ? db`lifecycle_status = ${body.lifecycleStatus},` : db``}
+          ${body.attributes !== undefined ? db`attributes = ${jsonb(db, body.attributes)},` : db``}
+          updated_at = now()
+        WHERE id = ${id} AND tenant_id = ${tenantId}
+        RETURNING *
+      `;
+      if (!row) return null;
+      await recordNodeHistory(db, tenantId, id, "UPDATE", previous, row);
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.update", row.type, id, nodeUpdateDiff(previous, row));
+      return row;
+    });
+    if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateNode(tenantId, id, neighborIds);
-    await recordNodeHistory(sql, tenantId, id, "UPDATE", previous, row);
     // `type` and `layer` are not in UpdateNodeSchema (immutable after creation), so
     // only `name` and `attributes` can affect the embedded text.
     if (body.name !== undefined || body.attributes !== undefined) {
@@ -306,6 +334,7 @@ export function nodesRouter(
 
   app.patch("/:id/lifecycle", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
     const body = LifecycleTransitionSchema.parse(await c.req.json());
 
@@ -314,10 +343,19 @@ export function nodesRouter(
     `;
 
     try {
-      const row = await lifecycle.transitionNode(tenantId, id, body.transition);
-      if (previous) {
-        await recordNodeHistory(sql, tenantId, id, "LIFECYCLE_TRANSITION", previous, row);
-      }
+      const row = await sql.begin(async (tx) => {
+        const db: AnySql = tx;
+        const result = await lifecycle.withTransaction(db).transitionNode(tenantId, id, body.transition);
+        if (previous) {
+          await recordNodeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
+          const auditOp = body.transition === "deprecate" ? "node.deprecate"
+            : body.transition === "archive" ? "node.archive"
+            : body.transition === "reactivate" ? "node.reactivate"
+            : "node.purge";
+          await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, result.type, id, nodeLifecycleDiff(previous, result));
+        }
+        return result;
+      });
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {
@@ -340,6 +378,7 @@ export function nodesRouter(
 
   app.delete("/:id", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
 
     const [existing] = await sql<NodeRow[]>`
@@ -362,7 +401,12 @@ export function nodesRouter(
       WHERE tenant_id = ${tenantId} AND (source_id = ${id} OR target_id = ${id})
     `;
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
-    await sql`DELETE FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
+
+    await sql.begin(async (tx) => {
+      const db: AnySql = tx;
+      await db`DELETE FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
+      await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.delete", existing.type, id, nodeDeleteDiff(existing));
+    });
     cache.invalidateNode(tenantId, id, neighborIds);
     return c.json({ data: { id } });
   });

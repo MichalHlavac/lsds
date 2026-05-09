@@ -28,9 +28,13 @@ import { snapshotsRouter } from "./routes/snapshots.js";
 import { layersRouter } from "./routes/layers.js";
 import { apiKeysRouter } from "./routes/api-keys.js";
 import { importRouter } from "./routes/import.js";
+import { exportRouter } from "./routes/export.js";
 import { tenantRouter } from "./routes/tenant.js";
+import { auditLogRouter } from "./routes/audit-log.js";
 import { adminTenantsRouter } from "./routes/admin-tenants.js";
+import { adminWebhooksRouter } from "./routes/admin-webhooks.js";
 import { adminAuthMiddleware } from "./middleware/admin-auth.js";
+import { openApiSpec } from "./openapi.js";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
@@ -162,8 +166,8 @@ app.use("/v1/*", apiKeyMiddleware(sql));
 app.use("/agent/*", apiKeyMiddleware(sql));
 app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
-app.use("/v1/*", rateLimitMiddleware);
-app.use("/agent/*", rateLimitMiddleware);
+app.use("/v1/*", rateLimitMiddleware(sql));
+app.use("/agent/*", rateLimitMiddleware(sql));
 
 const v1 = new Hono();
 v1.route("/nodes", nodesRouter(sql, cache, lifecycle, embeddingService, guardrails));
@@ -171,7 +175,8 @@ v1.route("/nodes", traversalRouter(sql, cache));
 v1.route("/edges", edgesRouter(sql, cache, lifecycle, guardrails));
 v1.route("/violations", violationsRouter(sql));
 v1.route("/guardrails", guardrailsRouter(sql));
-v1.route("/lifecycle", lifecycleRouter(lifecycle));
+v1.route("/lifecycle", lifecycleRouter(lifecycle, sql));
+v1.route("/audit-log", auditLogRouter(sql));
 v1.route("/users", usersRouter(sql));
 v1.route("/teams", teamsRouter(sql));
 v1.route("/query", queryRouter(sql));
@@ -179,6 +184,7 @@ v1.route("/snapshots", snapshotsRouter(sql));
 v1.route("/layers", layersRouter(sql));
 v1.route("/api-keys", apiKeysRouter(sql));
 v1.route("/import", importRouter(sql));
+v1.route("/export", exportRouter(sql));
 v1.route("/tenant", tenantRouter(sql));
 
 app.route("/v1", v1);
@@ -186,8 +192,11 @@ app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle, embeddingS
 app.route("/agent/v1/architect", architectRouter(sql, guardrails));
 app.route("/agent/v1/migration", migrationRouter(sql));
 
+app.get("/api/openapi.json", (c) => c.json(openApiSpec));
+
 app.use("/api/admin/*", adminAuthMiddleware);
 app.route("/api/admin/tenants", adminTenantsRouter(sql));
+app.route("/api/admin/webhooks", adminWebhooksRouter(sql));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();

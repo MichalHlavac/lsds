@@ -3,7 +3,7 @@
 
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-import type { Sql } from "../db/client.js";
+import type { AnySql } from "../db/client.js";
 
 export function getTenantId(c: Context): string {
   // API key middleware sets this when a valid key is present
@@ -14,8 +14,7 @@ export function getTenantId(c: Context): string {
   return tenantId;
 }
 
-// Typed wrapper for sql.json() — avoids scattered `as any` casts.
-// Values come from Zod-validated JSON (z.record(z.unknown())), so serialization is safe.
-export function jsonb(sql: Sql, value: Record<string, unknown>): ReturnType<Sql["json"]> {
-  return sql.json(value as Parameters<Sql["json"]>[0]);
+// Typed wrapper for sql.json() — avoids scattered `as any` casts at call sites.
+export function jsonb(sql: AnySql, value: object): ReturnType<AnySql["json"]> {
+  return sql.json(value as Parameters<AnySql["json"]>[0]);
 }

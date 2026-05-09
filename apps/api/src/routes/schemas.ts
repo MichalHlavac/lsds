@@ -3,7 +3,14 @@
 
 import { z } from "zod";
 import { LayerSchema, LifecycleStatusSchema, SeveritySchema } from "@lsds/shared";
-import { RelationshipTypeSchema, TeamRefSchema } from "@lsds/framework";
+import {
+  RelationshipTypeSchema,
+  TeamRefSchema,
+  ObjectLayerSchema,
+  ChangeKindSchema,
+  ChangeOverrideSchema,
+  ChangeConfirmationSchema,
+} from "@lsds/framework";
 
 const LayerEnum = LayerSchema;
 const LifecycleEnum = LifecycleStatusSchema;
@@ -177,8 +184,19 @@ export const ImpactPredictSchema = z.object({
 });
 export type ImpactPredict = z.infer<typeof ImpactPredictSchema>;
 
+// POST /agent/v1/architect/analyze-change — ADR A4 layer-dependent policy gate.
+// Wraps decideChange(): given layer + kind (+ optional override/confirmation),
+// returns the decision outcome (policy, severity, propagation, decision status).
+export const AnalyzeChangeSchema = z.object({
+  layer: ObjectLayerSchema,
+  kind: ChangeKindSchema,
+  override: ChangeOverrideSchema.optional(),
+  confirmation: ChangeConfirmationSchema.optional(),
+});
+export type AnalyzeChange = z.infer<typeof AnalyzeChangeSchema>;
+
 export const LifecycleTransitionSchema = z.object({
-  transition: z.enum(["deprecate", "archive", "purge"]),
+  transition: z.enum(["deprecate", "archive", "purge", "reactivate"]),
 });
 
 export const CreateSnapshotSchema = z.object({
@@ -188,23 +206,16 @@ export const CreateSnapshotSchema = z.object({
   snapshotData: z.record(z.unknown()).optional().default({}),
 });
 
-const MAX_BULK_ITEMS = 500;
-
 export const BulkImportNodeSchema = CreateNodeSchema;
 export type BulkImportNode = z.infer<typeof BulkImportNodeSchema>;
 
 export const BulkImportEdgeSchema = CreateEdgeSchema;
 export type BulkImportEdge = z.infer<typeof BulkImportEdgeSchema>;
 
-export const BulkImportSchema = z
-  .object({
-    nodes: z.array(BulkImportNodeSchema),
-    edges: z.array(BulkImportEdgeSchema).optional().default([]),
-  })
-  .refine(
-    (data) => data.nodes.length + data.edges.length <= MAX_BULK_ITEMS,
-    { message: `batch exceeds maximum of ${MAX_BULK_ITEMS} items (nodes + edges combined)` }
-  );
+export const BulkImportSchema = z.object({
+  nodes: z.array(BulkImportNodeSchema),
+  edges: z.array(BulkImportEdgeSchema).optional().default([]),
+});
 export type BulkImport = z.infer<typeof BulkImportSchema>;
 
 export const SearchByAttributesSchema = z.object({
