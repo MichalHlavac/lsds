@@ -19,8 +19,8 @@ export async function recordNodeHistory(
       ${nodeId},
       ${tenantId},
       ${op},
-      ${previous ? jsonb(sql, previous as unknown as Record<string, unknown>) : null},
-      ${jsonb(sql, current as unknown as Record<string, unknown>)}
+      ${previous ? jsonb(sql, previous) : null},
+      ${jsonb(sql, current)}
     )
   `;
 }
@@ -39,8 +39,8 @@ export async function recordEdgeHistory(
       ${edgeId},
       ${tenantId},
       ${op},
-      ${previous ? jsonb(sql, previous as unknown as Record<string, unknown>) : null},
-      ${jsonb(sql, current as unknown as Record<string, unknown>)}
+      ${previous ? jsonb(sql, previous) : null},
+      ${jsonb(sql, current)}
     )
   `;
 }
