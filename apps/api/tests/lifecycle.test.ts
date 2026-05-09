@@ -470,6 +470,69 @@ describe("PATCH /v1/edges/:id/lifecycle — invalid transitions (422)", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it("reactivate on DEPRECATED edge → 422 with allowed: [archive]", async () => {
+    const src = await createNode("er-src-dep");
+    const tgt = await createNode("er-tgt-dep");
+    const edge = await createEdge(src.id, tgt.id);
+
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("DEPRECATED");
+    expect(body.requestedTransition).toBe("reactivate");
+    expect(body.allowed).toEqual(["archive"]);
+    expect(body.allowed).not.toContain("reactivate");
+  });
+
+  it("reactivate on ACTIVE edge → 422 with allowed: [deprecate]", async () => {
+    const src = await createNode("er-src-act");
+    const tgt = await createNode("er-tgt-act");
+    const edge = await createEdge(src.id, tgt.id);
+
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("ACTIVE");
+    expect(body.requestedTransition).toBe("reactivate");
+    expect(body.allowed).toEqual(["deprecate"]);
+    expect(body.allowed).not.toContain("reactivate");
+  });
+
+  it("allowed in edge 422 responses never includes reactivate (ARCHIVED state)", async () => {
+    const src = await createNode("er-src-arch");
+    const tgt = await createNode("er-tgt-arch");
+    const edge = await createEdge(src.id, tgt.id);
+
+    for (const t of ["deprecate", "archive"] as const) {
+      await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: t }),
+      });
+    }
+
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("ARCHIVED");
+    expect(body.allowed).not.toContain("reactivate");
+    expect(body.allowed).toEqual(["purge"]);
+  });
 });
 
 // ── POST /v1/nodes/batch-lifecycle ───────────────────────────────────────────

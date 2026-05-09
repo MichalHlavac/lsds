@@ -14,6 +14,14 @@ const ALLOWED_TRANSITIONS: Record<LifecycleStatus, LifecycleTransitionName[]> = 
   PURGE: [],
 };
 
+// Edge-specific allowed transitions — reactivation is not supported for edges.
+const EDGE_ALLOWED_TRANSITIONS: Record<LifecycleStatus, LifecycleTransitionName[]> = {
+  ACTIVE: ["deprecate"],
+  DEPRECATED: ["archive"],
+  ARCHIVED: ["purge"],
+  PURGE: [],
+};
+
 export class LifecycleTransitionError extends Error {
   constructor(
     public readonly currentStatus: LifecycleStatus,
@@ -237,10 +245,9 @@ export class LifecycleService {
       case "deprecate":   return this.deprecateEdge(tenantId, edgeId);
       case "archive":     return this.archiveEdge(tenantId, edgeId);
       case "purge":       return this.markEdgeForPurge(tenantId, edgeId);
-      case "reactivate":  throw new Error("Edge reactivation is not supported");
-      default: {
-        const _: never = transition;
-        throw new Error(`Unknown transition: ${_}`);
+      case "reactivate": {
+        const current = await this.#edgeStatus(tenantId, edgeId);
+        throw new LifecycleTransitionError(current, "reactivate", EDGE_ALLOWED_TRANSITIONS[current]);
       }
     }
   }
