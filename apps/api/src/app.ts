@@ -28,6 +28,7 @@ import { snapshotsRouter } from "./routes/snapshots.js";
 import { layersRouter } from "./routes/layers.js";
 import { apiKeysRouter } from "./routes/api-keys.js";
 import { importRouter } from "./routes/import.js";
+import { exportRouter } from "./routes/export.js";
 import { tenantRouter } from "./routes/tenant.js";
 import { auditLogRouter } from "./routes/audit-log.js";
 import { adminTenantsRouter } from "./routes/admin-tenants.js";
@@ -183,6 +184,7 @@ v1.route("/snapshots", snapshotsRouter(sql));
 v1.route("/layers", layersRouter(sql));
 v1.route("/api-keys", apiKeysRouter(sql));
 v1.route("/import", importRouter(sql));
+v1.route("/export", exportRouter(sql));
 v1.route("/tenant", tenantRouter(sql));
 
 app.route("/v1", v1);
