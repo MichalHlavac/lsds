@@ -50,6 +50,7 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
     let responseStatus: number | null = null;
     let errorMsg: string | null = null;
     let succeeded = false;
+    let retryAfterSecs: number | null = null;
 
     try {
       const res = await fetch(webhook.url, {
@@ -71,15 +72,9 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
 
       if (!succeeded) {
         errorMsg = `HTTP ${res.status}`;
-        // Honor Retry-After if larger than backoff
         const retryAfterHeader = res.headers.get("Retry-After");
         if (retryAfterHeader) {
-          const retryAfterSecs = parseRetryAfter(retryAfterHeader);
-          if (retryAfterSecs !== null) {
-            const currentAttempt = delivery.attemptCount;
-            const backoffSecs = BACKOFF_SECONDS[currentAttempt + 1] ?? 16;
-            await applyRetryAfter(sql, delivery.id, retryAfterSecs, backoffSecs);
-          }
+          retryAfterSecs = parseRetryAfter(retryAfterHeader);
         }
       }
     } catch (err) {
@@ -89,6 +84,14 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
     }
 
     await recordDeliveryAttempt(sql, delivery.id, responseStatus, errorMsg, succeeded);
+
+    // Honor Retry-After only when larger than the computed backoff. Must run after
+    // recordDeliveryAttempt so it overrides (not gets overridden by) the backoff update.
+    if (!succeeded && retryAfterSecs !== null) {
+      const currentAttempt = delivery.attemptCount;
+      const backoffSecs = BACKOFF_SECONDS[currentAttempt + 1] ?? 16;
+      await applyRetryAfter(sql, delivery.id, retryAfterSecs, backoffSecs);
+    }
 
     // Emit audit log
     try {

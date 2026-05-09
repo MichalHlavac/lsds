@@ -142,9 +142,11 @@ describe("webhook registration", () => {
       });
       expect(r.status).toBe(201);
     }
+    // Use a fresh x-forwarded-for IP so the per-IP rate limit (10/min) doesn't
+    // fire before the per-tenant webhook count check (the thing under test here).
     const overflow = await app.request("/api/admin/webhooks", {
       method: "POST",
-      headers: adminH(),
+      headers: { ...adminH(), "x-forwarded-for": `${tid}-overflow` },
       body: JSON.stringify({ url: "https://example.com/hook10", eventTypes: ["node.create"] }),
     });
     expect(overflow.status).toBe(422);
