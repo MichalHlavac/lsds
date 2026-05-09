@@ -34,8 +34,10 @@ const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://lsds:lsds@localhost
 
 const NODE_COUNT = 1_000;
 const EDGE_COUNT = 5_000;
-// Iterations per scenario — enough for stable p50/p95 without excessive CI time.
-const ITERATIONS = 10;
+// 25 iterations gives stable percentiles on shared GH Actions runners; warm-up
+// pass below flushes cold-cache spikes before measurement begins (LSDS-736).
+const ITERATIONS = 25;
+const WARMUP_ITERATIONS = 5;
 // Regression threshold: measured ≤ baseline * TOLERANCE passes.
 const TOLERANCE = 1.2;
 
@@ -76,6 +78,10 @@ async function measureTraversal(
   direction: "outbound" | "inbound" | "both",
   edgeTypes?: string[],
 ): Promise<ScenarioBaseline> {
+  // Warm-up: flush cold-cache and planner overhead before recording latencies.
+  for (let i = 0; i < WARMUP_ITERATIONS; i++) {
+    await adapter.traverseWithDepth(nodeId, depth, direction, edgeTypes);
+  }
   const latencies: number[] = [];
   for (let i = 0; i < ITERATIONS; i++) {
     const t0 = performance.now();
