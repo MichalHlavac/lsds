@@ -665,4 +665,140 @@ describe("createLsdsClient", () => {
     expect((result as typeof response).valid).toBe(false);
     expect((result as typeof response).rule).toBe("naming.event.past-tense");
   });
+
+  // ── Migration Agent ──────────────────────────────────────────────────────
+
+  it("migrationPropose sends POST to /agent/v1/migration/propose with full body", async () => {
+    const draft = { id: "draft-1", sessionId: "sess-1", proposedType: "Service", status: "pending" };
+    const fetch = mockFetch({ data: draft }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationPropose({
+      sessionId: "sess-1",
+      sourceRef: "legacy::auth-service",
+      proposedType: "Service",
+      proposedLayer: "L4",
+      proposedName: "auth-svc",
+      proposedAttrs: { version: "1.0" },
+      confidence: { proposedType: "HIGH", proposedLayer: "MEDIUM" },
+      owner: "agent-migrate",
+    });
+
+    expect(result).toEqual(draft);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/propose");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body).toMatchObject({
+      sessionId: "sess-1",
+      sourceRef: "legacy::auth-service",
+      proposedType: "Service",
+      proposedLayer: "L4",
+      proposedName: "auth-svc",
+      owner: "agent-migrate",
+    });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationPropose throws on 400 (validation error)", async () => {
+    const fetch = mockFetch({ error: "validation error" }, 400);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(
+      client.migrationPropose({
+        sessionId: "sess-bad",
+        sourceRef: "",
+        proposedType: "Service",
+        proposedLayer: "L4",
+        proposedName: "svc",
+        owner: "agent-migrate",
+      })
+    ).rejects.toThrow("400");
+  });
+
+  it("migrationSession sends GET to /agent/v1/migration/sessions/:id", async () => {
+    const session = { id: "sess-1", status: "open", draftCount: 3 };
+    const fetch = mockFetch({ data: session });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationSession("sess-1");
+
+    expect(result).toEqual(session);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/sessions/sess-1");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationSession URL-encodes the sessionId", async () => {
+    const fetch = mockFetch({ data: { id: "sess/special", status: "open", draftCount: 0 } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.migrationSession("sess/special");
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/sessions/sess%2Fspecial");
+  });
+
+  it("migrationCommit sends POST to /agent/v1/migration/sessions/:id/commit", async () => {
+    const committed = { sessionId: "sess-1", committedCount: 5, status: "committed" };
+    const fetch = mockFetch({ data: committed });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationCommit("sess-1");
+
+    expect(result).toEqual(committed);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/sessions/sess-1/commit");
+    expect(opts.method).toBe("POST");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationCommit throws on 404 (session not found)", async () => {
+    const fetch = mockFetch({ error: "session not found" }, 404);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(client.migrationCommit("nonexistent")).rejects.toThrow("404");
+  });
+
+  it("migrationReviewDraft sends PATCH to /agent/v1/migration/drafts/:id with status and proposedAttrs", async () => {
+    const updated = { id: "draft-1", status: "approved", proposedAttrs: { env: "prod" } };
+    const fetch = mockFetch({ data: updated });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationReviewDraft("draft-1", {
+      status: "approved",
+      proposedAttrs: { env: "prod" },
+    });
+
+    expect(result).toEqual(updated);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/drafts/draft-1");
+    expect(opts.method).toBe("PATCH");
+    const body = JSON.parse(opts.body as string);
+    expect(body).toEqual({ status: "approved", proposedAttrs: { env: "prod" } });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationReviewDraft sends PATCH with rejected status and no proposedAttrs", async () => {
+    const updated = { id: "draft-2", status: "rejected" };
+    const fetch = mockFetch({ data: updated });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationReviewDraft("draft-2", { status: "rejected" });
+
+    expect(result).toEqual(updated);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/drafts/draft-2");
+    expect(opts.method).toBe("PATCH");
+    expect(JSON.parse(opts.body as string)).toEqual({ status: "rejected" });
+  });
 });
