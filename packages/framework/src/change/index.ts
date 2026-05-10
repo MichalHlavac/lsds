@@ -8,7 +8,15 @@ export {
   MINOR_PROPAGATING_RELATIONSHIPS,
   propagationFor,
   propagatesOver,
+  propagateChange,
 } from "./propagation.js";
-export type { MinorPropagatingRelationship, ChangePropagationPolicy } from "./propagation.js";
+export type {
+  MinorPropagatingRelationship,
+  ChangePropagationPolicy,
+  ChangePropagationSource,
+  PropagateChangeOptions,
+} from "./propagation.js";
 export { decideChange } from "./decide.js";
 export type { ChangeDecision, ChangeDecisionInput } from "./decide.js";
+export { StaleFlagSchema } from "./stale-flag.js";
+export type { StaleFlag } from "./stale-flag.js";
