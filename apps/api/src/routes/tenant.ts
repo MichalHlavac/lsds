@@ -18,6 +18,7 @@ interface UsagePayload {
   violations: { total: number; open: number };
   apiKeys: { active: number; expired: number };
   snapshots: { count: number; oldestAt: string | null; newestAt: string | null };
+  staleFlagCount: number;
   computedAt: string;
 }
 
@@ -92,6 +93,7 @@ export function tenantRouter(sql: Sql): Hono {
       snapshotsCount: number;
       snapshotsOldestAt: Date | null;
       snapshotsNewestAt: Date | null;
+      staleFlagCount: number;
     }
 
     const [row] = await sql<[UsageRow]>`
@@ -106,7 +108,8 @@ export function tenantRouter(sql: Sql): Hono {
         (SELECT count(*)::int FROM api_keys WHERE tenant_id = ${tenantId} AND (revoked_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at <= now()))) AS "apiKeysExpired",
         (SELECT count(*)::int FROM snapshots WHERE tenant_id = ${tenantId})                                       AS "snapshotsCount",
         (SELECT min(created_at) FROM snapshots WHERE tenant_id = ${tenantId})                                     AS "snapshotsOldestAt",
-        (SELECT max(created_at) FROM snapshots WHERE tenant_id = ${tenantId})                                     AS "snapshotsNewestAt"
+        (SELECT max(created_at) FROM snapshots WHERE tenant_id = ${tenantId})                                     AS "snapshotsNewestAt",
+        (SELECT count(*)::int FROM stale_flags WHERE tenant_id = ${tenantId})                                     AS "staleFlagCount"
     `;
 
     const payload: UsagePayload = {
@@ -119,6 +122,7 @@ export function tenantRouter(sql: Sql): Hono {
         oldestAt: row.snapshotsOldestAt ? row.snapshotsOldestAt.toISOString() : null,
         newestAt: row.snapshotsNewestAt ? row.snapshotsNewestAt.toISOString() : null,
       },
+      staleFlagCount: row.staleFlagCount,
       computedAt: new Date().toISOString(),
     };
 
