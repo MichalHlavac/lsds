@@ -26,7 +26,7 @@ import {
   SORT_ORDER_VALUES,
   type NodeSortField,
 } from "./schemas.js";
-import { getTenantId, jsonb } from "./util.js";
+import { getTenantId, jsonb, toHttpError } from "./util.js";
 import { propagateNodeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { EmbeddingService } from "../embeddings/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
@@ -389,7 +389,7 @@ export function nodesRouter(
       if (e instanceof Error && e.message === "node not found") {
         return c.json({ error: "not found" }, 404);
       }
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 

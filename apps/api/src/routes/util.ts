@@ -18,3 +18,19 @@ export function getTenantId(c: Context): string {
 export function jsonb(sql: AnySql, value: object): ReturnType<AnySql["json"]> {
   return sql.json(value as Parameters<AnySql["json"]>[0]);
 }
+
+function looksLikeDb(msg: string): boolean {
+  return /postgres|pg|sql|connection|timeout/i.test(msg);
+}
+
+/**
+ * Converts an unknown catch value to an HTTP error tuple.
+ * Domain errors with safe messages → 400 with the original message.
+ * DB/infra errors and non-Error throws → 500 with a generic message.
+ */
+export function toHttpError(e: unknown): [{ error: string }, 400 | 500] {
+  if (e instanceof Error && e.message && !looksLikeDb(e.message)) {
+    return [{ error: e.message }, 400];
+  }
+  return [{ error: "internal server error" }, 500];
+}

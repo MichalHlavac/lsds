@@ -6,7 +6,7 @@ import type { Sql } from "../db/client.js";
 import type { NodeRow } from "../db/types.js";
 import type { LifecycleService } from "../lifecycle/index.js";
 import { insertAuditLog, nodeLifecycleDiff } from "../db/audit.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, toHttpError } from "./util.js";
 
 export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
   const app = new Hono();
@@ -23,7 +23,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: row });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
@@ -55,7 +55,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: row });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
@@ -72,7 +72,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: row });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
@@ -88,7 +88,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: { id, purged: true } });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
