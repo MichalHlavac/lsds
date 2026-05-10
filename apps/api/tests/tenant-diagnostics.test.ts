@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant } from "./test-helpers";
@@ -157,8 +158,36 @@ describe("GET /v1/tenant/diagnostics", () => {
     }
   });
 
-  it("returns 400 when x-tenant-id header is absent", async () => {
-    const res = await app.request("/v1/tenant/diagnostics");
-    expect(res.status).toBe(400);
+  // ── Auth enforcement tests (follow api-key-expiry-enforcement.test.ts pattern) ─
+
+  it("returns 401 when LSDS_API_KEY_AUTH_ENABLED=true and X-Api-Key header is absent", async () => {
+    process.env["LSDS_API_KEY_AUTH_ENABLED"] = "true";
+    vi.resetModules();
+    try {
+      const { apiKeyMiddleware } = await import("../src/auth/api-key.js");
+      const testApp = new Hono();
+      testApp.use("/v1/*", apiKeyMiddleware(sql));
+      testApp.get("/v1/tenant/diagnostics", (c) => c.json({ ok: true }));
+
+      const res = await testApp.request("/v1/tenant/diagnostics");
+      expect(res.status).toBe(401);
+      expect((await res.json() as { error: string }).error).toBe("unauthorized");
+    } finally {
+      process.env["LSDS_API_KEY_AUTH_ENABLED"] = "";
+      vi.resetModules();
+    }
+  });
+
+  it("returns 403 when an unrecognized X-Api-Key is provided", async () => {
+    const { apiKeyMiddleware } = await import("../src/auth/api-key.js");
+    const testApp = new Hono();
+    testApp.use("/v1/*", apiKeyMiddleware(sql));
+    testApp.get("/v1/tenant/diagnostics", (c) => c.json({ ok: true }));
+
+    const res = await testApp.request("/v1/tenant/diagnostics", {
+      headers: { "X-Api-Key": "lsds_invalid_key_that_does_not_exist" },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json() as { error: string }).error).toBe("forbidden");
   });
 });
