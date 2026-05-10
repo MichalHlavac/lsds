@@ -133,7 +133,8 @@ export interface EdgeValidationIssue {
     | "SOURCE_LAYER_NOT_ALLOWED"
     | "TARGET_LAYER_NOT_ALLOWED"
     | "ORDINAL_CONSTRAINT_VIOLATED"
-    | "TARGET_EXTERNAL_REQUIRED";
+    | "TARGET_EXTERNAL_REQUIRED"
+    | "CARDINALITY_VIOLATED";
   message: string;
 }
 
