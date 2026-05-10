@@ -46,7 +46,7 @@ describe("runVerify", () => {
     expect(mockFetch).toHaveBeenCalledOnce();
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("http://api.example.com/health/ready");
-    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer secret");
+    expect((init.headers as Record<string, string>)["X-Api-Key"]).toBe("secret");
   });
 
   it("never logs the API key", async () => {
