@@ -64,6 +64,11 @@ export const ApiEndpointSchema = TknBaseSchema.extend({
   authenticationRequired: z.boolean(),
   idempotent: z.boolean(),
   status: ApiEndpointStatusSchema,
+  // Per-endpoint sunset timeline read by GR-L4-006 (`DEPRECATED APIEndpoint
+  // without sunset timeline`). Optional at the schema layer: the rule fires
+  // only when status is DEPRECATED and sunsetAt is missing, so ACTIVE /
+  // EXPERIMENTAL endpoints must remain free to omit it.
+  sunsetAt: z.string().datetime().optional(),
 });
 export type ApiEndpoint = z.infer<typeof ApiEndpointSchema>;
 
