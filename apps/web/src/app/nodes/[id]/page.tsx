@@ -5,21 +5,10 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { api, type NodeRow, type NodeHistoryEntry, type HistoryOp } from "../../../lib/api";
+import { api, type NodeRow, type NodeHistoryEntry } from "../../../lib/api";
 import { LifecycleBadge } from "../../../components/LifecycleBadge";
 import { LifecycleControls } from "../../../components/LifecycleControls";
-
-const OP_LABELS: Record<HistoryOp, string> = {
-  CREATE: "Created",
-  UPDATE: "Updated",
-  LIFECYCLE_TRANSITION: "Lifecycle",
-};
-
-const OP_COLORS: Record<HistoryOp, string> = {
-  CREATE: "bg-green-900 text-green-300",
-  UPDATE: "bg-blue-900 text-blue-300",
-  LIFECYCLE_TRANSITION: "bg-yellow-900 text-yellow-300",
-};
+import { OpBadge } from "../../../components/OpBadge";
 
 function fmt(d: string | null): string {
   if (!d) return "—";
@@ -33,6 +22,8 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<NodeHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRetry, setHistoryRetry] = useState(0);
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,13 +37,19 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
         setError(err instanceof Error ? err.message : "Failed to load node");
         setLoading(false);
       });
+  }, [id]);
+
+  useEffect(() => {
     setHistoryLoading(true);
+    setHistoryError(null);
     api.nodes
       .history(id, { limit: 20 })
       .then((res) => setHistory(res.data))
-      .catch(() => {})
+      .catch((err: unknown) => {
+        setHistoryError(err instanceof Error ? err.message : "Failed to load history");
+      })
       .finally(() => setHistoryLoading(false));
-  }, [id]);
+  }, [id, historyRetry]);
 
   if (loading) {
     return (
@@ -148,10 +145,22 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
         {historyLoading && (
           <p className="text-gray-500 text-sm">Loading history…</p>
         )}
-        {!historyLoading && history.length === 0 && (
-          <p className="text-gray-600 text-sm">No history recorded yet.</p>
+        {!historyLoading && historyError && (
+          <div className="space-y-2">
+            <p className="text-red-400 font-mono text-xs">{historyError}</p>
+            <button
+              type="button"
+              onClick={() => setHistoryRetry((c) => c + 1)}
+              className="text-sm text-gray-400 hover:text-gray-100 underline"
+            >
+              Retry
+            </button>
+          </div>
         )}
-        {!historyLoading && history.length > 0 && (
+        {!historyLoading && !historyError && history.length === 0 && (
+          <p className="text-gray-500 text-sm">No history recorded yet.</p>
+        )}
+        {!historyLoading && !historyError && history.length > 0 && (
           <ol className="space-y-2">
             {history.map((entry) => (
               <li key={entry.id} className="rounded-lg border border-gray-800 bg-gray-900">
@@ -160,18 +169,14 @@ export default function NodeDetailPage({ params }: { params: Promise<{ id: strin
                   onClick={() => setExpandedEntry(expandedEntry === entry.id ? null : entry.id)}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-800 transition-colors rounded-lg"
                 >
-                  <span
-                    className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded ${OP_COLORS[entry.op]}`}
-                  >
-                    {OP_LABELS[entry.op]}
-                  </span>
+                  <OpBadge op={entry.op} />
                   <span className="text-sm text-gray-300 flex-1 truncate">
                     {new Date(entry.changedAt).toLocaleString()}
                   </span>
                   {entry.changedBy && (
                     <span className="text-xs text-gray-500 font-mono shrink-0">{entry.changedBy}</span>
                   )}
-                  <span className="text-gray-600 text-xs shrink-0">
+                  <span aria-hidden="true" className="text-gray-400 text-xs shrink-0">
                     {expandedEntry === entry.id ? "▲" : "▼"}
                   </span>
                 </button>

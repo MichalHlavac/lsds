@@ -205,7 +205,7 @@ export default function EditEdgePage({ params }: { params: Promise<{ id: string 
           <div>
             <span className="text-gray-400">Layer:</span> {edge.layer}
           </div>
-          <div className="text-gray-600">Source, target, and layer are set at creation time.</div>
+          <div className="text-gray-500">Source, target, and layer are set at creation time.</div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
