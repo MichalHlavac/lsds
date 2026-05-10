@@ -801,4 +801,73 @@ describe("createLsdsClient", () => {
     expect(opts.method).toBe("PATCH");
     expect(JSON.parse(opts.body as string)).toEqual({ status: "rejected" });
   });
+
+  // ── Architect Agent ──────────────────────────────────────────────────────
+
+  it("architectClassifyChange sends POST to /agent/v1/architect/classify-change with correct body", async () => {
+    const response = {
+      classifiedAt: "2026-01-01T00:00:00.000Z",
+      classification: { layer: "L3", confidence: "HIGH", reviewPath: "AUTO_WITH_OVERRIDE", rationale: "API route definition" },
+      signals: [{ source: "file_path", value: "apps/api/src/routes/nodes.ts", inferredLayer: "L3", confidence: "HIGH", rationale: "API route definition" }],
+      recommendations: [],
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectClassifyChange({
+      filePaths: ["apps/api/src/routes/nodes.ts"],
+      nodeTypes: ["APIEndpoint"],
+      nodeIds: ["00000000-0000-0000-0000-000000000001"],
+      diff: "--- a/apps/api/src/routes/nodes.ts\n+++ b/apps/api/src/routes/nodes.ts",
+    });
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/classify-change");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body).toMatchObject({
+      filePaths: ["apps/api/src/routes/nodes.ts"],
+      nodeTypes: ["APIEndpoint"],
+      nodeIds: ["00000000-0000-0000-0000-000000000001"],
+      diff: expect.stringContaining("routes/nodes.ts"),
+    });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("architectClassifyChange return value has classification shape with layer, confidence, reviewPath, rationale", async () => {
+    const response = {
+      classifiedAt: "2026-05-10T00:00:00.000Z",
+      classification: { layer: "L1", confidence: "HIGH", reviewPath: "REQUIRE_CONFIRMATION", rationale: "Framework type/schema/layer definition" },
+      signals: [{ source: "file_path", value: "packages/framework/src/types.ts", inferredLayer: "L1", confidence: "HIGH", rationale: "Framework type/schema/layer definition" }],
+      recommendations: ["L1 changes require CTO sign-off (REQUIRE_CONFIRMATION)"],
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectClassifyChange({ filePaths: ["packages/framework/src/types.ts"] }) as typeof response;
+
+    expect(result.classifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(result.classification.layer).toBe("L1");
+    expect(result.classification.confidence).toBe("HIGH");
+    expect(result.classification.reviewPath).toBe("REQUIRE_CONFIRMATION");
+    expect(result.classification.rationale).toBe("Framework type/schema/layer definition");
+    expect(result.signals).toHaveLength(1);
+    expect(result.signals[0].source).toBe("file_path");
+  });
+
+  it("architectClassifyChange sends empty object body when called with {}", async () => {
+    const fetch = mockFetch({ data: { classifiedAt: "2026-05-10T00:00:00.000Z", classification: { layer: "L5", confidence: "LOW", reviewPath: "AUTO", rationale: "No signals — defaulting to L5 (module level)" }, signals: [], recommendations: [] } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.architectClassifyChange({});
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/classify-change");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body as string)).toEqual({});
+  });
 });
