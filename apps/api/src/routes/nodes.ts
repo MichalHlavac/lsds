@@ -27,6 +27,7 @@ import {
   type NodeSortField,
 } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
+import { propagateNodeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { EmbeddingService } from "../embeddings/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getViolationSuggestion, getNamingGuidance } from "../guardrails/naming.js";
@@ -156,6 +157,9 @@ export function nodesRouter(
       return row;
     });
     embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
+    if (previous) {
+      await propagateNodeChange(sql, tenantId, row);
+    }
     return c.json({ data: row }, previous ? 200 : 201);
   });
 
@@ -273,14 +277,23 @@ export function nodesRouter(
   app.get("/:id", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const cached = cache.nodes.get(cache.nodeKey(tenantId, id));
-    if (cached) return c.json({ data: cached });
+    const includeStaleFlags = c.req.query("includeStaleFlags") === "true";
+
+    if (!includeStaleFlags) {
+      const cached = cache.nodes.get(cache.nodeKey(tenantId, id));
+      if (cached) return c.json({ data: cached });
+    }
 
     const [row] = await sql<NodeRow[]>`
       SELECT * FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}
     `;
     if (!row) return c.json({ error: "not found" }, 404);
     cache.nodes.set(cache.nodeKey(tenantId, id), row);
+
+    if (includeStaleFlags) {
+      const staleFlags = await fetchStaleFlagsForObject(sql, tenantId, id, "node");
+      return c.json({ data: { ...row, staleFlags } });
+    }
     return c.json({ data: row });
   });
 
@@ -329,6 +342,7 @@ export function nodesRouter(
     if (body.name !== undefined || body.attributes !== undefined) {
       embeddingService?.embedNodeAsync(tenantId, id, embeddingService.nodeText(row));
     }
+    await propagateNodeChange(sql, tenantId, row);
     return c.json({ data: row });
   });
 
@@ -356,6 +370,9 @@ export function nodesRouter(
         }
         return result;
       });
+      if (body.transition === "deprecate" || body.transition === "archive") {
+        await propagateNodeChange(sql, tenantId, row);
+      }
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {

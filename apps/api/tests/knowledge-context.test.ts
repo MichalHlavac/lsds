@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
-import { cleanTenant } from "./test-helpers";
+import { cleanTenant, createTestTenant } from "./test-helpers";
 
 const EMBEDDING_ENABLED = !!process.env["EMBEDDING_PROVIDER"];
 const maybeIt = EMBEDDING_ENABLED ? it : it.skip;
@@ -17,7 +17,7 @@ const maybeIt = EMBEDDING_ENABLED ? it : it.skip;
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 
-beforeEach(() => { tid = randomUUID(); });
+beforeEach(async () => { tid = randomUUID(); await createTestTenant(sql, tid); });
 afterEach(async () => { await cleanTenant(sql, tid); });
 
 async function postContext(body: Record<string, unknown>) {
