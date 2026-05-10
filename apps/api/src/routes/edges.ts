@@ -23,7 +23,7 @@ import {
   SORT_ORDER_VALUES,
   type EdgeSortField,
 } from "./schemas.js";
-import { getTenantId, jsonb } from "./util.js";
+import { getTenantId, jsonb, toHttpError } from "./util.js";
 import { propagateEdgeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getViolationSuggestion } from "../guardrails/naming.js";
@@ -353,7 +353,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       if (e instanceof Error && e.message === "edge not found") {
         return c.json({ error: "not found" }, 404);
       }
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
