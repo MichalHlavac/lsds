@@ -626,4 +626,43 @@ describe("createLsdsClient", () => {
     expect(opts.method).toBe("GET");
     expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
   });
+
+  it("checkNaming sends GET to /agent/v1/naming-check with type and name query params", async () => {
+    const response = { valid: true, rule: null, message: null };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.checkNaming("DomainEvent", "OrderPlaced");
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/naming-check?type=DomainEvent&name=OrderPlaced");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("checkNaming URL-encodes type and name with special characters", async () => {
+    const fetch = mockFetch({ data: { valid: false, rule: "naming.event.past-tense", message: "Must be past tense" } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.checkNaming("Domain Event", "order placed");
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/naming-check?type=Domain%20Event&name=order%20placed");
+  });
+
+  it("checkNaming returns the API response data (violation case)", async () => {
+    const response = { valid: false, rule: "naming.event.past-tense", message: "Event names must be past tense" };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.checkNaming("DomainEvent", "CreateOrder");
+
+    expect(result).toEqual(response);
+    expect((result as typeof response).valid).toBe(false);
+    expect((result as typeof response).rule).toBe("naming.event.past-tense");
+  });
 });
