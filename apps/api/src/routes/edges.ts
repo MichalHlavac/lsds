@@ -24,6 +24,7 @@ import {
   type EdgeSortField,
 } from "./schemas.js";
 import { getTenantId, jsonb } from "./util.js";
+import { propagateEdgeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getViolationSuggestion } from "../guardrails/naming.js";
 
@@ -193,6 +194,9 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       return row;
     });
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
+    if (previous) {
+      await propagateEdgeChange(sql, tenantId, row);
+    }
     return c.json({ data: row }, previous ? 200 : 201);
   });
 
@@ -255,14 +259,23 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
   app.get("/:id", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const cached = cache.edges.get(cache.edgeKey(tenantId, id));
-    if (cached) return c.json({ data: cached });
+    const includeStaleFlags = c.req.query("includeStaleFlags") === "true";
+
+    if (!includeStaleFlags) {
+      const cached = cache.edges.get(cache.edgeKey(tenantId, id));
+      if (cached) return c.json({ data: cached });
+    }
 
     const [row] = await sql<EdgeRow[]>`
       SELECT * FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}
     `;
     if (!row) return c.json({ error: "not found" }, 404);
     cache.edges.set(cache.edgeKey(tenantId, id), row);
+
+    if (includeStaleFlags) {
+      const staleFlags = await fetchStaleFlagsForObject(sql, tenantId, id, "edge");
+      return c.json({ data: { ...row, staleFlags } });
+    }
     return c.json({ data: row });
   });
 
@@ -299,6 +312,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     });
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
+    await propagateEdgeChange(sql, tenantId, row);
     return c.json({ data: row });
   });
 
@@ -320,6 +334,9 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         }
         return result;
       });
+      if (body.transition === "deprecate" || body.transition === "archive") {
+        await propagateEdgeChange(sql, tenantId, row);
+      }
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {
