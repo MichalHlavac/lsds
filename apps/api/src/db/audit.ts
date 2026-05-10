@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import type { Sql } from "./client.js";
+import type { AnySql } from "./client.js";
 import type { AuditDiff, AuditOperation, EdgeRow, NodeRow } from "./types.js";
 import { jsonb } from "../routes/util.js";
 
 export type { AuditDiff, AuditOperation };
 
 export async function insertAuditLog(
-  sql: Sql,
+  sql: AnySql,
   tenantId: string,
   apiKeyId: string | null,
   operation: AuditOperation,

@@ -864,6 +864,37 @@ server.tool(
   }
 );
 
+server.tool(
+  "lsds_architect_classify_change",
+  "Classify a proposed code or graph change into an LSDS architecture layer (L1–L6) and return the ADR A4 review path: L1/L2 → REQUIRE_CONFIRMATION, L3/L4 → AUTO_WITH_OVERRIDE, L5/L6 → AUTO. Accepts a unified diff, a list of changed file paths, node types being changed, or node UUIDs — at least one is required. Returns the worst-case (most structural) layer classification, a confidence level, actionable review recommendations, and the full list of signals that drove the classification.",
+  {
+    diff: z
+      .string()
+      .optional()
+      .describe("Unified diff text (e.g. output of `git diff`). Used to extract node types and structural patterns."),
+    filePaths: z
+      .array(z.string().min(1))
+      .optional()
+      .describe("List of changed file paths relative to the repo root, e.g. ['packages/framework/src/types.ts', 'apps/api/src/routes/nodes.ts']"),
+    nodeTypes: z
+      .array(z.string().min(1))
+      .optional()
+      .describe("Node types being added or modified, e.g. ['BoundedContext', 'Service']. Each type is looked up in the canonical LSDS type registry."),
+    nodeIds: z
+      .array(z.string().uuid())
+      .optional()
+      .describe("UUIDs of existing knowledge graph nodes being changed. Their layers are fetched from the database for accurate classification."),
+  },
+  async (params) => {
+    try {
+      const data = await client.architectClassifyChange(params);
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Impact analysis tools ────────────────────────────────────────────────────
 
 server.tool(

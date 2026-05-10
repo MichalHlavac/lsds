@@ -5,9 +5,10 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getTenantId } from "../routes/util.js";
-import { AgentAnalyzeSchema, AnalyzeChangeSchema, ImpactPredictSchema } from "../routes/schemas.js";
+import { AgentAnalyzeSchema, AnalyzeChangeSchema, ClassifyChangeSchema, ImpactPredictSchema } from "../routes/schemas.js";
 import {
   analyzeNodes,
+  analyzeChange,
   consistencyScan,
   driftAnalysis,
   debtAggregation,
@@ -125,6 +126,19 @@ export function architectRouter(sql: Sql, guardrails: GuardrailsRegistry): Hono 
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 422);
     }
+  });
+
+  // ── Change classification (ADR A4) ──────────────────────────────────────────
+  // Classifies a proposed change (diff / file-path list / node types / node IDs)
+  // into L1–L6 and returns the corresponding ADR A4 review path:
+  //   L1-L2 → REQUIRE_CONFIRMATION
+  //   L3-L4 → AUTO_WITH_OVERRIDE
+  //   L5-L6 → AUTO
+  app.post("/classify-change", async (c) => {
+    const tenantId = getTenantId(c);
+    const body = ClassifyChangeSchema.parse(await c.req.json());
+    const data = await analyzeChange(sql, tenantId, body);
+    return c.json({ data });
   });
 
   return app;

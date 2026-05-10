@@ -382,4 +382,65 @@ describe("audit log — immutability", () => {
     });
     expect(res.status).toBe(405);
   });
+
+  it("returns 405 on PUT /v1/audit-log", async () => {
+    const res = await app.request("/v1/audit-log", {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(405);
+  });
+
+  it("returns 404 or 405 on PUT /v1/audit-log/:id", async () => {
+    const res = await app.request(`/v1/audit-log/${randomUUID()}`, {
+      method: "PUT",
+      headers: h(),
+      body: JSON.stringify({}),
+    });
+    expect([404, 405]).toContain(res.status);
+  });
+
+  it("returns 404 or 405 on POST /v1/audit-log/bulk-delete", async () => {
+    const res = await app.request("/v1/audit-log/bulk-delete", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ ids: [randomUUID()] }),
+    });
+    expect([404, 405]).toContain(res.status);
+  });
+
+  it("returns 404 or 405 on POST /v1/audit-log/truncate", async () => {
+    const res = await app.request("/v1/audit-log/truncate", {
+      method: "POST",
+      headers: h(),
+    });
+    expect([404, 405]).toContain(res.status);
+  });
+
+  it("audit entry is not mutated by subsequent writes to the same entity", async () => {
+    const node = await createNode("immut-node");
+
+    const res1 = await getAuditLog({ entity_id: node.id, operation: "node.create" });
+    expect(res1.status).toBe(200);
+    const { items: before } = await res1.json();
+    expect(before.length).toBeGreaterThanOrEqual(1);
+    const createEntry = before[0];
+
+    await app.request(`/v1/nodes/${node.id}`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ name: "immut-node-renamed" }),
+    });
+
+    const res2 = await getAuditLog({ entity_id: node.id, operation: "node.create" });
+    expect(res2.status).toBe(200);
+    const { items: after } = await res2.json();
+    const sameEntry = after.find((e: { id: string }) => e.id === createEntry.id);
+    expect(sameEntry).toBeDefined();
+    expect(sameEntry.id).toBe(createEntry.id);
+    expect(sameEntry.operation).toBe("node.create");
+    expect(sameEntry.createdAt).toBe(createEntry.createdAt);
+    expect(sameEntry.diff).toEqual(createEntry.diff);
+  });
 });
