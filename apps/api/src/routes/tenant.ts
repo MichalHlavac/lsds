@@ -10,6 +10,7 @@ import { tenantApiKeysRouter } from "./tenant-api-keys.js";
 import { TtlCache } from "../cache/index.js";
 
 const USAGE_TTL_MS = 60_000;
+const DIAGNOSTICS_TTL_MS = 30_000;
 
 interface UsagePayload {
   nodes: { total: number; byType: Record<string, number> };
@@ -21,6 +22,19 @@ interface UsagePayload {
 }
 
 const usageCache = new TtlCache<UsagePayload>(USAGE_TTL_MS);
+
+interface DiagnosticsPayload {
+  appVersion: string;
+  nodeCount: number;
+  edgeCount: number;
+  apiKeyCount: number;
+  webhookEndpointCount: number;
+  auditLogEntries: number;
+  lastMutationAt: string | null;
+  dbConnected: boolean;
+}
+
+const diagnosticsCache = new TtlCache<DiagnosticsPayload>(DIAGNOSTICS_TTL_MS);
 
 const PatchTenantSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -109,6 +123,54 @@ export function tenantRouter(sql: Sql): Hono {
     };
 
     usageCache.set(cacheKey, payload);
+    return c.json({ data: payload });
+  });
+
+  app.get("/diagnostics", async (c) => {
+    const tenantId = getTenantId(c);
+    const cacheKey = `diagnostics:${tenantId}`;
+    const cached = diagnosticsCache.get(cacheKey);
+    if (cached) return c.json({ data: cached });
+
+    interface DiagnosticsRow {
+      nodeCount: number;
+      edgeCount: number;
+      apiKeyCount: number;
+      webhookEndpointCount: number;
+      auditLogEntries: number;
+      lastMutationAt: Date | null;
+    }
+
+    let dbConnected = true;
+    let row: DiagnosticsRow;
+
+    try {
+      [row] = await sql<[DiagnosticsRow]>`
+        SELECT
+          (SELECT count(*)::int FROM nodes       WHERE tenant_id = ${tenantId})                                                       AS "nodeCount",
+          (SELECT count(*)::int FROM edges       WHERE tenant_id = ${tenantId})                                                       AS "edgeCount",
+          (SELECT count(*)::int FROM api_keys    WHERE tenant_id = ${tenantId} AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())) AS "apiKeyCount",
+          (SELECT count(*)::int FROM webhooks    WHERE tenant_id = ${tenantId} AND is_active = true)                                  AS "webhookEndpointCount",
+          (SELECT count(*)::int FROM audit_log   WHERE tenant_id = ${tenantId})                                                       AS "auditLogEntries",
+          (SELECT max(changed_at) FROM node_history WHERE tenant_id = ${tenantId})                                                    AS "lastMutationAt"
+      `;
+    } catch {
+      dbConnected = false;
+      row = { nodeCount: 0, edgeCount: 0, apiKeyCount: 0, webhookEndpointCount: 0, auditLogEntries: 0, lastMutationAt: null };
+    }
+
+    const payload: DiagnosticsPayload = {
+      appVersion: process.env["APP_VERSION"] ?? "unknown",
+      nodeCount: row.nodeCount,
+      edgeCount: row.edgeCount,
+      apiKeyCount: row.apiKeyCount,
+      webhookEndpointCount: row.webhookEndpointCount,
+      auditLogEntries: row.auditLogEntries,
+      lastMutationAt: row.lastMutationAt ? row.lastMutationAt.toISOString() : null,
+      dbConnected,
+    };
+
+    diagnosticsCache.set(cacheKey, payload);
     return c.json({ data: payload });
   });
 
