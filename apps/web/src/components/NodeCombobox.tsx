@@ -145,7 +145,7 @@ export function NodeCombobox({
         </div>
       )}
       {value && (
-        <p className="mt-1 truncate font-mono text-[11px] text-gray-600">{value}</p>
+        <p className="mt-1 truncate font-mono text-[11px] text-gray-500">{value}</p>
       )}
     </div>
   );

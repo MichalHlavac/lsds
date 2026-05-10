@@ -6,7 +6,7 @@ import type { LifecycleStatus } from "../lib/api";
 const STYLES: Record<LifecycleStatus, string> = {
   ACTIVE: "bg-green-900/50 text-green-300 ring-1 ring-green-700",
   DEPRECATED: "bg-yellow-900/50 text-yellow-300 ring-1 ring-yellow-700",
-  ARCHIVED: "bg-gray-800 text-gray-400 ring-1 ring-gray-600",
+  ARCHIVED: "bg-gray-800 text-gray-300 ring-1 ring-gray-600",
   PURGE: "bg-red-900/50 text-red-300 ring-1 ring-red-700",
 };
 

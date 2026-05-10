@@ -224,7 +224,7 @@ export function EdgeForm({
           <div>
             <span className="text-gray-400">Layer:</span> {readOnlyInfo.layer}
           </div>
-          <div className="text-gray-600">Source, target, and layer are set at creation time.</div>
+          <div className="text-gray-500">Source, target, and layer are set at creation time.</div>
         </div>
       )}
 

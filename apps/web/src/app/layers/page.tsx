@@ -11,8 +11,11 @@ export default function LayersPage() {
   const [layers, setLayers] = useState<LayerSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     api.layers
       .list()
       .then((res) => {
@@ -23,7 +26,7 @@ export default function LayersPage() {
         setError(err instanceof Error ? err.message : "Failed to load layers");
         setLoading(false);
       });
-  }, []);
+  }, [retryCount]);
 
   return (
     <div className="max-w-2xl">
@@ -47,8 +50,15 @@ export default function LayersPage() {
             )}
             {error && (
               <tr>
-                <td colSpan={2} className="px-4 py-8 text-center text-red-400 font-mono text-xs">
-                  {error}
+                <td colSpan={2} className="px-4 py-8 text-center" role="alert">
+                  <p className="text-red-400 font-mono text-xs mb-3">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => setRetryCount((c) => c + 1)}
+                    className="text-sm text-gray-400 hover:text-gray-100 underline"
+                  >
+                    Retry
+                  </button>
                 </td>
               </tr>
             )}

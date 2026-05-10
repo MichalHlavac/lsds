@@ -194,7 +194,7 @@ export default function EditNodePage({ params }: { params: Promise<{ id: string 
           <div>
             <span className="text-gray-400">Layer:</span> {node.layer}
           </div>
-          <div className="text-gray-600">Type and layer are set at creation time.</div>
+          <div className="text-gray-500">Type and layer are set at creation time.</div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
