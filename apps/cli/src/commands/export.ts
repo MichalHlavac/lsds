@@ -24,7 +24,7 @@ async function fetchAllPages<T>(apiUrl: string, apiKey: string, path: string): P
   while (true) {
     const url = `${apiUrl}${path}?limit=${limit}&offset=${offset}&includeArchived=true`;
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { "X-Api-Key": apiKey },
     });
     if (!res.ok) {
       const text = await res.text();
