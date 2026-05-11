@@ -358,6 +358,32 @@ describe("audit log — edge lifecycle transitions", () => {
     expect(entry.diff.before).toMatchObject({ lifecycleStatus: "ARCHIVED" });
     expect(entry.diff.after).toMatchObject({ lifecycleStatus: "PURGE" });
   });
+
+  it("writes zero audit entries when the edge does not exist (404)", async () => {
+    const missingId = randomUUID();
+    const res = await app.request(`/v1/edges/${missingId}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "deprecate" }),
+    });
+    expect(res.status).toBe(404);
+    const audit = await getAuditLog({ entity_id: missingId });
+    const { items } = await audit.json();
+    expect(items).toEqual([]);
+  });
+
+  it("writes zero audit entries when the transition is invalid (ACTIVE → archive)", async () => {
+    const edge = await createEdge();
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "archive" }),
+    });
+    expect(res.status).toBe(422);
+    const audit = await getAuditLog({ entity_id: edge.id, operation: "edge.archive" });
+    const { items } = await audit.json();
+    expect(items).toEqual([]);
+  });
 });
 
 // ── read path — query params & pagination ───────────────────────────────────
