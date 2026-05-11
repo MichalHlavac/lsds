@@ -436,7 +436,7 @@ export function nodesRouter(
     const edgeTypes = edgeTypesRaw?.split(",").filter(Boolean);
 
     const cacheKey = cache.traversalKey(tenantId, id, 1, direction, edgeTypes);
-    const hit = cache.traversals.get(cacheKey);
+    const hit = cache.neighbors.get(cacheKey);
     if (hit) return c.json({ data: hit });
 
     let outboundNodes: NodeRow[] = [];
@@ -460,7 +460,7 @@ export function nodesRouter(
     }
 
     const result = { outbound: outboundNodes, inbound: inboundNodes };
-    cache.traversals.set(cacheKey, result);
+    cache.neighbors.set(cacheKey, result);
     return c.json({ data: result });
   });
 
