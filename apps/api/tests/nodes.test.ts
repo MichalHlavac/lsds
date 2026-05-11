@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant } from "./test-helpers";
+import type { NodeRow } from "../src/db/types";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -206,7 +207,7 @@ describe("GET /v1/nodes", () => {
     const { data } = await res.json();
     expect(Array.isArray(data)).toBe(true);
     expect(data.length).toBeGreaterThanOrEqual(1);
-    expect(data.every((n: any) => n.type !== undefined)).toBe(true);
+    expect(data.every((n: NodeRow) => n.type !== undefined)).toBe(true);
   });
 
   it("returns empty array for a tenant with no nodes", async () => {
@@ -224,7 +225,7 @@ describe("GET /v1/nodes", () => {
     });
     const res = await app.request("/v1/nodes?type=Database", { headers: h() });
     const { data } = await res.json();
-    expect(data.every((n: any) => n.type === "Database")).toBe(true);
+    expect(data.every((n: NodeRow) => n.type === "Database")).toBe(true);
   });
 
   it("?q= filters nodes by name substring (case-insensitive)", async () => {
@@ -298,7 +299,7 @@ describe("GET /v1/nodes sortBy + order", () => {
     expect(res.status).toBe(200);
     const { data } = await res.json();
     expect(Array.isArray(data)).toBe(true);
-    const names = data.map((n: any) => n.name);
+    const names = data.map((n: NodeRow) => n.name);
     expect(names).toEqual([...names].sort());
   });
 
@@ -317,7 +318,7 @@ describe("GET /v1/nodes sortBy + order", () => {
     const res = await app.request("/v1/nodes?sortBy=name&order=desc", { headers: h() });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const names = data.map((n: any) => n.name);
+    const names = data.map((n: NodeRow) => n.name);
     expect(names).toEqual([...names].sort().reverse());
   });
 
@@ -355,8 +356,8 @@ describe("GET /v1/nodes sortBy + order", () => {
     const res = await app.request("/v1/nodes?type=Database&sortBy=name&order=asc", { headers: h() });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    expect(data.every((n: any) => n.type === "Database")).toBe(true);
-    const names = data.map((n: any) => n.name);
+    expect(data.every((n: NodeRow) => n.type === "Database")).toBe(true);
+    const names = data.map((n: NodeRow) => n.name);
     expect(names).toEqual([...names].sort());
   });
 });
@@ -507,7 +508,7 @@ describe("PUT /v1/nodes", () => {
     }
     const listRes = await app.request("/v1/nodes?type=Service", { headers: h() });
     const { data } = await listRes.json();
-    const matches = data.filter((n: any) => n.name === "idempotent-svc");
+    const matches = data.filter((n: NodeRow) => n.name === "idempotent-svc");
     expect(matches).toHaveLength(1);
   });
 
@@ -585,7 +586,7 @@ describe("GET /v1/nodes total count", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.total).toBe(1);
-    expect(body.data.every((n: any) => n.type === "Database")).toBe(true);
+    expect(body.data.every((n: NodeRow) => n.type === "Database")).toBe(true);
   });
 
   it("total stays consistent with ?limit pagination — full count not page count", async () => {

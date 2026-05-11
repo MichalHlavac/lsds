@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant, createTestTenant } from "./test-helpers";
+import type { EdgeRow } from "../src/db/types";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -393,7 +394,7 @@ describe("GET /v1/edges sortBy + order", () => {
     const res = await app.request(`/v1/edges?sourceId=${src.id}&sortBy=createdAt&order=asc`, { headers: h() });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    expect(data.every((e: any) => e.sourceId === src.id)).toBe(true);
+    expect(data.every((e: EdgeRow) => e.sourceId === src.id)).toBe(true);
     expect(data.length).toBeGreaterThanOrEqual(2);
   });
 });
@@ -550,7 +551,7 @@ describe("GET /v1/edges total count", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.total).toBe(1);
-    expect(body.data.every((e: any) => e.type === "contains")).toBe(true);
+    expect(body.data.every((e: EdgeRow) => e.type === "contains")).toBe(true);
   });
 
   it("total stays consistent with ?limit pagination — full count not page count", async () => {

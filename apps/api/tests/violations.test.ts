@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant } from "./test-helpers";
+import type { ViolationRow } from "../src/db/types";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -71,7 +72,7 @@ describe("GET /v1/violations", () => {
 
     const res = await app.request(`/v1/violations?nodeId=${node.id}`, { headers: h() });
     const { data } = await res.json();
-    expect(data.every((v: any) => v.nodeId === node.id)).toBe(true);
+    expect(data.every((v: ViolationRow) => v.nodeId === node.id)).toBe(true);
   });
 });
 
@@ -260,7 +261,7 @@ describe("POST /v1/violations/batch-resolve", () => {
     const { data } = await res.json();
     expect(data.succeeded).toHaveLength(2);
     expect(data.failed).toHaveLength(0);
-    expect(data.succeeded.every((v: any) => v.resolved === true)).toBe(true);
+    expect(data.succeeded.every((v: ViolationRow) => v.resolved === true)).toBe(true);
   });
 
   it("returns 207 for partial success (one unresolved, one already resolved)", async () => {
