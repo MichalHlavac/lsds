@@ -5,7 +5,7 @@
 ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_log_operation_check;
 ALTER TABLE audit_log ADD CONSTRAINT audit_log_operation_check CHECK (operation IN (
   'node.create', 'node.update', 'node.delete',
-  'node.deprecate', 'node.archive', 'node.purge',
+  'node.deprecate', 'node.archive', 'node.purge', 'node.reactivate',
   'edge.create', 'edge.update', 'edge.delete',
   'edge.deprecate', 'edge.archive', 'edge.purge',
   'rate_limit_hit',
