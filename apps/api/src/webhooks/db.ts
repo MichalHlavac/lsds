@@ -31,8 +31,8 @@ export interface WebhookDeliveryRow {
 }
 
 const MAX_WEBHOOKS_PER_TENANT = 10;
-const MAX_ATTEMPTS = 4;
-const BACKOFF_SECONDS = [0, 1, 4, 16] as const;
+const MAX_ATTEMPTS = 6;
+const BACKOFF_SECONDS = [0, 30, 120, 300, 900, 1800] as const;
 
 export async function countWebhooks(sql: Sql, tenantId: string): Promise<number> {
   const [{ count }] = await sql<[{ count: string }]>`
@@ -194,7 +194,7 @@ export async function recordDeliveryAttempt(
       UPDATE webhook_deliveries SET status = 'failed', updated_at = now() WHERE id = ${id}
     `;
   } else {
-    const delaySecs = BACKOFF_SECONDS[newCount] ?? 16;
+    const delaySecs = BACKOFF_SECONDS[newCount] ?? 1800;
     await sql`
       UPDATE webhook_deliveries
       SET next_attempt = now() + ${`${delaySecs} seconds`}::interval,
