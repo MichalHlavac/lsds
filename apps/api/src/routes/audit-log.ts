@@ -10,6 +10,7 @@ const VALID_OPERATIONS = new Set<string>([
   "node.create", "node.update", "node.delete",
   "node.deprecate", "node.archive", "node.purge",
   "edge.create", "edge.update", "edge.delete",
+  "edge.deprecate", "edge.archive", "edge.purge",
   "rate_limit_hit",
 ]);
 
