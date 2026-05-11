@@ -12,6 +12,7 @@ import {
   edgeCreateDiff,
   edgeUpdateDiff,
   edgeDeleteDiff,
+  edgeLifecycleDiff,
 } from "../db/audit.js";
 import { insertAuditLogAndEnqueue } from "../webhooks/hooks.js";
 import { config } from "../config.js";
@@ -304,6 +305,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
   app.patch("/:id/lifecycle", async (c) => {
     const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
     const { id } = c.req.param();
     const body = LifecycleTransitionSchema.parse(await c.req.json());
 
@@ -317,6 +319,10 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         const result = await lifecycle.withTransaction(db).transitionEdge(tenantId, id, body.transition);
         if (previous) {
           await recordEdgeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
+          const auditOp = body.transition === "deprecate" ? "edge.deprecate"
+            : body.transition === "archive" ? "edge.archive"
+            : "edge.purge";
+          await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, result.type, id, edgeLifecycleDiff(previous, result));
         }
         return result;
       });

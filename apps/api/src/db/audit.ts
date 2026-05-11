@@ -112,3 +112,15 @@ export function edgeDeleteDiff(row: EdgeRow): AuditDiff {
     after: null,
   };
 }
+
+export function edgeLifecycleDiff(prev: EdgeRow, curr: EdgeRow | null): AuditDiff {
+  if (!curr) {
+    return { before: { lifecycleStatus: prev.lifecycleStatus }, after: null };
+  }
+  const before: Record<string, unknown> = { lifecycleStatus: prev.lifecycleStatus };
+  const after: Record<string, unknown> = { lifecycleStatus: curr.lifecycleStatus };
+  if (String(curr.deprecatedAt) !== String(prev.deprecatedAt)) after.deprecatedAt = curr.deprecatedAt;
+  if (String(curr.archivedAt) !== String(prev.archivedAt)) after.archivedAt = curr.archivedAt;
+  if (String(curr.purgeAfter) !== String(prev.purgeAfter)) after.purgeAfter = curr.purgeAfter;
+  return { before, after };
+}

@@ -281,6 +281,85 @@ describe("audit log — edge mutations", () => {
   });
 });
 
+// ── write path — edge lifecycle ──────────────────────────────────────────────
+
+describe("audit log — edge lifecycle transitions", () => {
+  async function createEdge() {
+    const src = await createNode("src-lc");
+    const tgt = await createNode("tgt-lc");
+    const res = await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: src.id, targetId: tgt.id, type: "contains", layer: "L4" }),
+    });
+    expect(res.status).toBe(201);
+    return (await res.json()).data;
+  }
+
+  it("records edge.deprecate from PATCH /edges/:id/lifecycle", async () => {
+    const edge = await createEdge();
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "deprecate" }),
+    });
+    expect(res.status).toBe(200);
+    const audit = await getAuditLog({ entity_id: edge.id, operation: "edge.deprecate" });
+    const { items } = await audit.json();
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    const entry = items[0];
+    expect(entry.operation).toBe("edge.deprecate");
+    expect(entry.entityId).toBe(edge.id);
+    expect(entry.diff.before).toMatchObject({ lifecycleStatus: "ACTIVE" });
+    expect(entry.diff.after).toMatchObject({ lifecycleStatus: "DEPRECATED" });
+  });
+
+  it("records edge.archive from PATCH /edges/:id/lifecycle", async () => {
+    const edge = await createEdge();
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "archive" }),
+    });
+    expect(res.status).toBe(200);
+    const audit = await getAuditLog({ entity_id: edge.id, operation: "edge.archive" });
+    const { items } = await audit.json();
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    const entry = items[0];
+    expect(entry.operation).toBe("edge.archive");
+    expect(entry.entityId).toBe(edge.id);
+    expect(entry.diff.before).toMatchObject({ lifecycleStatus: "DEPRECATED" });
+    expect(entry.diff.after).toMatchObject({ lifecycleStatus: "ARCHIVED" });
+  });
+
+  it("records edge.purge from PATCH /edges/:id/lifecycle", async () => {
+    const edge = await createEdge();
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "purge" }),
+    });
+    expect(res.status).toBe(200);
+    const audit = await getAuditLog({ entity_id: edge.id, operation: "edge.purge" });
+    const { items } = await audit.json();
+    expect(items.length).toBeGreaterThanOrEqual(1);
+    const entry = items[0];
+    expect(entry.operation).toBe("edge.purge");
+    expect(entry.entityId).toBe(edge.id);
+    expect(entry.diff.before).toMatchObject({ lifecycleStatus: "ARCHIVED" });
+    expect(entry.diff.after).toMatchObject({ lifecycleStatus: "PURGE" });
+  });
+});
+
 // ── read path — query params & pagination ───────────────────────────────────
 
 describe("audit log — GET /v1/audit-log", () => {
