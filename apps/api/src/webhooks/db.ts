@@ -31,8 +31,8 @@ export interface WebhookDeliveryRow {
 }
 
 const MAX_WEBHOOKS_PER_TENANT = 10;
-const MAX_ATTEMPTS = 6;
-const BACKOFF_SECONDS = [0, 30, 120, 300, 900, 1800] as const;
+export const MAX_ATTEMPTS = 6;
+export const BACKOFF_SECONDS = [0, 30, 120, 300, 900, 1800] as const;
 
 export async function countWebhooks(sql: Sql, tenantId: string): Promise<number> {
   const [{ count }] = await sql<[{ count: string }]>`
