@@ -145,6 +145,7 @@ export type AuditOperation =
   | "node.deprecate"
   | "node.archive"
   | "node.purge"
+  | "node.reactivate"
   | "edge.create"
   | "edge.update"
   | "edge.delete"
@@ -182,6 +183,20 @@ export interface TenantRow {
   rateLimitBurst: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface StaleFlagRow {
+  id: string;
+  tenantId: string;
+  sourceChangeId: string;
+  objectId: string;
+  objectType: "node" | "edge";
+  severity: "ERROR" | "WARNING" | "INFO";
+  raisedAt: Date;
+  message: string;
+  viaRelationshipType: string;
+  depth: number;
+  createdAt: Date;
 }
 
 export interface MigrationDraftRow {

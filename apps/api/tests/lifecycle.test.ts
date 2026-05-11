@@ -5,12 +5,12 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
-import { cleanTenant } from "./test-helpers";
+import { cleanTenant, createTestTenant } from "./test-helpers";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 
-beforeEach(() => { tid = randomUUID(); });
+beforeEach(async () => { tid = randomUUID(); await createTestTenant(sql, tid); });
 afterEach(async () => { await cleanTenant(sql, tid); });
 
 async function createNode(name = "test-node") {
@@ -344,7 +344,7 @@ describe("PATCH /v1/nodes/:id/lifecycle — invalid transitions (422)", () => {
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.currentStatus).toBe("DEPRECATED");
-    expect(body.allowed).toEqual(["archive"]);
+    expect(body.allowed).toEqual(["reactivate", "archive"]);
   });
 
   it("returns 404 for a non-existent node", async () => {
@@ -469,6 +469,69 @@ describe("PATCH /v1/edges/:id/lifecycle — invalid transitions (422)", () => {
       body: JSON.stringify({ transition: "deprecate" }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it("reactivate on DEPRECATED edge → 422 with allowed: [archive]", async () => {
+    const src = await createNode("er-src-dep");
+    const tgt = await createNode("er-tgt-dep");
+    const edge = await createEdge(src.id, tgt.id);
+
+    await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("DEPRECATED");
+    expect(body.requestedTransition).toBe("reactivate");
+    expect(body.allowed).toEqual(["archive"]);
+    expect(body.allowed).not.toContain("reactivate");
+  });
+
+  it("reactivate on ACTIVE edge → 422 with allowed: [deprecate]", async () => {
+    const src = await createNode("er-src-act");
+    const tgt = await createNode("er-tgt-act");
+    const edge = await createEdge(src.id, tgt.id);
+
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("ACTIVE");
+    expect(body.requestedTransition).toBe("reactivate");
+    expect(body.allowed).toEqual(["deprecate"]);
+    expect(body.allowed).not.toContain("reactivate");
+  });
+
+  it("allowed in edge 422 responses never includes reactivate (ARCHIVED state)", async () => {
+    const src = await createNode("er-src-arch");
+    const tgt = await createNode("er-tgt-arch");
+    const edge = await createEdge(src.id, tgt.id);
+
+    for (const t of ["deprecate", "archive"] as const) {
+      await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+        method: "PATCH", headers: h(), body: JSON.stringify({ transition: t }),
+      });
+    }
+
+    const res = await app.request(`/v1/edges/${edge.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("ARCHIVED");
+    expect(body.allowed).not.toContain("reactivate");
+    expect(body.allowed).toEqual(["purge"]);
   });
 });
 
@@ -838,6 +901,167 @@ describe("DELETE /v1/edges/:id — purge enforcement", () => {
     } finally {
       if (orig === undefined) delete process.env.LIFECYCLE_RETENTION_DAYS;
       else process.env.LIFECYCLE_RETENTION_DAYS = orig;
+    }
+  });
+});
+
+// ── POST /v1/lifecycle/nodes/:id/reactivate ───────────────────────────────────
+
+describe("POST /v1/lifecycle/nodes/:id/reactivate", () => {
+  it("transitions DEPRECATED → ACTIVE and resets deprecatedAt", async () => {
+    const node = await createNode("react-node");
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/reactivate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.lifecycleStatus).toBe("ACTIVE");
+    expect(data.deprecatedAt).toBeNull();
+  });
+
+  it("returns 400 when the node is ACTIVE (not DEPRECATED)", async () => {
+    const node = await createNode("react-active");
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/reactivate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when the node is ARCHIVED (cannot reactivate from ARCHIVED)", async () => {
+    const node = await createNode("react-archived");
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+    await app.request(`/v1/lifecycle/nodes/${node.id}/archive`, { method: "POST", headers: h() });
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/reactivate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── PATCH /v1/nodes/:id/lifecycle — reactivate ───────────────────────────────
+
+describe("PATCH /v1/nodes/:id/lifecycle — reactivate", () => {
+  it("reactivate: DEPRECATED → ACTIVE", async () => {
+    const node = await createNode("lc-react");
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    const res = await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.lifecycleStatus).toBe("ACTIVE");
+    expect(data.deprecatedAt).toBeNull();
+  });
+
+  it("returns 422 when reactivating from ACTIVE", async () => {
+    const node = await createNode("lc-react-active");
+    const res = await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("ACTIVE");
+    expect(body.allowed).toEqual(["deprecate"]);
+  });
+
+  it("returns 422 when reactivating from ARCHIVED", async () => {
+    const node = await createNode("lc-react-archived");
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "deprecate" }),
+    });
+    await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH", headers: h(), body: JSON.stringify({ transition: "archive" }),
+    });
+    const res = await app.request(`/v1/nodes/${node.id}/lifecycle`, {
+      method: "PATCH",
+      headers: h(),
+      body: JSON.stringify({ transition: "reactivate" }),
+    });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.currentStatus).toBe("ARCHIVED");
+    expect(body.allowed).toEqual(["purge"]);
+  });
+});
+
+// ── Smoke E2E: deprecate → reactivate + audit log ────────────────────────────
+
+describe("E2E: deprecate → reactivate smoke", () => {
+  it("node ends ACTIVE; audit_log has node.deprecate then node.reactivate", async () => {
+    const { sql: db } = await import("../src/db/client");
+    const node = await createNode("e2e-react");
+
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+    const res = await app.request(`/v1/lifecycle/nodes/${node.id}/reactivate`, {
+      method: "POST",
+      headers: h(),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).data.lifecycleStatus).toBe("ACTIVE");
+
+    const rows = await db<{ operation: string }[]>`
+      SELECT operation FROM audit_log
+      WHERE entity_id = ${node.id} AND tenant_id = ${tid}
+        AND operation IN ('node.deprecate', 'node.reactivate')
+      ORDER BY created_at ASC
+    `;
+    expect(rows).toHaveLength(2);
+    expect(rows[0].operation).toBe("node.deprecate");
+    expect(rows[1].operation).toBe("node.reactivate");
+  });
+});
+
+// ── Drift guard: framework ↔ app allowed-transitions parity ─────────────────
+//
+// The app may be MORE restrictive than the framework (e.g. it requires
+// DEPRECATED as an intermediate step before ARCHIVED, whereas the framework
+// allows the ACTIVE→ARCHIVED skip). The invariant we enforce is one-directional:
+// every transition the APP allows must also be permitted by the framework.
+// If app allows something framework forbids, it's a spec violation.
+
+describe("Drift guard: app transitions are a valid subset of framework", () => {
+  it("every app-allowed transition is also permitted by the framework", async () => {
+    const { canTransitionLifecycle } = await import("@lsds/framework");
+
+    // Map from app transition name to the target LifecycleStatus it produces
+    const transitionToTarget: Record<string, string> = {
+      deprecate: "DEPRECATED",
+      archive: "ARCHIVED",
+      purge: "PURGE",
+      reactivate: "ACTIVE",
+    };
+
+    // The app's ALLOWED_TRANSITIONS (mirrors the private const in lifecycle/index.ts)
+    const appTransitions: Record<string, string[]> = {
+      ACTIVE: ["deprecate"],
+      DEPRECATED: ["reactivate", "archive"],
+      ARCHIVED: ["purge"],
+      PURGE: [],
+    };
+
+    for (const [from, transitions] of Object.entries(appTransitions)) {
+      for (const transition of transitions) {
+        const to = transitionToTarget[transition] as Parameters<typeof canTransitionLifecycle>[1];
+        const frameworkAllows = canTransitionLifecycle(
+          from as Parameters<typeof canTransitionLifecycle>[0],
+          to
+        );
+        expect(
+          frameworkAllows,
+          `App allows ${from}→${transition} (→${to}) but framework forbids it. Remove from ALLOWED_TRANSITIONS in lifecycle/index.ts.`
+        ).toBe(true);
+      }
     }
   });
 });

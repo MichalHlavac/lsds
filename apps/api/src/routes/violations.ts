@@ -26,20 +26,31 @@ export function violationsRouter(sql: Sql): Hono {
     const tenantId = getTenantId(c);
     const nodeId = c.req.query("nodeId");
     const ruleKey = c.req.query("ruleKey");
+    const severity = c.req.query("severity");
     const resolved = c.req.query("resolved");
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
     const offset = Number(c.req.query("offset") ?? 0);
+
+    const [{ total }] = await sql<[{ total: number }]>`
+      SELECT COUNT(*)::int AS total FROM violations
+      WHERE tenant_id = ${tenantId}
+        ${nodeId ? sql`AND node_id = ${nodeId}` : sql``}
+        ${ruleKey ? sql`AND rule_key = ${ruleKey}` : sql``}
+        ${severity ? sql`AND severity = ${severity}` : sql``}
+        ${resolved !== undefined ? sql`AND resolved = ${resolved === "true"}` : sql``}
+    `;
 
     const rows = await sql<ViolationRow[]>`
       SELECT * FROM violations
       WHERE tenant_id = ${tenantId}
         ${nodeId ? sql`AND node_id = ${nodeId}` : sql``}
         ${ruleKey ? sql`AND rule_key = ${ruleKey}` : sql``}
+        ${severity ? sql`AND severity = ${severity}` : sql``}
         ${resolved !== undefined ? sql`AND resolved = ${resolved === "true"}` : sql``}
       ORDER BY created_at DESC
       LIMIT ${limit} OFFSET ${offset}
     `;
-    return c.json({ data: rows });
+    return c.json({ data: rows, total });
   });
 
   app.post("/", async (c) => {

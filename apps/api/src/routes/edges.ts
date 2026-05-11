@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
-import { validateRelationshipEdge } from "@lsds/framework";
-import type { Sql } from "../db/client.js";
+import { validateRelationshipEdge, validateGraphCardinality, getRelationshipDefinition } from "@lsds/framework";
+import type { RelationshipEdge } from "@lsds/framework";
+import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
@@ -24,7 +25,8 @@ import {
   SORT_ORDER_VALUES,
   type EdgeSortField,
 } from "./schemas.js";
-import { getTenantId, jsonb } from "./util.js";
+import { getTenantId, jsonb, toHttpError } from "./util.js";
+import { propagateEdgeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getViolationSuggestion } from "../guardrails/naming.js";
 
@@ -109,9 +111,49 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       }, 422);
     }
 
+    const { cardinality } = getRelationshipDefinition(body.type);
+    if (cardinality !== "M:N") {
+      type ExistingEdgeRow = { sourceTknId: string; targetTknId: string; type: string; sourceLayer: string; targetLayer: string };
+      const existingEdges = await sql<ExistingEdgeRow[]>`
+        SELECT e.source_id AS "sourceTknId", e.target_id AS "targetTknId", e.type,
+               sn.layer AS "sourceLayer", tn.layer AS "targetLayer"
+        FROM edges e
+        JOIN nodes sn ON sn.id = e.source_id AND sn.tenant_id = e.tenant_id
+        JOIN nodes tn ON tn.id = e.target_id AND tn.tenant_id = e.tenant_id
+        WHERE e.tenant_id = ${tenantId}
+          AND e.type = ${body.type}
+          AND e.lifecycle_status != 'ARCHIVED'
+          AND NOT (e.source_id = ${body.sourceId} AND e.target_id = ${body.targetId})
+          AND (
+            ${cardinality === "1:1"
+              ? sql`e.source_id = ${body.sourceId} OR e.target_id = ${body.targetId}`
+              : cardinality === "N:1"
+              ? sql`e.source_id = ${body.sourceId}`
+              : sql`e.target_id = ${body.targetId}`
+            }
+          )
+      `;
+      const cardinalityIssues = validateGraphCardinality([
+        ...existingEdges.map((e) => e as unknown as RelationshipEdge),
+        {
+          type: body.type,
+          sourceTknId: body.sourceId,
+          targetTknId: body.targetId,
+          sourceLayer: sourceNode.layer,
+          targetLayer: targetNode.layer,
+        } as RelationshipEdge,
+      ]);
+      if (cardinalityIssues.length > 0) {
+        return c.json({
+          error: "cardinality violation",
+          violations: cardinalityIssues.map((i) => ({ code: i.code, message: i.message })),
+        }, 422);
+      }
+    }
+
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const [row] = await db<EdgeRow[]>`
           INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
           VALUES (
@@ -171,7 +213,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     `;
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<EdgeRow[]>`
         INSERT INTO edges (tenant_id, source_id, target_id, type, layer, traversal_weight, attributes)
         VALUES (
@@ -194,6 +236,9 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       return row;
     });
     cache.invalidateEdge(tenantId, row.id, row.sourceId, row.targetId);
+    if (previous) {
+      await propagateEdgeChange(sql, tenantId, row);
+    }
     return c.json({ data: row }, previous ? 200 : 201);
   });
 
@@ -256,14 +301,23 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
   app.get("/:id", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const cached = cache.edges.get(cache.edgeKey(tenantId, id));
-    if (cached) return c.json({ data: cached });
+    const includeStaleFlags = c.req.query("includeStaleFlags") === "true";
+
+    if (!includeStaleFlags) {
+      const cached = cache.edges.get(cache.edgeKey(tenantId, id));
+      if (cached) return c.json({ data: cached });
+    }
 
     const [row] = await sql<EdgeRow[]>`
       SELECT * FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}
     `;
     if (!row) return c.json({ error: "not found" }, 404);
     cache.edges.set(cache.edgeKey(tenantId, id), row);
+
+    if (includeStaleFlags) {
+      const staleFlags = await fetchStaleFlagsForObject(sql, tenantId, id, "edge");
+      return c.json({ data: { ...row, staleFlags } });
+    }
     return c.json({ data: row });
   });
 
@@ -283,7 +337,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     }
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<EdgeRow[]>`
         UPDATE edges SET
           ${body.type !== undefined ? db`type = ${body.type},` : db``}
@@ -300,6 +354,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     });
     if (!row) return c.json({ error: "not found" }, 404);
     cache.invalidateEdge(tenantId, id, row.sourceId, row.targetId);
+    await propagateEdgeChange(sql, tenantId, row);
     return c.json({ data: row });
   });
 
@@ -315,7 +370,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const result = await lifecycle.withTransaction(db).transitionEdge(tenantId, id, body.transition);
         if (previous) {
           await recordEdgeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
@@ -326,6 +381,9 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         }
         return result;
       });
+      if (body.transition === "deprecate" || body.transition === "archive") {
+        await propagateEdgeChange(sql, tenantId, row);
+      }
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {
@@ -342,7 +400,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       if (e instanceof Error && e.message === "edge not found") {
         return c.json({ error: "not found" }, 404);
       }
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
@@ -367,7 +425,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     }
 
     await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       await db`DELETE FROM edges WHERE id = ${id} AND tenant_id = ${tenantId}`;
       await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "edge.delete", existing.type, id, edgeDeleteDiff(existing));
     });

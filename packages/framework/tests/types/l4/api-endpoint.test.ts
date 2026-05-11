@@ -116,4 +116,44 @@ describe("APIEndpoint (kap. 4 § L4)", () => {
     expect(HTTP_METHODS).toEqual(["GET", "POST", "PUT", "PATCH", "DELETE", "SUBSCRIBE"]);
     expect(API_ENDPOINT_STATUSES).toEqual(["ACTIVE", "DEPRECATED", "EXPERIMENTAL"]);
   });
+
+  describe("sunsetAt (GR-L4-006 substrate)", () => {
+    it("is optional — ACTIVE endpoint may omit it", () => {
+      expect(ApiEndpointSchema.parse(baseEndpoint).sunsetAt).toBeUndefined();
+    });
+
+    it("accepts an ISO 8601 timestamp on a DEPRECATED endpoint", () => {
+      const parsed = ApiEndpointSchema.parse({
+        ...baseEndpoint,
+        status: "DEPRECATED" as const,
+        sunsetAt: "2027-01-01T00:00:00.000Z",
+      });
+      expect(parsed.status).toBe("DEPRECATED");
+      expect(parsed.sunsetAt).toBe("2027-01-01T00:00:00.000Z");
+    });
+
+    it("accepts a sunsetAt on a non-DEPRECATED endpoint (schema is permissive — GR-L4-006 is descriptive)", () => {
+      const parsed = ApiEndpointSchema.parse({
+        ...baseEndpoint,
+        sunsetAt: "2027-01-01T00:00:00.000Z",
+      });
+      expect(parsed.sunsetAt).toBe("2027-01-01T00:00:00.000Z");
+    });
+
+    it("rejects a non-datetime sunsetAt", () => {
+      const result = ApiEndpointSchema.safeParse({
+        ...baseEndpoint,
+        status: "DEPRECATED" as const,
+        sunsetAt: "soon",
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.some(
+            (i) => i.path.join(".") === "sunsetAt" && /datetime/i.test(i.message),
+          ),
+        ).toBe(true);
+      }
+    });
+  });
 });

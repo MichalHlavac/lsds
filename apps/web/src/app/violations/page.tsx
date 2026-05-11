@@ -23,6 +23,7 @@ interface BulkResolveResult {
 
 export default function ViolationsPage() {
   const [violations, setViolations] = useState<ViolationRow[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
@@ -47,15 +48,14 @@ export default function ViolationsPage() {
     api.violations
       .list({
         ruleKey: ruleKey || undefined,
+        severity: severity || undefined,
         resolved: resolved === "" ? undefined : resolved === "true",
         limit: LIMIT,
         offset,
       })
       .then((res) => {
-        const rows = severity
-          ? res.data.filter((v) => v.severity === severity)
-          : res.data;
-        setViolations(rows);
+        setViolations(res.data);
+        setTotal(res.total);
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -336,7 +336,7 @@ export default function ViolationsPage() {
                       {v.ruleKey}
                     </Link>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-300 max-w-xs truncate">{v.message}</td>
+                  <td className="px-4 py-2.5 text-gray-300 max-w-xs truncate" title={v.message}>{v.message}</td>
                   <td className="px-4 py-2.5">
                     {v.nodeId ? (
                       <Link
@@ -346,7 +346,7 @@ export default function ViolationsPage() {
                         {v.nodeId.slice(0, 8)}…
                       </Link>
                     ) : (
-                      <span className="text-gray-600" aria-label="No node">
+                      <span className="text-gray-500" aria-label="No node">
                         —
                       </span>
                     )}
@@ -383,7 +383,7 @@ export default function ViolationsPage() {
         </button>
         <span className="text-sm text-gray-500" aria-live="polite">
           {violations.length > 0
-            ? `${offset + 1}–${offset + violations.length}`
+            ? `${offset + 1}–${offset + violations.length}${total !== null ? ` of ${total}` : ""}`
             : "0 results"}
         </span>
         <button

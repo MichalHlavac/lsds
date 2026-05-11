@@ -163,8 +163,15 @@ export default function GraphPage() {
 
   if (error && initialLoad) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
         <p className="text-red-400">{error}</p>
+        <button
+          type="button"
+          onClick={() => loadBatch(0, 0)}
+          className="text-sm text-gray-400 hover:text-gray-100 underline"
+        >
+          Retry
+        </button>
       </div>
     );
   }

@@ -20,3 +20,5 @@ export * from "./lifecycle.js";
 export * from "./types.js";
 export * from "./guardrail/index.js";
 export * from "./change/index.js";
+export * from "./serialization.js";
+export * from "./version.js";

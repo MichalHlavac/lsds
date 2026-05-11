@@ -3,7 +3,7 @@
 
 import { Hono } from "hono";
 import { config } from "../config.js";
-import type { Sql } from "../db/client.js";
+import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { NodeHistoryRow, NodeRow } from "../db/types.js";
 import { LifecycleTransitionError, type LifecycleService } from "../lifecycle/index.js";
@@ -26,7 +26,8 @@ import {
   SORT_ORDER_VALUES,
   type NodeSortField,
 } from "./schemas.js";
-import { getTenantId, jsonb } from "./util.js";
+import { getTenantId, jsonb, toHttpError } from "./util.js";
+import { propagateNodeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { EmbeddingService } from "../embeddings/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getViolationSuggestion, getNamingGuidance } from "../guardrails/naming.js";
@@ -94,7 +95,7 @@ export function nodesRouter(
     const ownerName = (body.owner as { name?: string } | undefined)?.name ?? '';
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const [row] = await db<NodeRow[]>`
           INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
           VALUES (
@@ -131,7 +132,7 @@ export function nodesRouter(
     `;
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<NodeRow[]>`
         INSERT INTO nodes (tenant_id, type, layer, name, version, lifecycle_status, attributes, owner_id, owner_name)
         VALUES (
@@ -156,6 +157,9 @@ export function nodesRouter(
       return row;
     });
     embeddingService?.embedNodeAsync(tenantId, row.id, embeddingService.nodeText(row));
+    if (previous) {
+      await propagateNodeChange(sql, tenantId, row);
+    }
     return c.json({ data: row }, previous ? 200 : 201);
   });
 
@@ -273,14 +277,23 @@ export function nodesRouter(
   app.get("/:id", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const cached = cache.nodes.get(cache.nodeKey(tenantId, id));
-    if (cached) return c.json({ data: cached });
+    const includeStaleFlags = c.req.query("includeStaleFlags") === "true";
+
+    if (!includeStaleFlags) {
+      const cached = cache.nodes.get(cache.nodeKey(tenantId, id));
+      if (cached) return c.json({ data: cached });
+    }
 
     const [row] = await sql<NodeRow[]>`
       SELECT * FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}
     `;
     if (!row) return c.json({ error: "not found" }, 404);
     cache.nodes.set(cache.nodeKey(tenantId, id), row);
+
+    if (includeStaleFlags) {
+      const staleFlags = await fetchStaleFlagsForObject(sql, tenantId, id, "node");
+      return c.json({ data: { ...row, staleFlags } });
+    }
     return c.json({ data: row });
   });
 
@@ -306,7 +319,7 @@ export function nodesRouter(
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
 
     const row = await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       const [row] = await db<NodeRow[]>`
         UPDATE nodes SET
           ${body.name !== undefined ? db`name = ${body.name},` : db``}
@@ -329,6 +342,7 @@ export function nodesRouter(
     if (body.name !== undefined || body.attributes !== undefined) {
       embeddingService?.embedNodeAsync(tenantId, id, embeddingService.nodeText(row));
     }
+    await propagateNodeChange(sql, tenantId, row);
     return c.json({ data: row });
   });
 
@@ -344,17 +358,21 @@ export function nodesRouter(
 
     try {
       const row = await sql.begin(async (tx) => {
-        const db = tx as unknown as Sql;
+        const db: AnySql = tx;
         const result = await lifecycle.withTransaction(db).transitionNode(tenantId, id, body.transition);
         if (previous) {
           await recordNodeHistory(db, tenantId, id, "LIFECYCLE_TRANSITION", previous, result);
           const auditOp = body.transition === "deprecate" ? "node.deprecate"
             : body.transition === "archive" ? "node.archive"
+            : body.transition === "reactivate" ? "node.reactivate"
             : "node.purge";
           await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, auditOp, result.type, id, nodeLifecycleDiff(previous, result));
         }
         return result;
       });
+      if (body.transition === "deprecate" || body.transition === "archive") {
+        await propagateNodeChange(sql, tenantId, row);
+      }
       return c.json({ data: row });
     } catch (e) {
       if (e instanceof LifecycleTransitionError) {
@@ -371,7 +389,7 @@ export function nodesRouter(
       if (e instanceof Error && e.message === "node not found") {
         return c.json({ error: "not found" }, 404);
       }
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
@@ -402,7 +420,7 @@ export function nodesRouter(
     const neighborIds = [...new Set(neighborEdges.flatMap(e => [e.sourceId, e.targetId]).filter(nid => nid !== id))];
 
     await sql.begin(async (tx) => {
-      const db = tx as unknown as Sql;
+      const db: AnySql = tx;
       await db`DELETE FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
       await insertAuditLogAndEnqueue(db, tenantId, apiKeyId, "node.delete", existing.type, id, nodeDeleteDiff(existing));
     });

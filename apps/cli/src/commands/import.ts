@@ -76,7 +76,7 @@ async function postBulk(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+      "X-Api-Key": apiKey,
     },
     body: JSON.stringify({ nodes, edges: [] }),
   });
@@ -106,7 +106,7 @@ async function retryIndividually(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        "X-Api-Key": apiKey,
       },
       body: JSON.stringify({ nodes: [node], edges: [] }),
     });
@@ -178,7 +178,7 @@ export async function runImport(opts: ImportOptions): Promise<ImportResult> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${opts.apiKey}`,
+        "X-Api-Key": opts.apiKey,
       },
       body: JSON.stringify({ nodes: batch, edges: [] }),
     });

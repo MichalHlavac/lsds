@@ -91,7 +91,7 @@ describe("runExport", () => {
 
     for (const call of mockFetch.mock.calls) {
       const [, init] = call as [string, RequestInit];
-      expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer my-key");
+      expect((init.headers as Record<string, string>)["X-Api-Key"]).toBe("my-key");
     }
   });
 

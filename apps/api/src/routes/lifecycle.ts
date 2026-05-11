@@ -6,7 +6,7 @@ import type { Sql } from "../db/client.js";
 import type { NodeRow } from "../db/types.js";
 import type { LifecycleService } from "../lifecycle/index.js";
 import { insertAuditLog, nodeLifecycleDiff } from "../db/audit.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, toHttpError } from "./util.js";
 
 export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
   const app = new Hono();
@@ -20,6 +20,22 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       const row = await svc.deprecate(tenantId, id);
       if (before) {
         await insertAuditLog(sql, tenantId, apiKeyId, "node.deprecate", row.type, id, nodeLifecycleDiff(before, row));
+      }
+      return c.json({ data: row });
+    } catch (e) {
+      return c.json(...toHttpError(e));
+    }
+  });
+
+  app.post("/nodes/:id/reactivate", async (c) => {
+    const tenantId = getTenantId(c);
+    const apiKeyId = c.get("apiKeyId") ?? null;
+    const { id } = c.req.param();
+    const [before] = await sql<NodeRow[]>`SELECT * FROM nodes WHERE id = ${id} AND tenant_id = ${tenantId}`;
+    try {
+      const row = await svc.reactivate(tenantId, id);
+      if (before) {
+        await insertAuditLog(sql, tenantId, apiKeyId, "node.reactivate", row.type, id, nodeLifecycleDiff(before, row));
       }
       return c.json({ data: row });
     } catch (e) {
@@ -39,7 +55,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: row });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
@@ -56,7 +72,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: row });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
@@ -72,7 +88,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: { id, purged: true } });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 

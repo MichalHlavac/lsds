@@ -9,11 +9,11 @@ import type {
   RelationshipType,
   LayerId,
   RuleId,
-  Severity,
   ViolationStatus,
 } from "@lsds/framework";
 import type { Sql } from "./client.js";
 import type { NodeRow, ViolationRow } from "./types.js";
+import { dbSeverityToFramework } from "./severity.js";
 
 type EdgeJoinRow = {
   type: string;
@@ -45,11 +45,6 @@ function edgeJoinRowToRelationshipEdge(row: EdgeJoinRow): RelationshipEdge {
     sourceLayer: row.sourceLayer as LayerId,
     targetLayer: row.targetLayer as LayerId,
   };
-}
-
-function dbSeverityToFramework(s: string): Severity {
-  // DB stores "WARN"; framework expects "WARNING".
-  return (s === "WARN" ? "WARNING" : s) as Severity;
 }
 
 function violationRowToRecord(row: ViolationRow): ViolationRecord {

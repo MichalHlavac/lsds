@@ -4,9 +4,9 @@
 import type { Severity } from "../lib/api";
 
 const STYLES: Record<Severity, string> = {
-  ERROR: "bg-red-900 text-red-300 border border-red-700",
-  WARN: "bg-orange-900 text-orange-300 border border-orange-700",
-  INFO: "bg-blue-900 text-blue-300 border border-blue-700",
+  ERROR: "bg-red-900/50 text-red-300 ring-1 ring-red-700",
+  WARN: "bg-orange-900/50 text-orange-300 ring-1 ring-orange-700",
+  INFO: "bg-blue-900/50 text-blue-300 ring-1 ring-blue-700",
 };
 
 export function SeverityBadge({ severity }: { severity: Severity }) {

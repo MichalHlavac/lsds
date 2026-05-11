@@ -8,6 +8,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, type EdgeRow } from "../../lib/api";
 import { LifecycleBadge } from "../../components/LifecycleBadge";
+import { NodeCombobox } from "../../components/NodeCombobox";
 
 const LIMIT = 50;
 
@@ -161,24 +162,36 @@ function EdgesPageInner() {
             className="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-48"
           />
         </div>
-        <FilterInput
-          id="filter-source"
-          label="Source ID"
-          value={sourceId}
-          onChange={(v) => {
-            setSourceId(v);
-            setOffset(0);
-          }}
-        />
-        <FilterInput
-          id="filter-target"
-          label="Target ID"
-          value={targetId}
-          onChange={(v) => {
-            setTargetId(v);
-            setOffset(0);
-          }}
-        />
+        <div>
+          <label htmlFor="filter-source" className="block text-xs text-gray-400 mb-1">
+            Source Node
+          </label>
+          <div className="w-48" id="filter-source">
+            <NodeCombobox
+              value={sourceId}
+              onChange={(v) => {
+                setSourceId(v);
+                setOffset(0);
+              }}
+              placeholder="Search source…"
+            />
+          </div>
+        </div>
+        <div>
+          <label htmlFor="filter-target" className="block text-xs text-gray-400 mb-1">
+            Target Node
+          </label>
+          <div className="w-48" id="filter-target">
+            <NodeCombobox
+              value={targetId}
+              onChange={(v) => {
+                setTargetId(v);
+                setOffset(0);
+              }}
+              placeholder="Search target…"
+            />
+          </div>
+        </div>
         <FilterInput
           id="filter-type"
           label="Type"
@@ -374,7 +387,7 @@ function SortHeader({
         className={`inline-flex items-center gap-1 hover:text-gray-100 transition-colors${active ? " text-gray-100" : ""}`}
       >
         {label}
-        <span className={`text-xs select-none ${active ? "text-blue-400" : "text-gray-600"}`}>
+        <span aria-hidden="true" className={`text-xs select-none ${active ? "text-blue-400" : "text-gray-400"}`}>
           {active ? (order === "asc" ? "↑" : "↓") : "↕"}
         </span>
       </button>

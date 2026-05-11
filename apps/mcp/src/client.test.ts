@@ -626,4 +626,248 @@ describe("createLsdsClient", () => {
     expect(opts.method).toBe("GET");
     expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
   });
+
+  it("checkNaming sends GET to /agent/v1/naming-check with type and name query params", async () => {
+    const response = { valid: true, rule: null, message: null };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.checkNaming("DomainEvent", "OrderPlaced");
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/naming-check?type=DomainEvent&name=OrderPlaced");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("checkNaming URL-encodes type and name with special characters", async () => {
+    const fetch = mockFetch({ data: { valid: false, rule: "naming.event.past-tense", message: "Must be past tense" } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.checkNaming("Domain Event", "order placed");
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/naming-check?type=Domain%20Event&name=order%20placed");
+  });
+
+  it("checkNaming returns the API response data (violation case)", async () => {
+    const response = { valid: false, rule: "naming.event.past-tense", message: "Event names must be past tense" };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.checkNaming("DomainEvent", "CreateOrder");
+
+    expect(result).toEqual(response);
+    expect((result as typeof response).valid).toBe(false);
+    expect((result as typeof response).rule).toBe("naming.event.past-tense");
+  });
+
+  // ── Migration Agent ──────────────────────────────────────────────────────
+
+  it("migrationPropose sends POST to /agent/v1/migration/propose with full body", async () => {
+    const draft = { id: "draft-1", sessionId: "sess-1", proposedType: "Service", status: "pending" };
+    const fetch = mockFetch({ data: draft }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationPropose({
+      sessionId: "sess-1",
+      sourceRef: "legacy::auth-service",
+      proposedType: "Service",
+      proposedLayer: "L4",
+      proposedName: "auth-svc",
+      proposedAttrs: { version: "1.0" },
+      confidence: { proposedType: "HIGH", proposedLayer: "MEDIUM" },
+      owner: "agent-migrate",
+    });
+
+    expect(result).toEqual(draft);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/propose");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body).toMatchObject({
+      sessionId: "sess-1",
+      sourceRef: "legacy::auth-service",
+      proposedType: "Service",
+      proposedLayer: "L4",
+      proposedName: "auth-svc",
+      owner: "agent-migrate",
+    });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationPropose throws on 400 (validation error)", async () => {
+    const fetch = mockFetch({ error: "validation error" }, 400);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(
+      client.migrationPropose({
+        sessionId: "sess-bad",
+        sourceRef: "",
+        proposedType: "Service",
+        proposedLayer: "L4",
+        proposedName: "svc",
+        owner: "agent-migrate",
+      })
+    ).rejects.toThrow("400");
+  });
+
+  it("migrationSession sends GET to /agent/v1/migration/sessions/:id", async () => {
+    const session = { id: "sess-1", status: "open", draftCount: 3 };
+    const fetch = mockFetch({ data: session });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationSession("sess-1");
+
+    expect(result).toEqual(session);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/sessions/sess-1");
+    expect(opts.method).toBe("GET");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationSession URL-encodes the sessionId", async () => {
+    const fetch = mockFetch({ data: { id: "sess/special", status: "open", draftCount: 0 } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.migrationSession("sess/special");
+
+    const [url] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/sessions/sess%2Fspecial");
+  });
+
+  it("migrationCommit sends POST to /agent/v1/migration/sessions/:id/commit", async () => {
+    const committed = { sessionId: "sess-1", committedCount: 5, status: "committed" };
+    const fetch = mockFetch({ data: committed });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationCommit("sess-1");
+
+    expect(result).toEqual(committed);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/sessions/sess-1/commit");
+    expect(opts.method).toBe("POST");
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationCommit throws on 404 (session not found)", async () => {
+    const fetch = mockFetch({ error: "session not found" }, 404);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(client.migrationCommit("nonexistent")).rejects.toThrow("404");
+  });
+
+  it("migrationReviewDraft sends PATCH to /agent/v1/migration/drafts/:id with status and proposedAttrs", async () => {
+    const updated = { id: "draft-1", status: "approved", proposedAttrs: { env: "prod" } };
+    const fetch = mockFetch({ data: updated });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationReviewDraft("draft-1", {
+      status: "approved",
+      proposedAttrs: { env: "prod" },
+    });
+
+    expect(result).toEqual(updated);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/drafts/draft-1");
+    expect(opts.method).toBe("PATCH");
+    const body = JSON.parse(opts.body as string);
+    expect(body).toEqual({ status: "approved", proposedAttrs: { env: "prod" } });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("migrationReviewDraft sends PATCH with rejected status and no proposedAttrs", async () => {
+    const updated = { id: "draft-2", status: "rejected" };
+    const fetch = mockFetch({ data: updated });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.migrationReviewDraft("draft-2", { status: "rejected" });
+
+    expect(result).toEqual(updated);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/migration/drafts/draft-2");
+    expect(opts.method).toBe("PATCH");
+    expect(JSON.parse(opts.body as string)).toEqual({ status: "rejected" });
+  });
+
+  // ── Architect Agent ──────────────────────────────────────────────────────
+
+  it("architectClassifyChange sends POST to /agent/v1/architect/classify-change with correct body", async () => {
+    const response = {
+      classifiedAt: "2026-01-01T00:00:00.000Z",
+      classification: { layer: "L3", confidence: "HIGH", reviewPath: "AUTO_WITH_OVERRIDE", rationale: "API route definition" },
+      signals: [{ source: "file_path", value: "apps/api/src/routes/nodes.ts", inferredLayer: "L3", confidence: "HIGH", rationale: "API route definition" }],
+      recommendations: [],
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectClassifyChange({
+      filePaths: ["apps/api/src/routes/nodes.ts"],
+      nodeTypes: ["APIEndpoint"],
+      nodeIds: ["00000000-0000-0000-0000-000000000001"],
+      diff: "--- a/apps/api/src/routes/nodes.ts\n+++ b/apps/api/src/routes/nodes.ts",
+    });
+
+    expect(result).toEqual(response);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/classify-change");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body).toMatchObject({
+      filePaths: ["apps/api/src/routes/nodes.ts"],
+      nodeTypes: ["APIEndpoint"],
+      nodeIds: ["00000000-0000-0000-0000-000000000001"],
+      diff: expect.stringContaining("routes/nodes.ts"),
+    });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("architectClassifyChange return value has classification shape with layer, confidence, reviewPath, rationale", async () => {
+    const response = {
+      classifiedAt: "2026-05-10T00:00:00.000Z",
+      classification: { layer: "L1", confidence: "HIGH", reviewPath: "REQUIRE_CONFIRMATION", rationale: "Framework type/schema/layer definition" },
+      signals: [{ source: "file_path", value: "packages/framework/src/types.ts", inferredLayer: "L1", confidence: "HIGH", rationale: "Framework type/schema/layer definition" }],
+      recommendations: ["L1 changes require CTO sign-off (REQUIRE_CONFIRMATION)"],
+    };
+    const fetch = mockFetch({ data: response });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.architectClassifyChange({ filePaths: ["packages/framework/src/types.ts"] }) as typeof response;
+
+    expect(result.classifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(result.classification.layer).toBe("L1");
+    expect(result.classification.confidence).toBe("HIGH");
+    expect(result.classification.reviewPath).toBe("REQUIRE_CONFIRMATION");
+    expect(result.classification.rationale).toBe("Framework type/schema/layer definition");
+    expect(result.signals).toHaveLength(1);
+    expect(result.signals[0].source).toBe("file_path");
+  });
+
+  it("architectClassifyChange sends empty object body when called with {}", async () => {
+    const fetch = mockFetch({ data: { classifiedAt: "2026-05-10T00:00:00.000Z", classification: { layer: "L5", confidence: "LOW", reviewPath: "AUTO", rationale: "No signals — defaulting to L5 (module level)" }, signals: [], recommendations: [] } });
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.architectClassifyChange({});
+
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/agent/v1/architect/classify-change");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body as string)).toEqual({});
+  });
 });

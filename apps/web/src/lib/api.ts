@@ -69,6 +69,7 @@ export interface ViolationRow {
 export interface ViolationListParams {
   nodeId?: string;
   ruleKey?: string;
+  severity?: Severity;
   resolved?: boolean;
   limit?: number;
   offset?: number;
@@ -292,10 +293,11 @@ export const api = {
 
   violations: {
     list: (params?: ViolationListParams) =>
-      request<{ data: ViolationRow[] }>("/v1/violations", {
+      request<{ data: ViolationRow[]; total: number }>("/v1/violations", {
         params: {
           nodeId: params?.nodeId,
           ruleKey: params?.ruleKey,
+          severity: params?.severity,
           resolved: params?.resolved !== undefined ? String(params.resolved) : undefined,
           limit: params?.limit,
           offset: params?.offset,

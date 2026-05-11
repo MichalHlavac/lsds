@@ -653,7 +653,7 @@ function SortHeader({
         className={`inline-flex items-center gap-1 hover:text-gray-100 transition-colors${active ? " text-gray-100" : ""}`}
       >
         {label}
-        <span className={`text-xs select-none ${active ? "text-blue-400" : "text-gray-600"}`}>
+        <span aria-hidden="true" className={`text-xs select-none ${active ? "text-blue-400" : "text-gray-400"}`}>
           {active ? (order === "asc" ? "↑" : "↓") : "↕"}
         </span>
       </button>

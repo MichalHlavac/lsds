@@ -113,8 +113,9 @@ export function NodeForm({
       )}
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">Name</label>
+        <label htmlFor="node-name" className="block text-sm text-gray-400 mb-1">Name</label>
         <input
+          id="node-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
@@ -125,11 +126,12 @@ export function NodeForm({
       {!readOnlyInfo && (
         <>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label htmlFor="node-type" className="block text-sm text-gray-400 mb-1">
               Type
               <span className="ml-2 text-xs text-gray-500">(freetext — no catalog yet)</span>
             </label>
             <input
+              id="node-type"
               value={type}
               onChange={(e) => setType(e.target.value)}
               className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
@@ -138,8 +140,9 @@ export function NodeForm({
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Layer</label>
+            <label htmlFor="node-layer" className="block text-sm text-gray-400 mb-1">Layer</label>
             <select
+              id="node-layer"
               value={layer}
               onChange={(e) => setLayer(e.target.value as Layer)}
               className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
@@ -156,8 +159,9 @@ export function NodeForm({
       )}
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">Version</label>
+        <label htmlFor="node-version" className="block text-sm text-gray-400 mb-1">Version</label>
         <input
+          id="node-version"
           value={version}
           onChange={(e) => setVersion(e.target.value)}
           placeholder="0.1.0"
@@ -167,8 +171,9 @@ export function NodeForm({
       </div>
 
       <div>
-        <label className="block text-sm text-gray-400 mb-1">Attributes (JSON)</label>
+        <label htmlFor="node-attributes" className="block text-sm text-gray-400 mb-1">Attributes (JSON)</label>
         <textarea
+          id="node-attributes"
           value={attributesJson}
           onChange={(e) => setAttributesJson(e.target.value)}
           rows={readOnlyInfo ? 6 : 4}
@@ -185,7 +190,7 @@ export function NodeForm({
           <div>
             <span className="text-gray-400">Layer:</span> {readOnlyInfo.layer}
           </div>
-          <div className="text-gray-600">Type and layer are set at creation time.</div>
+          <div className="text-gray-500">Type and layer are set at creation time.</div>
         </div>
       )}
 

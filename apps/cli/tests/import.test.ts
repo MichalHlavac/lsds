@@ -172,7 +172,7 @@ describe("runImport", () => {
     });
 
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer top-secret");
+    expect((init.headers as Record<string, string>)["X-Api-Key"]).toBe("top-secret");
 
     for (const call of consoleSpy.mock.calls) {
       expect(String(call[0])).not.toContain("top-secret");

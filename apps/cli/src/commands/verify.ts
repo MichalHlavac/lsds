@@ -13,7 +13,7 @@ export interface VerifyResult {
 
 export async function runVerify(opts: VerifyOptions): Promise<VerifyResult> {
   const res = await fetch(`${opts.apiUrl}/health/ready`, {
-    headers: { Authorization: `Bearer ${opts.apiKey}` },
+    headers: { "X-Api-Key": opts.apiKey },
   });
   return { ready: res.ok, status: res.status };
 }

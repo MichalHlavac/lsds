@@ -809,6 +809,55 @@ export const openApiSpec = {
       },
     },
 
+    // ── Tenant diagnostics ───────────────────────────────────────────────────
+
+    "/v1/tenant/diagnostics": {
+      get: {
+        operationId: "getTenantDiagnostics",
+        tags: ["Tenant"],
+        summary: "Tenant diagnostics snapshot",
+        description: [
+          "Returns a redacted health snapshot for on-prem support workflows.",
+          "Counts only — no content, no labels, no PII.",
+          "Scoped to the calling tenant.",
+        ].join(" "),
+        security: tenantSecurity,
+        responses: {
+          "200": {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      type: "object",
+                      required: [
+                        "appVersion", "nodeCount", "edgeCount", "apiKeyCount",
+                        "webhookEndpointCount", "auditLogEntries", "lastMutationAt", "dbConnected",
+                      ],
+                      properties: {
+                        appVersion:            { type: "string", description: "Value of APP_VERSION env var, or 'unknown'" },
+                        nodeCount:             { type: "integer", minimum: 0 },
+                        edgeCount:             { type: "integer", minimum: 0 },
+                        apiKeyCount:           { type: "integer", minimum: 0, description: "Active (non-revoked, non-expired) API keys" },
+                        webhookEndpointCount:  { type: "integer", minimum: 0, description: "Active webhook endpoints" },
+                        auditLogEntries:       { type: "integer", minimum: 0 },
+                        lastMutationAt:        { type: ["string", "null"], format: "date-time", description: "max changed_at from node_history, null if empty" },
+                        dbConnected:           { type: "boolean" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": r401,
+        },
+      },
+    },
+
     // ── Violations ───────────────────────────────────────────────────────────
 
     "/v1/violations": {
