@@ -30,6 +30,7 @@ const LEGACY_FILENAMES: Record<string, string> = {
   "020_webhooks.sql": "015_webhooks.sql",
   "021_reactivate.sql": "016_reactivate.sql",
   "022_stale_flags.sql": "017_stale_flags.sql",
+  "023_edge_lifecycle_audit.sql": "018_edge_lifecycle_audit.sql",
 };
 
 /**
