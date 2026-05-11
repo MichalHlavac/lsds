@@ -26,10 +26,10 @@ const LEGACY_FILENAMES: Record<string, string> = {
   "015_history_clock_timestamp.sql": "012_history_clock_timestamp.sql",
   "016_tenant_slug.sql": "012_tenant_slug.sql",
   "017_audit_log.sql": "013_audit_log.sql",
-  "018_rate_limit.sql": "014_rate_limit.sql",
-  "019_webhooks.sql": "015_webhooks.sql",
-  "020_reactivate.sql": "016_reactivate.sql",
-  "021_stale_flags.sql": "017_stale_flags.sql",
+  "019_rate_limit.sql": "014_rate_limit.sql",
+  "020_webhooks.sql": "015_webhooks.sql",
+  "021_reactivate.sql": "016_reactivate.sql",
+  "022_stale_flags.sql": "017_stale_flags.sql",
 };
 
 /**
