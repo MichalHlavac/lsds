@@ -330,6 +330,64 @@ describe("POST /v1/violations/batch-resolve", () => {
   });
 });
 
+// ── GET /v1/violations — cursor pagination ────────────────────────────────────
+
+describe("GET /v1/violations cursor pagination", () => {
+  it("first page has nextCursor when there are more rows", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+    await createViolation(node.id);
+
+    const res = await app.request("/v1/violations?limit=1", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(typeof body.nextCursor).toBe("string");
+  });
+
+  it("last page returns nextCursor: null", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+
+    const res = await app.request("/v1/violations?limit=10", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("fetching with nextCursor returns correct next page (no overlap, no gap)", async () => {
+    const node = await createNode();
+    for (let i = 0; i < 3; i++) {
+      await createViolation(node.id);
+    }
+
+    const page1Res = await app.request("/v1/violations?limit=2", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2Res = await app.request(`/v1/violations?limit=2&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(1);
+
+    const allIds = [...page1.data.map((v: any) => v.id), ...page2.data.map((v: any) => v.id)];
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it("?count=true includes totalCount; without it, totalCount is absent", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+    await createViolation(node.id);
+
+    const withCount = await (await app.request("/v1/violations?count=true", { headers: h() })).json();
+    expect(typeof withCount.totalCount).toBe("number");
+    expect(withCount.totalCount).toBe(2);
+
+    const withoutCount = await (await app.request("/v1/violations", { headers: h() })).json();
+    expect(withoutCount.totalCount).toBeUndefined();
+  });
+});
+
 // ── DELETE /v1/violations/:id ─────────────────────────────────────────────────
 
 describe("DELETE /v1/violations/:id", () => {

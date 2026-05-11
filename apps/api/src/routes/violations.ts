@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { ViolationRow } from "../db/types.js";
 import { CreateViolationSchema, BatchIdsSchema } from "./schemas.js";
-import { getTenantId, jsonb } from "./util.js";
+import { getTenantId, jsonb, encodeCursor, decodeCursor } from "./util.js";
 
 async function lookupEdgeEndpoints(
   sql: Sql,
@@ -29,28 +29,44 @@ export function violationsRouter(sql: Sql): Hono {
     const severity = c.req.query("severity");
     const resolved = c.req.query("resolved");
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
-    const offset = Number(c.req.query("offset") ?? 0);
+    const cursorRaw = c.req.query("cursor");
+    const countOpt = c.req.query("count") === "true";
 
-    const [{ total }] = await sql<[{ total: number }]>`
-      SELECT COUNT(*)::int AS total FROM violations
+    let cursor: { v: string; id: string } | null = null;
+    if (cursorRaw) {
+      cursor = decodeCursor(cursorRaw);
+      if (!cursor) return c.json({ error: "invalid cursor" }, 400);
+    }
+
+    // violations are always sorted created_at DESC, id ASC
+    const cursorClause = cursor
+      ? sql`AND (created_at < ${cursor.v}::timestamptz OR (created_at = ${cursor.v}::timestamptz AND id > ${cursor.id}::uuid))`
+      : sql``;
+
+    const whereClause = sql`
       WHERE tenant_id = ${tenantId}
         ${nodeId ? sql`AND node_id = ${nodeId}` : sql``}
         ${ruleKey ? sql`AND rule_key = ${ruleKey}` : sql``}
         ${severity ? sql`AND severity = ${severity}` : sql``}
         ${resolved !== undefined ? sql`AND resolved = ${resolved === "true"}` : sql``}
+        ${cursorClause}
     `;
 
     const rows = await sql<ViolationRow[]>`
-      SELECT * FROM violations
-      WHERE tenant_id = ${tenantId}
-        ${nodeId ? sql`AND node_id = ${nodeId}` : sql``}
-        ${ruleKey ? sql`AND rule_key = ${ruleKey}` : sql``}
-        ${severity ? sql`AND severity = ${severity}` : sql``}
-        ${resolved !== undefined ? sql`AND resolved = ${resolved === "true"}` : sql``}
-      ORDER BY created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
+      SELECT * FROM violations ${whereClause}
+      ORDER BY created_at DESC, id ASC
+      LIMIT ${limit}
     `;
-    return c.json({ data: rows, total });
+
+    const nextCursor = rows.length === limit
+      ? encodeCursor(rows[rows.length - 1].createdAt.toISOString(), rows[rows.length - 1].id)
+      : null;
+
+    if (countOpt) {
+      const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM violations ${whereClause}`;
+      return c.json({ data: rows, nextCursor, totalCount: Number(count) });
+    }
+    return c.json({ data: rows, nextCursor });
   });
 
   app.post("/", async (c) => {
