@@ -13,16 +13,16 @@ const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 beforeEach(() => { tid = randomUUID(); });
 afterEach(async () => { await cleanTenant(sql, tid); });
 
-async function createNode(layer: string, name: string) {
+async function createNode(layer = "L4") {
   const res = await app.request("/v1/nodes", {
     method: "POST",
     headers: h(),
-    body: JSON.stringify({ type: "Service", layer, name }),
+    body: JSON.stringify({ type: "Service", layer, name: randomUUID() }),
   });
   return (await res.json()).data;
 }
 
-async function createEdge(sourceId: string, targetId: string, type: string, layer: string) {
+async function postEdge(sourceId: string, targetId: string, type: string, layer = "L4") {
   return app.request("/v1/edges", {
     method: "POST",
     headers: h(),
@@ -30,68 +30,132 @@ async function createEdge(sourceId: string, targetId: string, type: string, laye
   });
 }
 
-/**
- * Cardinality enforcement tests for POST /v1/edges.
- *
- * `validateGraphCardinality` exists in the framework but is NOT yet wired into
- * the API edge-creation path. The two negative tests below are acceptance targets
- * for the companion enforcement issue: they are skipped until enforcement lands.
- *
- * To activate: remove `.skip` from the two negative-path tests once the
- * enforcement feature is merged into the API edge-creation path.
- */
-describe("cardinality enforcement — POST /v1/edges", () => {
-  // ── Positive path ─────────────────────────────────────────────────────────
-  // Validates that the first edge of a cardinality-constrained type is accepted.
+// ── 1:1 — supersedes ─────────────────────────────────────────────────────────
 
-  it("accepts the first supersedes edge from a source (1:1 — no prior edge)", async () => {
-    // supersedes: cardinality=1:1, EQUAL layer constraint.
-    // The first outgoing edge is always within cardinality — must return 201.
-    const src = await createNode("L3", "new-adr");
-    const tgt = await createNode("L3", "old-adr");
-
-    const res = await createEdge(src.id, tgt.id, "supersedes", "L3");
+describe("cardinality 1:1 (supersedes)", () => {
+  it("allows the first supersedes edge", async () => {
+    const src = await createNode("L3");
+    const tgt = await createNode("L3");
+    const res = await postEdge(src.id, tgt.id, "supersedes", "L3");
     expect(res.status).toBe(201);
-    const { data } = await res.json();
-    expect(data.type).toBe("supersedes");
-    expect(data.sourceId).toBe(src.id);
-    expect(data.targetId).toBe(tgt.id);
   });
 
-  // ── Negative paths (skipped until cardinality enforcement is wired in) ────
-  // Remove `.skip` once the enforcement feature lands in the API edge-creation path.
+  it("returns 422 CARDINALITY_VIOLATED when source already has an outgoing supersedes edge", async () => {
+    const src = await createNode("L3");
+    const tgt1 = await createNode("L3");
+    const tgt2 = await createNode("L3");
 
-  it.skip("1:1 violation — supersedes: second outgoing edge from the same source → 422", async () => {
-    // supersedes is 1:1: a source node may supersede at most one target.
-    // The first edge succeeds; the second must be rejected with 422.
-    // Currently returns 201 because cardinality is not enforced at the API layer.
-    const src = await createNode("L3", "new-adr");
-    const tgt1 = await createNode("L3", "old-adr-v1");
-    const tgt2 = await createNode("L3", "old-adr-v2");
-
-    const first = await createEdge(src.id, tgt1.id, "supersedes", "L3");
+    const first = await postEdge(src.id, tgt1.id, "supersedes", "L3");
     expect(first.status).toBe(201);
 
-    const second = await createEdge(src.id, tgt2.id, "supersedes", "L3");
+    const second = await postEdge(src.id, tgt2.id, "supersedes", "L3");
     expect(second.status).toBe(422);
     const body = await second.json();
-    expect(body.error).toMatch(/cardinality/i);
+    expect(body.error).toBe("cardinality violation");
+    expect(body.violations[0].code).toBe("CARDINALITY_VIOLATED");
   });
 
-  it.skip("N:1 violation — part-of: second outgoing edge from the same source → 422", async () => {
-    // part-of is N:1: a source node may belong to at most one parent.
-    // The first edge succeeds; the second (different target) must be rejected with 422.
-    // Currently returns 201 because cardinality is not enforced at the API layer.
-    const src = await createNode("L4", "child-service");
-    const parent1 = await createNode("L4", "parent-a");
-    const parent2 = await createNode("L4", "parent-b");
+  it("returns 422 CARDINALITY_VIOLATED when target already has an incoming supersedes edge", async () => {
+    const src1 = await createNode("L3");
+    const src2 = await createNode("L3");
+    const tgt = await createNode("L3");
 
-    const first = await createEdge(src.id, parent1.id, "part-of", "L4");
+    const first = await postEdge(src1.id, tgt.id, "supersedes", "L3");
     expect(first.status).toBe(201);
 
-    const second = await createEdge(src.id, parent2.id, "part-of", "L4");
+    const second = await postEdge(src2.id, tgt.id, "supersedes", "L3");
     expect(second.status).toBe(422);
     const body = await second.json();
-    expect(body.error).toMatch(/cardinality/i);
+    expect(body.error).toBe("cardinality violation");
+    expect(body.violations[0].code).toBe("CARDINALITY_VIOLATED");
+  });
+});
+
+// ── 1:N — contains ───────────────────────────────────────────────────────────
+// contains: SOURCE_LTE_TARGET ordinal — L4 → L4 satisfies 4 ≤ 4.
+
+describe("cardinality 1:N (contains)", () => {
+  it("allows multiple outgoing contains edges from one source (unrestricted source side)", async () => {
+    const src = await createNode();
+    const tgt1 = await createNode();
+    const tgt2 = await createNode();
+
+    const r1 = await postEdge(src.id, tgt1.id, "contains");
+    const r2 = await postEdge(src.id, tgt2.id, "contains");
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
+  });
+
+  it("returns 422 CARDINALITY_VIOLATED when a second source tries to contain the same target", async () => {
+    const src1 = await createNode();
+    const src2 = await createNode();
+    const tgt = await createNode();
+
+    const first = await postEdge(src1.id, tgt.id, "contains");
+    expect(first.status).toBe(201);
+
+    const second = await postEdge(src2.id, tgt.id, "contains");
+    expect(second.status).toBe(422);
+    const body = await second.json();
+    expect(body.error).toBe("cardinality violation");
+    expect(body.violations[0].code).toBe("CARDINALITY_VIOLATED");
+  });
+});
+
+// ── N:1 — part-of ────────────────────────────────────────────────────────────
+// part-of: SOURCE_GTE_TARGET ordinal — L4 → L4 satisfies 4 ≥ 4.
+
+describe("cardinality N:1 (part-of)", () => {
+  it("allows multiple sources to be part-of the same target (unrestricted target side)", async () => {
+    const src1 = await createNode();
+    const src2 = await createNode();
+    const tgt = await createNode();
+
+    const r1 = await postEdge(src1.id, tgt.id, "part-of");
+    const r2 = await postEdge(src2.id, tgt.id, "part-of");
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
+  });
+
+  it("returns 422 CARDINALITY_VIOLATED when source already has an outgoing part-of edge", async () => {
+    const src = await createNode();
+    const tgt1 = await createNode();
+    const tgt2 = await createNode();
+
+    const first = await postEdge(src.id, tgt1.id, "part-of");
+    expect(first.status).toBe(201);
+
+    const second = await postEdge(src.id, tgt2.id, "part-of");
+    expect(second.status).toBe(422);
+    const body = await second.json();
+    expect(body.error).toBe("cardinality violation");
+    expect(body.violations[0].code).toBe("CARDINALITY_VIOLATED");
+  });
+});
+
+// ── M:N — depends-on ─────────────────────────────────────────────────────────
+// depends-on: SOURCE_LTE_TARGET ordinal — L4 → L4 satisfies 4 ≤ 4.
+
+describe("cardinality M:N (depends-on) remains unrestricted", () => {
+  it("allows multiple outgoing depends-on edges from one source", async () => {
+    const src = await createNode();
+    const tgt1 = await createNode();
+    const tgt2 = await createNode();
+
+    const r1 = await postEdge(src.id, tgt1.id, "depends-on");
+    const r2 = await postEdge(src.id, tgt2.id, "depends-on");
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
+  });
+
+  it("allows multiple sources to depends-on the same target", async () => {
+    const src1 = await createNode();
+    const src2 = await createNode();
+    const tgt = await createNode();
+
+    const r1 = await postEdge(src1.id, tgt.id, "depends-on");
+    const r2 = await postEdge(src2.id, tgt.id, "depends-on");
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
   });
 });
