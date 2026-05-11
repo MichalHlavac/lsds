@@ -96,6 +96,36 @@ export function canTransitionViolation(
   return ALLOWED_TRANSITIONS[from].includes(to);
 }
 
+export class ViolationTransitionError extends Error {
+  readonly from: ViolationStatus;
+  readonly to: ViolationStatus;
+  constructor(from: ViolationStatus, to: ViolationStatus) {
+    super(`Illegal violation status transition: ${from} → ${to}`);
+    this.name = "ViolationTransitionError";
+    this.from = from;
+    this.to = to;
+  }
+}
+
+export function assertViolationTransition(
+  from: ViolationStatus,
+  to: ViolationStatus,
+): void {
+  if (!canTransitionViolation(from, to)) {
+    throw new ViolationTransitionError(from, to);
+  }
+}
+
+export function violationStatusSuccessors(
+  from: ViolationStatus,
+): ReadonlyArray<ViolationStatus> {
+  return ALLOWED_TRANSITIONS[from];
+}
+
+export function isTerminalViolationStatus(status: ViolationStatus): boolean {
+  return ALLOWED_TRANSITIONS[status].length === 0;
+}
+
 export function isSuppressionExpired(
   suppression: Suppression,
   now: Date = new Date(),

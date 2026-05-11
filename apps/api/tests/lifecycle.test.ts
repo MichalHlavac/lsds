@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant, createTestTenant } from "./test-helpers";
+import type { NodeRow } from "../src/db/types";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -551,7 +552,7 @@ describe("POST /v1/nodes/batch-lifecycle", () => {
     const { data } = await res.json();
     expect(data.succeeded).toHaveLength(2);
     expect(data.failed).toHaveLength(0);
-    expect(data.succeeded.every((n: any) => n.lifecycleStatus === "DEPRECATED")).toBe(true);
+    expect(data.succeeded.every((n: NodeRow) => n.lifecycleStatus === "DEPRECATED")).toBe(true);
   });
 
   it("returns 207 for partial success (one valid, one invalid transition)", async () => {
