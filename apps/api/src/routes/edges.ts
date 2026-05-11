@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
-import { validateRelationshipEdge } from "@lsds/framework";
+import { validateRelationshipEdge, validateGraphCardinality, getRelationshipDefinition } from "@lsds/framework";
+import type { RelationshipEdge } from "@lsds/framework";
 import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
 import type { EdgeHistoryRow, EdgeRow, NodeRow } from "../db/types.js";
@@ -107,6 +108,46 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
           message: i.message,
         })),
       }, 422);
+    }
+
+    const { cardinality } = getRelationshipDefinition(body.type);
+    if (cardinality !== "M:N") {
+      type ExistingEdgeRow = { sourceTknId: string; targetTknId: string; type: string; sourceLayer: string; targetLayer: string };
+      const existingEdges = await sql<ExistingEdgeRow[]>`
+        SELECT e.source_id AS "sourceTknId", e.target_id AS "targetTknId", e.type,
+               sn.layer AS "sourceLayer", tn.layer AS "targetLayer"
+        FROM edges e
+        JOIN nodes sn ON sn.id = e.source_id AND sn.tenant_id = e.tenant_id
+        JOIN nodes tn ON tn.id = e.target_id AND tn.tenant_id = e.tenant_id
+        WHERE e.tenant_id = ${tenantId}
+          AND e.type = ${body.type}
+          AND e.lifecycle_status != 'ARCHIVED'
+          AND NOT (e.source_id = ${body.sourceId} AND e.target_id = ${body.targetId})
+          AND (
+            ${cardinality === "1:1"
+              ? sql`e.source_id = ${body.sourceId} OR e.target_id = ${body.targetId}`
+              : cardinality === "N:1"
+              ? sql`e.source_id = ${body.sourceId}`
+              : sql`e.target_id = ${body.targetId}`
+            }
+          )
+      `;
+      const cardinalityIssues = validateGraphCardinality([
+        ...existingEdges.map((e) => e as unknown as RelationshipEdge),
+        {
+          type: body.type,
+          sourceTknId: body.sourceId,
+          targetTknId: body.targetId,
+          sourceLayer: sourceNode.layer,
+          targetLayer: targetNode.layer,
+        } as RelationshipEdge,
+      ]);
+      if (cardinalityIssues.length > 0) {
+        return c.json({
+          error: "cardinality violation",
+          violations: cardinalityIssues.map((i) => ({ code: i.code, message: i.message })),
+        }, 422);
+      }
     }
 
     try {
