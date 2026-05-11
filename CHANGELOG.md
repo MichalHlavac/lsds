@@ -5,7 +5,7 @@ Format follows the [§5 template](https://github.com/MichalHlavac/LSDS-research/
 
 ---
 
-## v1.3.0 — TBD
+## v1.3.0 — 2026-05-11
 
 ### Highlights
 
