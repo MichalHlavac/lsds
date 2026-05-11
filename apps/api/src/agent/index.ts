@@ -8,25 +8,10 @@ import {
   type TraversalProfile,
 } from "@lsds/framework";
 import type { Sql } from "../db/client.js";
-import type { LsdsCache } from "../cache/index.js";
+import type { LsdsCache, ContextNodeRow, ContextEdgeRow, ContextViolationRow } from "../cache/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import type { LifecycleService } from "../lifecycle/index.js";
-import type { NodeRow, EdgeRow, ViolationRow, Layer, LifecycleStatus, Severity } from "../db/types.js";
-
-// json_agg serializes PG timestamps as ISO 8601 strings, not Date objects.
-// These DTOs reflect the actual runtime shape returned by the single-CTE query.
-type IsoString = string;
-interface ContextNodeRow extends Omit<NodeRow, "createdAt" | "updatedAt" | "deprecatedAt" | "archivedAt" | "purgeAfter"> {
-  createdAt: IsoString; updatedAt: IsoString;
-  deprecatedAt: IsoString | null; archivedAt: IsoString | null; purgeAfter: IsoString | null;
-}
-interface ContextEdgeRow extends Omit<EdgeRow, "createdAt" | "updatedAt" | "deprecatedAt" | "archivedAt" | "purgeAfter"> {
-  createdAt: IsoString; updatedAt: IsoString;
-  deprecatedAt: IsoString | null; archivedAt: IsoString | null; purgeAfter: IsoString | null;
-}
-interface ContextViolationRow extends Omit<ViolationRow, "createdAt" | "updatedAt" | "resolvedAt"> {
-  createdAt: IsoString; updatedAt: IsoString; resolvedAt: IsoString | null;
-}
+import type { NodeRow, EdgeRow, Layer, LifecycleStatus, Severity } from "../db/types.js";
 import { getTenantId, jsonb } from "../routes/util.js";
 import { AgentSearchSchema, BatchIdsSchema, SemanticSearchSchema, KnowledgeContextSchema } from "../routes/schemas.js";
 import type { EmbeddingService } from "../embeddings/index.js";
@@ -73,7 +58,7 @@ export function agentRouter(
     }
 
     const cacheKey = `agent:ctx:${tenantId}:${nodeId}:${profile}:${tokenBudget ?? ""}`;
-    const hit = cache.traversals.get(cacheKey);
+    const hit = cache.agentCtx.get(cacheKey);
     if (hit) return c.json({ data: hit, cached: true });
 
     const repo = new PostgresGraphRepository(sql, tenantId);
@@ -81,7 +66,7 @@ export function agentRouter(
 
     try {
       const pkg = await engine.traverse(nodeId, { profile, tokenBudget });
-      cache.traversals.set(cacheKey, pkg);
+      cache.agentCtx.set(cacheKey, pkg);
       return c.json({ data: pkg, cached: false });
     } catch (e) {
       if (e instanceof TraversalError) {
@@ -110,7 +95,7 @@ export function agentRouter(
     if (!root) return c.json({ error: "not found" }, 404);
 
     const cacheKey = `agent:kctx:${tenantId}:${nodeId}:${profile}:${maxNodes}:${minSimilarity}`;
-    const hit = cache.traversals.get(cacheKey);
+    const hit = cache.knowledgeCtx.get(cacheKey);
     if (hit) return c.json({ ...hit, cached: true });
 
     const adapter = new PostgresTraversalAdapter(sql, tenantId);
@@ -254,7 +239,7 @@ export function agentRouter(
       .filter((v) => v.nodeId != null && allIdSet.has(v.nodeId));
 
     const payload = { root, nodes, edges, violations, profile, truncated };
-    cache.traversals.set(cacheKey, payload);
+    cache.knowledgeCtx.set(cacheKey, payload);
     return c.json({ ...payload, cached: false });
   });
 
