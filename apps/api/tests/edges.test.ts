@@ -500,64 +500,11 @@ describe("DELETE /v1/edges/:id", () => {
   });
 });
 
-// ── GET /v1/edges — total count ───────────────────────────────────────────────
+// ── GET /v1/edges — cursor pagination ────────────────────────────────────────
 
-describe("GET /v1/edges total count", () => {
-  it("returns total matching the number of edges created", async () => {
-    const a = await createNode("L4", "a");
-    const b = await createNode("L4", "b");
-    const c = await createNode("L4", "c");
-    await app.request("/v1/edges", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ sourceId: a.id, targetId: b.id, type: "contains", layer: "L4" }),
-    });
-    await app.request("/v1/edges", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ sourceId: b.id, targetId: c.id, type: "contains", layer: "L4" }),
-    });
-
-    const res = await app.request("/v1/edges", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(typeof body.total).toBe("number");
-    expect(body.total).toBe(2);
-  });
-
-  it("total is 0 for a tenant with no edges", async () => {
-    const res = await app.request("/v1/edges", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.total).toBe(0);
-  });
-
-  it("total reflects ?type= filter — excludes non-matching edges", async () => {
-    const a = await createNode("L4", "ta");
-    const b = await createNode("L4", "tb");
-    const c = await createNode("L4", "tc");
-    await app.request("/v1/edges", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ sourceId: a.id, targetId: b.id, type: "contains", layer: "L4" }),
-    });
-    await app.request("/v1/edges", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ sourceId: b.id, targetId: c.id, type: "depends-on", layer: "L4" }),
-    });
-
-    const res = await app.request("/v1/edges?type=contains", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.total).toBe(1);
-    expect(body.data.every((e: EdgeRow) => e.type === "contains")).toBe(true);
-  });
-
-  it("total stays consistent with ?limit pagination — full count not page count", async () => {
-    const nodes = await Promise.all(
-      [0, 1, 2].map((i) => createNode("L4", `pn-${i}`))
-    );
+describe("GET /v1/edges cursor pagination", () => {
+  it("first page has nextCursor when there are more rows", async () => {
+    const nodes = await Promise.all([0, 1, 2].map((i) => createNode("L4", `cpn-${i}`)));
     await app.request("/v1/edges", {
       method: "POST",
       headers: h(),
@@ -573,6 +520,59 @@ describe("GET /v1/edges total count", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(1);
-    expect(body.total).toBe(2);
+    expect(typeof body.nextCursor).toBe("string");
+  });
+
+  it("last page returns nextCursor: null", async () => {
+    const nodes = await Promise.all([0, 1].map((i) => createNode("L4", `lpn-${i}`)));
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[0].id, targetId: nodes[1].id, type: "contains", layer: "L4" }),
+    });
+
+    const res = await app.request("/v1/edges?limit=10", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("fetching with nextCursor returns correct next page (no overlap, no gap)", async () => {
+    const nodes = await Promise.all([0, 1, 2, 3].map((i) => createNode("L4", `ppn-${i}`)));
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/edges", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ sourceId: nodes[i].id, targetId: nodes[i + 1].id, type: "contains", layer: "L4" }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/edges?limit=2", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2Res = await app.request(`/v1/edges?limit=2&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(1);
+
+    const allIds = [...page1.data.map((e: any) => e.id), ...page2.data.map((e: any) => e.id)];
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it("?count=true includes totalCount; without it, totalCount is absent", async () => {
+    const nodes = await Promise.all([0, 1].map((i) => createNode("L4", `cen-${i}`)));
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[0].id, targetId: nodes[1].id, type: "contains", layer: "L4" }),
+    });
+
+    const withCount = await (await app.request("/v1/edges?count=true", { headers: h() })).json();
+    expect(typeof withCount.totalCount).toBe("number");
+    expect(withCount.totalCount).toBe(1);
+
+    const withoutCount = await (await app.request("/v1/edges", { headers: h() })).json();
+    expect(withoutCount.totalCount).toBeUndefined();
   });
 });
