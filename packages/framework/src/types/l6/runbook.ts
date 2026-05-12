@@ -24,7 +24,6 @@ export type RunbookStep = z.infer<typeof RunbookStepSchema>;
 export const RunbookSchema = TknBaseSchema.extend({
   type: z.literal("Runbook"),
   layer: z.literal("L6"),
-  title: z.string().min(1),
   triggerCondition: z
     .string()
     .min(1, "Runbook.triggerCondition must describe when this runbook applies"),

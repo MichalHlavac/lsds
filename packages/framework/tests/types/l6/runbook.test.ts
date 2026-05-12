@@ -8,7 +8,6 @@ import { tknBase } from "./_fixtures.js";
 
 const baseRunbook = {
   ...tknBase({ type: "Runbook", layer: "L6", name: "checkout-api-down" }),
-  title: "Checkout API down",
   triggerCondition: "PagerDuty fires on AVAILABILITY SLO breach > 5 minutes.",
   severity: "P1" as const,
   steps: [
