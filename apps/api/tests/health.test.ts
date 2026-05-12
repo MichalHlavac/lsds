@@ -4,18 +4,30 @@
 import { describe, expect, it, vi } from "vitest";
 import { app } from "../src/app";
 
-describe("GET /health (liveness)", () => {
-  it("returns 200", async () => {
+describe("GET /health", () => {
+  it("returns 200 when DB is reachable", async () => {
     const res = await app.request("/health");
     expect(res.status).toBe(200);
   });
 
-  it("returns { status: 'ok' } with numeric uptime", async () => {
+  it("returns full status payload with pool, db, oidc, uptime, ts", async () => {
     const res = await app.request("/health");
-    const body = await res.json() as { status: string; uptime: number };
+    const body = await res.json() as {
+      status: string; db: string; oidc: boolean;
+      uptime: number; ts: string;
+      pool: { size: number; active: number; idle: number; waiting: number };
+    };
     expect(body.status).toBe("ok");
+    expect(body.db).toBe("ok");
+    expect(typeof body.oidc).toBe("boolean");
     expect(typeof body.uptime).toBe("number");
     expect(body.uptime).toBeGreaterThanOrEqual(0);
+    expect(typeof body.ts).toBe("string");
+    expect(body.pool).toBeDefined();
+    expect(typeof body.pool.size).toBe("number");
+    expect(typeof body.pool.active).toBe("number");
+    expect(typeof body.pool.idle).toBe("number");
+    expect(typeof body.pool.waiting).toBe("number");
   });
 
   it("returns JSON content-type", async () => {
@@ -23,7 +35,7 @@ describe("GET /health (liveness)", () => {
     expect(res.headers.get("content-type")).toContain("application/json");
   });
 
-  it("returns 200 even when DB is down", async () => {
+  it("returns 503 with { status: error, db: unreachable } when DB is unreachable", async () => {
     vi.resetModules();
     vi.doMock("../src/db/client.js", () => ({
       sql: Object.assign(
@@ -35,9 +47,10 @@ describe("GET /health (liveness)", () => {
     }));
     const { app: isolatedApp } = await import("../src/app.js");
     const res = await isolatedApp.request("/health");
-    expect(res.status).toBe(200);
-    const body = await res.json() as { status: string };
-    expect(body.status).toBe("ok");
+    expect(res.status).toBe(503);
+    const body = await res.json() as { status: string; db: string };
+    expect(body.status).toBe("error");
+    expect(body.db).toBe("unreachable");
     vi.doUnmock("../src/db/client.js");
     vi.resetModules();
   });

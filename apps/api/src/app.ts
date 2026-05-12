@@ -6,7 +6,7 @@ import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import { ZodError } from "zod";
 import { logger } from "./logger.js";
-import { sql } from "./db/client.js";
+import { sql, DB_POOL_MAX } from "./db/client.js";
 import { config } from "./config.js";
 import { cache } from "./cache/index.js";
 import { GuardrailsRegistry } from "./guardrails/index.js";
@@ -81,8 +81,34 @@ app.get("/health/ready", async (c) => {
   return c.json({ status: "ready" });
 });
 
-app.get("/health", (c) => {
-  return c.json({ status: "ok", uptime: Math.floor((Date.now() - PROCESS_START) / 1000) });
+app.get("/health", async (c) => {
+  try {
+    const [poolRow] = await sql<[{ active: string; idle: string; waiting: string }]>`
+      SELECT
+        count(*) FILTER (WHERE state != 'idle') AS active,
+        count(*) FILTER (WHERE state = 'idle') AS idle,
+        count(*) FILTER (WHERE state = 'active' AND wait_event IS NOT NULL) AS waiting
+      FROM pg_stat_activity
+      WHERE datname = current_database()
+        AND application_name = 'lsds-api'
+        AND pid != pg_backend_pid()
+    `;
+    return c.json({
+      status: "ok",
+      db: "ok",
+      pool: {
+        size: DB_POOL_MAX,
+        active: Number(poolRow.active),
+        idle: Number(poolRow.idle),
+        waiting: Number(poolRow.waiting),
+      },
+      uptime: Math.floor((Date.now() - PROCESS_START) / 1000),
+      ts: new Date().toISOString(),
+      oidc: oidcEnabled,
+    });
+  } catch {
+    return c.json({ status: "error", db: "unreachable", ts: new Date().toISOString() }, 503);
+  }
 });
 
 app.use("/v1/*", apiKeyMiddleware(sql));
