@@ -22,6 +22,7 @@ const EnvSchema = z
       .optional()
       .transform((v) => v === "true"),
     LSDS_RATE_LIMIT_RPM: z.coerce.number().int().positive().default(600),
+    RATE_LIMIT_WRITE_RPM: z.coerce.number().int().positive().default(60),
     OIDC_ISSUER: z.string().url().optional(),
     OIDC_AUDIENCE: z.string().optional(),
     OIDC_JWKS_URI: z.string().url().optional(),
@@ -64,6 +65,7 @@ const EnvSchema = z
     corsOrigin: data.CORS_ORIGIN,
     rateLimitEnabled: data.LSDS_RATE_LIMIT_ENABLED,
     rateLimitRpm: data.LSDS_RATE_LIMIT_RPM,
+    rateLimitWriteRpm: data.RATE_LIMIT_WRITE_RPM,
     oidcIssuer: data.OIDC_ISSUER,
     oidcAudience: data.OIDC_AUDIENCE,
     oidcJwksUri:

@@ -40,7 +40,7 @@ import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
 import { requestLoggerMiddleware } from "./middleware/request-logger.js";
-import { rateLimitMiddleware } from "./middleware/rate-limit.js";
+import { rateLimitMiddleware, ipWriteRateLimitMiddleware } from "./middleware/rate-limit.js";
 import { requestTimeoutMiddleware } from "./middleware/request-timeout.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
@@ -171,6 +171,7 @@ app.use("/v1/*", oidcMiddleware);
 app.use("/agent/*", oidcMiddleware);
 app.use("/v1/*", rateLimitMiddleware(sql));
 app.use("/agent/*", rateLimitMiddleware(sql));
+app.use("/v1/*", ipWriteRateLimitMiddleware());
 
 const v1 = new Hono();
 v1.route("/nodes", nodesRouter(sql, cache, lifecycle, embeddingService, guardrails));
