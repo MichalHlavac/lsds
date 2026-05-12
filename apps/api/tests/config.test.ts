@@ -160,3 +160,79 @@ describe("config — lifecycleRetentionDays getter", () => {
     ),
   );
 });
+
+describe("config — DB_STATEMENT_TIMEOUT_MS", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+    vi.resetModules();
+  });
+
+  it(
+    "defaults to 25000 when DB_STATEMENT_TIMEOUT_MS is unset",
+    withEnv(
+      { ...SAFE_BASE_ENV, DB_STATEMENT_TIMEOUT_MS: undefined },
+      async () => {
+        vi.resetModules();
+        const { config } = await import("../src/config.js");
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(config.dbStatementTimeoutMs).toBe(25000);
+      },
+    ),
+  );
+
+  it(
+    "accepts 25000 and exposes the correct value",
+    withEnv(
+      { ...SAFE_BASE_ENV, DB_STATEMENT_TIMEOUT_MS: "25000" },
+      async () => {
+        vi.resetModules();
+        const { config } = await import("../src/config.js");
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(config.dbStatementTimeoutMs).toBe(25000);
+      },
+    ),
+  );
+
+  it(
+    "accepts 0 (escape hatch — disables the limit)",
+    withEnv(
+      { ...SAFE_BASE_ENV, DB_STATEMENT_TIMEOUT_MS: "0" },
+      async () => {
+        vi.resetModules();
+        const { config } = await import("../src/config.js");
+        expect(exitSpy).not.toHaveBeenCalled();
+        expect(config.dbStatementTimeoutMs).toBe(0);
+      },
+    ),
+  );
+
+  it(
+    "calls process.exit(1) for negative value (-1)",
+    withEnv(
+      { ...SAFE_BASE_ENV, DB_STATEMENT_TIMEOUT_MS: "-1" },
+      async () => {
+        vi.resetModules();
+        await import("../src/config.js");
+        expect(exitSpy).toHaveBeenCalledWith(1);
+      },
+    ),
+  );
+
+  it(
+    "coerces non-numeric value to NaN and calls process.exit(1)",
+    withEnv(
+      { ...SAFE_BASE_ENV, DB_STATEMENT_TIMEOUT_MS: "abc" },
+      async () => {
+        vi.resetModules();
+        await import("../src/config.js");
+        expect(exitSpy).toHaveBeenCalledWith(1);
+      },
+    ),
+  );
+});
