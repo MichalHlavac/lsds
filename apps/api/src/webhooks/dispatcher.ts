@@ -19,7 +19,7 @@ const BACKOFF_SECONDS = [0, 30, 120, 300, 900, 1800] as const;
 
 export interface WebhookDispatcher {
   start(): void;
-  stop(): Promise<void>;
+  stop(timeoutMs?: number): Promise<void>;
   poll(): Promise<void>;
 }
 
@@ -121,17 +121,24 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
     }
   }
 
+  async function executePoll(): Promise<void> {
+    let deliveries: WebhookDeliveryRow[];
+    try {
+      deliveries = await sql.begin((tx) => pollPendingDeliveries(tx));
+    } catch (err) {
+      logger.error({ err }, "webhook dispatcher poll failed");
+      return;
+    }
+    await Promise.allSettled(deliveries.map((d) => dispatch(d)));
+  }
+
   return {
     start() {
       if (timer) return;
-      timer = setInterval(() => {
-        if (!inflightPoll) {
-          inflightPoll = this.poll().finally(() => { inflightPoll = null; });
-        }
-      }, POLL_INTERVAL_MS);
+      timer = setInterval(() => { this.poll(); }, POLL_INTERVAL_MS);
     },
 
-    async stop() {
+    async stop(timeoutMs = ATTEMPT_TIMEOUT_MS) {
       if (timer) {
         clearInterval(timer);
         timer = null;
@@ -139,21 +146,15 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
       if (inflightPoll) {
         await Promise.race([
           inflightPoll,
-          new Promise<void>((resolve) => setTimeout(resolve, ATTEMPT_TIMEOUT_MS)),
+          new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
         ]);
       }
     },
 
-    async poll() {
-      let deliveries: WebhookDeliveryRow[];
-      try {
-        deliveries = await sql.begin((tx) => pollPendingDeliveries(tx));
-      } catch (err) {
-        logger.error({ err }, "webhook dispatcher poll failed");
-        return;
-      }
-
-      await Promise.allSettled(deliveries.map((d) => dispatch(d)));
+    poll() {
+      if (inflightPoll) return inflightPoll;
+      inflightPoll = executePoll().finally(() => { inflightPoll = null; });
+      return inflightPoll;
     },
   };
 }
