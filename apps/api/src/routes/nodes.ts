@@ -239,7 +239,7 @@ export function nodesRouter(
         } else if (e instanceof Error && e.message === "node not found") {
           failed.push({ id, error: "not found" });
         } else {
-          failed.push({ id, error: String(e instanceof Error ? e.message : e) });
+          failed.push({ id, error: "internal server error" });
         }
       }
     }

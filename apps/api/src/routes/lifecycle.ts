@@ -39,7 +39,7 @@ export function lifecycleRouter(svc: LifecycleService, sql: Sql): Hono {
       }
       return c.json({ data: row });
     } catch (e) {
-      return c.json({ error: String(e) }, 400);
+      return c.json(...toHttpError(e));
     }
   });
 
