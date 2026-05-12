@@ -630,6 +630,64 @@ describe("GET /v1/nodes cursor pagination", () => {
     const res = await app.request("/v1/nodes?cursor=notbase64!!!", { headers: h() });
     expect(res.status).toBe(400);
   });
+
+  it("cursor + ?type= filter: all pages return only matching nodes", async () => {
+    for (let i = 0; i < 4; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: `fc-svc-${i}` }),
+      });
+    }
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Database", layer: "L3", name: `fc-db-${i}` }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/nodes?limit=2&type=Service", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+    expect(page1.data.every((n: any) => n.type === "Service")).toBe(true);
+
+    const page2Res = await app.request(`/v1/nodes?limit=2&type=Service&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(2);
+    expect(page2.data.every((n: any) => n.type === "Service")).toBe(true);
+
+    const allIds = [...page1.data.map((n: any) => n.id), ...page2.data.map((n: any) => n.id)];
+    expect(new Set(allIds).size).toBe(4);
+  });
+
+  it("cursor from ?type=Service context reused with ?type=Database: returns 200, only Database nodes in response", async () => {
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: `ctx-svc-${i}` }),
+      });
+    }
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Database", layer: "L3", name: `ctx-db-${i}` }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/nodes?limit=1&type=Service", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.nextCursor).not.toBeNull();
+
+    // Current behavior: type filter is always applied; cursor origin does not bypass the filter
+    const crossRes = await app.request(`/v1/nodes?limit=10&type=Database&cursor=${page1.nextCursor}`, { headers: h() });
+    expect(crossRes.status).toBe(200);
+    const cross = await crossRes.json();
+    expect(cross.data.every((n: any) => n.type === "Database")).toBe(true);
+  });
 });
 
 // ── GET /v1/nodes/:id/neighbors ───────────────────────────────────────────────
