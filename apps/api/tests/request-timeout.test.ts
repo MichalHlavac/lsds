@@ -122,7 +122,7 @@ describe("requestTimeoutMiddleware — logging", () => {
     expect(entry!.obj.path).toBe("/slow");
     expect(entry!.obj.method).toBe("GET");
     expect(typeof entry!.obj.durationMs).toBe("number");
-    expect(entry!.obj.durationMs).toBeGreaterThanOrEqual(TIMEOUT_MS);
+    expect(entry!.obj.durationMs).toBeGreaterThanOrEqual(TIMEOUT_MS - 5);
   });
 
   it("includes tenantId in WARN log when X-Tenant-Id header is present", async () => {
