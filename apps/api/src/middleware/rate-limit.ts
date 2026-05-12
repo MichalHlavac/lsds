@@ -4,6 +4,7 @@
 import { createMiddleware } from "hono/factory";
 import type { Sql } from "../db/client.js";
 import { config } from "../config.js";
+import { logger } from "../logger.js";
 import { insertAuditLog } from "../db/audit.js";
 
 export interface BucketConfig {
@@ -57,9 +58,10 @@ export class InMemoryTokenBucketStore implements RateLimitStore {
 const DEFAULT_RPM = 600;
 const DEFAULT_BURST = 60;
 
-// Shared store — single in-memory instance per process. Injectable via second
-// argument for test isolation.
+// Shared stores — single in-memory instances per process. Injectable via
+// function arguments for test isolation.
 const sharedStore = new InMemoryTokenBucketStore();
+const sharedIpStore = new InMemoryTokenBucketStore();
 
 export function rateLimitMiddleware(sql: Sql, store: RateLimitStore = sharedStore) {
   return createMiddleware(async (c, next) => {
@@ -142,5 +144,40 @@ export function rateLimitMiddleware(sql: Sql, store: RateLimitStore = sharedStor
     c.header("X-RateLimit-Limit", String(limit));
     c.header("X-RateLimit-Remaining", String(remaining));
     c.header("X-RateLimit-Reset", String(resetAt));
+  });
+}
+
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Per-IP token bucket applied only to mutating methods (POST/PUT/PATCH/DELETE).
+ *  Controlled by RATE_LIMIT_WRITE_RPM env var (default 60 req/min).
+ *  Requires X-Forwarded-For to be set by an upstream proxy; skipped otherwise. */
+export function ipWriteRateLimitMiddleware(store: RateLimitStore = sharedIpStore) {
+  return createMiddleware(async (c, next) => {
+    if (!WRITE_METHODS.has(c.req.method)) return next();
+
+    // Extract client IP: trust X-Forwarded-For (set by reverse proxy).
+    // Skip limiting when the header is absent — direct connections without a
+    // proxy cannot provide a reliable client IP.
+    const xff = c.req.header("x-forwarded-for");
+    if (!xff) return next();
+    const ip = xff.split(",")[0].trim();
+
+    const rpm = config.rateLimitWriteRpm;
+    const result = store.consume(`ip:${ip}`, { rpm, burst: rpm });
+
+    if (!result.allowed) {
+      logger.warn(
+        { ip, method: c.req.method, path: c.req.path },
+        "rate limit write hit",
+      );
+      return c.json(
+        { error: "too many requests" },
+        429,
+        { "Retry-After": String(result.retryAfter || 1) },
+      );
+    }
+
+    return next();
   });
 }
