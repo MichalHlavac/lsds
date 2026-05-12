@@ -7,9 +7,14 @@ import {
   SuppressionSchema,
   ViolationSchema,
   ViolationStatusSchema,
+  ViolationTransitionError,
+  assertViolationTransition,
   canTransitionViolation,
   isSuppressionExpired,
+  isTerminalViolationStatus,
+  violationStatusSuccessors,
 } from "../../src/guardrail";
+import type { ViolationStatus } from "../../src/guardrail";
 
 const baseViolation = {
   id: "v-001",
@@ -151,6 +156,80 @@ describe("canTransitionViolation", () => {
 
   it("forbids skipping straight from DETECTED to ACKNOWLEDGED", () => {
     expect(canTransitionViolation("DETECTED", "ACKNOWLEDGED")).toBe(false);
+  });
+});
+
+describe("assertViolationTransition", () => {
+  it("returns void for legal transitions", () => {
+    expect(() => assertViolationTransition("OPEN", "ACKNOWLEDGED")).not.toThrow();
+    expect(() => assertViolationTransition("SUPPRESSED", "OPEN")).not.toThrow();
+  });
+
+  it("throws ViolationTransitionError for illegal transitions", () => {
+    expect(() => assertViolationTransition("RESOLVED", "OPEN")).toThrow(
+      ViolationTransitionError,
+    );
+  });
+
+  it("error carries from/to and a descriptive message", () => {
+    try {
+      assertViolationTransition("DETECTED", "ACKNOWLEDGED");
+      throw new Error("expected to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ViolationTransitionError);
+      const e = err as ViolationTransitionError;
+      expect(e.from).toBe("DETECTED");
+      expect(e.to).toBe("ACKNOWLEDGED");
+      expect(e.name).toBe("ViolationTransitionError");
+      expect(e.message).toMatch(/DETECTED.*ACKNOWLEDGED/);
+    }
+  });
+});
+
+describe("violationStatusSuccessors", () => {
+  it("returns the legal next statuses for OPEN", () => {
+    expect([...violationStatusSuccessors("OPEN")].sort()).toEqual(
+      ["ACKNOWLEDGED", "IN_PROGRESS", "RESOLVED", "SUPPRESSED"].sort(),
+    );
+  });
+
+  it("returns empty for terminal RESOLVED", () => {
+    expect(violationStatusSuccessors("RESOLVED")).toEqual([]);
+  });
+
+  it("stays consistent with canTransitionViolation for every status", () => {
+    const all: ViolationStatus[] = [
+      "DETECTED",
+      "OPEN",
+      "ACKNOWLEDGED",
+      "IN_PROGRESS",
+      "RESOLVED",
+      "SUPPRESSED",
+    ];
+    for (const from of all) {
+      const successors = new Set(violationStatusSuccessors(from));
+      for (const to of all) {
+        expect(canTransitionViolation(from, to)).toBe(successors.has(to));
+      }
+    }
+  });
+});
+
+describe("isTerminalViolationStatus", () => {
+  it("returns true for RESOLVED", () => {
+    expect(isTerminalViolationStatus("RESOLVED")).toBe(true);
+  });
+
+  it("returns false for every non-RESOLVED status", () => {
+    for (const status of [
+      "DETECTED",
+      "OPEN",
+      "ACKNOWLEDGED",
+      "IN_PROGRESS",
+      "SUPPRESSED",
+    ] as const) {
+      expect(isTerminalViolationStatus(status)).toBe(false);
+    }
   });
 });
 

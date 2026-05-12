@@ -41,6 +41,7 @@ import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
 import { requestLoggerMiddleware } from "./middleware/request-logger.js";
 import { rateLimitMiddleware } from "./middleware/rate-limit.js";
+import { requestTimeoutMiddleware } from "./middleware/request-timeout.js";
 import { createEmbeddingProvider, EmbeddingService } from "./embeddings/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -97,6 +98,7 @@ app.use(
 
 app.use("*", requestIdMiddleware);
 app.use("*", requestLoggerMiddleware);
+app.use("*", requestTimeoutMiddleware());
 
 app.get("/health/live", (c) => {
   return c.json({ status: "alive", ts: new Date().toISOString() });

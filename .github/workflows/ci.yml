@@ -28,6 +28,15 @@ jobs:
       - name: Check licenses
         run: node scripts/check-licenses.mjs
 
+  check-migration-prefixes:
+    name: check-migration-prefixes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check migration prefix uniqueness
+        run: node scripts/check-migration-prefixes.mjs
+
   ci:
     name: ci
     runs-on: ubuntu-latest

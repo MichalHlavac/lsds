@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant } from "./test-helpers";
+import type { ViolationRow } from "../src/db/types";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -71,7 +72,7 @@ describe("GET /v1/violations", () => {
 
     const res = await app.request(`/v1/violations?nodeId=${node.id}`, { headers: h() });
     const { data } = await res.json();
-    expect(data.every((v: any) => v.nodeId === node.id)).toBe(true);
+    expect(data.every((v: ViolationRow) => v.nodeId === node.id)).toBe(true);
   });
 });
 
@@ -260,7 +261,7 @@ describe("POST /v1/violations/batch-resolve", () => {
     const { data } = await res.json();
     expect(data.succeeded).toHaveLength(2);
     expect(data.failed).toHaveLength(0);
-    expect(data.succeeded.every((v: any) => v.resolved === true)).toBe(true);
+    expect(data.succeeded.every((v: ViolationRow) => v.resolved === true)).toBe(true);
   });
 
   it("returns 207 for partial success (one unresolved, one already resolved)", async () => {
@@ -326,6 +327,124 @@ describe("POST /v1/violations/batch-resolve", () => {
     const { data } = await res.json();
     expect(data.succeeded).toHaveLength(1);
     expect(data.failed[0].id).toBe(missingId);
+  });
+});
+
+// ── GET /v1/violations — cursor pagination ────────────────────────────────────
+
+describe("GET /v1/violations cursor pagination", () => {
+  it("first page has nextCursor when there are more rows", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+    await createViolation(node.id);
+
+    const res = await app.request("/v1/violations?limit=1", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(typeof body.nextCursor).toBe("string");
+  });
+
+  it("last page returns nextCursor: null", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+
+    const res = await app.request("/v1/violations?limit=10", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("fetching with nextCursor returns correct next page (no overlap, no gap)", async () => {
+    const node = await createNode();
+    for (let i = 0; i < 3; i++) {
+      await createViolation(node.id);
+    }
+
+    const page1Res = await app.request("/v1/violations?limit=2", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2Res = await app.request(`/v1/violations?limit=2&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(1);
+
+    const allIds = [...page1.data.map((v: any) => v.id), ...page2.data.map((v: any) => v.id)];
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it("?count=true includes totalCount; without it, totalCount is absent", async () => {
+    const node = await createNode();
+    await createViolation(node.id);
+    await createViolation(node.id);
+
+    const withCount = await (await app.request("/v1/violations?count=true", { headers: h() })).json();
+    expect(typeof withCount.totalCount).toBe("number");
+    expect(withCount.totalCount).toBe(2);
+
+    const withoutCount = await (await app.request("/v1/violations", { headers: h() })).json();
+    expect(withoutCount.totalCount).toBeUndefined();
+  });
+
+  it("cursor + ?ruleKey= filter: all pages return only matching violations", async () => {
+    const node = await createNode();
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.min_length", severity: "WARN", message: "too short" }),
+      });
+    }
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.max_length", severity: "WARN", message: "too long" }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/violations?limit=2&ruleKey=naming.min_length", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+    expect(page1.data.every((v: any) => v.ruleKey === "naming.min_length")).toBe(true);
+
+    const page2Res = await app.request(`/v1/violations?limit=2&ruleKey=naming.min_length&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(1);
+    expect(page2.data.every((v: any) => v.ruleKey === "naming.min_length")).toBe(true);
+
+    const allIds = [...page1.data.map((v: any) => v.id), ...page2.data.map((v: any) => v.id)];
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it("cursor from ?ruleKey=naming.min_length context reused with ?ruleKey=naming.max_length: returns 200, only max_length violations in response", async () => {
+    const node = await createNode();
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.min_length", severity: "WARN", message: "too short" }),
+      });
+    }
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.max_length", severity: "WARN", message: "too long" }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/violations?limit=1&ruleKey=naming.min_length", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.nextCursor).not.toBeNull();
+
+    // Current behavior: ruleKey filter is always applied; cursor origin does not bypass the filter
+    const crossRes = await app.request(`/v1/violations?limit=10&ruleKey=naming.max_length&cursor=${page1.nextCursor}`, { headers: h() });
+    expect(crossRes.status).toBe(200);
+    const cross = await crossRes.json();
+    expect(cross.data.every((v: any) => v.ruleKey === "naming.max_length")).toBe(true);
   });
 });
 

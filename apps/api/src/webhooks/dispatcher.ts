@@ -15,7 +15,7 @@ import { decryptSecret, signPayload } from "./crypto.js";
 
 const POLL_INTERVAL_MS = 5000;
 const ATTEMPT_TIMEOUT_MS = 5000;
-const BACKOFF_SECONDS = [0, 1, 4, 16] as const;
+const BACKOFF_SECONDS = [0, 30, 120, 300, 900, 1800] as const;
 
 export interface WebhookDispatcher {
   start(): void;
@@ -89,7 +89,7 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
     // recordDeliveryAttempt so it overrides (not gets overridden by) the backoff update.
     if (!succeeded && retryAfterSecs !== null) {
       const currentAttempt = delivery.attemptCount;
-      const backoffSecs = BACKOFF_SECONDS[currentAttempt + 1] ?? 16;
+      const backoffSecs = BACKOFF_SECONDS[currentAttempt + 1] ?? 1800;
       await applyRetryAfter(sql, delivery.id, retryAfterSecs, backoffSecs);
     }
 

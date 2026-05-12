@@ -32,8 +32,8 @@ describe("runExport", () => {
     const edges = [{ id: "e1", sourceId: "n1", targetId: "n2", type: "depends_on" }];
 
     vi.mocked(fetch)
-      .mockResolvedValueOnce(jsonResponse({ data: nodes, total: 1 }))  // nodes page 1
-      .mockResolvedValueOnce(jsonResponse({ data: edges, total: 1 })); // edges page 1
+      .mockResolvedValueOnce(jsonResponse({ data: nodes, nextCursor: null }))  // nodes page 1
+      .mockResolvedValueOnce(jsonResponse({ data: edges, nextCursor: null })); // edges page 1
 
     const outFile = join(outDir, "export.json");
     const result = await runExport({
@@ -53,16 +53,16 @@ describe("runExport", () => {
     expect(parsed.exportedAt).toBeDefined();
   });
 
-  it("paginates when total > one page", async () => {
+  it("paginates when nextCursor is present", async () => {
     const page1 = Array.from({ length: 500 }, (_, i) => ({ id: `n${i}` }));
     const page2 = [{ id: "n500" }];
 
     vi.mocked(fetch)
       // nodes: two pages
-      .mockResolvedValueOnce(jsonResponse({ data: page1, total: 501 }))
-      .mockResolvedValueOnce(jsonResponse({ data: page2, total: 501 }))
+      .mockResolvedValueOnce(jsonResponse({ data: page1, nextCursor: "opaque-cursor" }))
+      .mockResolvedValueOnce(jsonResponse({ data: page2, nextCursor: null }))
       // edges: one empty page
-      .mockResolvedValueOnce(jsonResponse({ data: [], total: 0 }));
+      .mockResolvedValueOnce(jsonResponse({ data: [], nextCursor: null }));
 
     const outFile = join(outDir, "paginated.json");
     const result = await runExport({
@@ -78,8 +78,8 @@ describe("runExport", () => {
 
   it("passes Authorization header on every request", async () => {
     const mockFetch = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ data: [], total: 0 }))
-      .mockResolvedValueOnce(jsonResponse({ data: [], total: 0 }));
+      .mockResolvedValueOnce(jsonResponse({ data: [], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse({ data: [], nextCursor: null }));
     vi.stubGlobal("fetch", mockFetch);
 
     await runExport({
