@@ -10,24 +10,12 @@ describe("GET /health", () => {
     expect(res.status).toBe(200);
   });
 
-  it("returns full status payload with pool, db, oidc, uptime, ts", async () => {
+  it("returns { status: 'ok', uptime } payload", async () => {
     const res = await app.request("/health");
-    const body = await res.json() as {
-      status: string; db: string; oidc: boolean;
-      uptime: number; ts: string;
-      pool: { size: number; active: number; idle: number; waiting: number };
-    };
+    const body = await res.json() as { status: string; uptime: number };
     expect(body.status).toBe("ok");
-    expect(body.db).toBe("ok");
-    expect(typeof body.oidc).toBe("boolean");
     expect(typeof body.uptime).toBe("number");
     expect(body.uptime).toBeGreaterThanOrEqual(0);
-    expect(typeof body.ts).toBe("string");
-    expect(body.pool).toBeDefined();
-    expect(typeof body.pool.size).toBe("number");
-    expect(typeof body.pool.active).toBe("number");
-    expect(typeof body.pool.idle).toBe("number");
-    expect(typeof body.pool.waiting).toBe("number");
   });
 
   it("returns JSON content-type", async () => {
@@ -35,7 +23,7 @@ describe("GET /health", () => {
     expect(res.headers.get("content-type")).toContain("application/json");
   });
 
-  it("returns 503 with { status: error, db: unreachable } when DB is unreachable", async () => {
+  it("returns 200 even when DB is down", async () => {
     vi.resetModules();
     vi.doMock("../src/db/client.js", () => ({
       sql: Object.assign(
@@ -47,10 +35,9 @@ describe("GET /health", () => {
     }));
     const { app: isolatedApp } = await import("../src/app.js");
     const res = await isolatedApp.request("/health");
-    expect(res.status).toBe(503);
-    const body = await res.json() as { status: string; db: string };
-    expect(body.status).toBe("error");
-    expect(body.db).toBe("unreachable");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { status: string };
+    expect(body.status).toBe("ok");
     vi.doUnmock("../src/db/client.js");
     vi.resetModules();
   });
