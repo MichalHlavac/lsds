@@ -33,7 +33,6 @@ export type DebtStatus = z.infer<typeof DebtStatusSchema>;
 export const TechnicalDebtSchema = TknBaseSchema.extend({
   type: z.literal("TechnicalDebt"),
   layer: z.literal("L5"),
-  title: z.string().min(1),
   description: z.string().min(1),
   debtType: DebtTypeSchema,
   impact: z.string().min(1, "TechnicalDebt.impact must describe the concrete consequence of the debt"),
