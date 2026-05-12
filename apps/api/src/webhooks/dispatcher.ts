@@ -19,13 +19,13 @@ const BACKOFF_SECONDS = [0, 30, 120, 300, 900, 1800] as const;
 
 export interface WebhookDispatcher {
   start(): void;
-  stop(): void;
+  stop(): Promise<void>;
   poll(): Promise<void>;
 }
 
 export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
   let timer: ReturnType<typeof setInterval> | null = null;
-  let running = false;
+  let inflightPoll: Promise<void> | null = null;
 
   async function dispatch(delivery: WebhookDeliveryRow): Promise<void> {
     const webhook = await getWebhook(sql, delivery.tenantId, delivery.webhookId);
@@ -125,17 +125,22 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
     start() {
       if (timer) return;
       timer = setInterval(() => {
-        if (!running) {
-          running = true;
-          this.poll().finally(() => { running = false; });
+        if (!inflightPoll) {
+          inflightPoll = this.poll().finally(() => { inflightPoll = null; });
         }
       }, POLL_INTERVAL_MS);
     },
 
-    stop() {
+    async stop() {
       if (timer) {
         clearInterval(timer);
         timer = null;
+      }
+      if (inflightPoll) {
+        await Promise.race([
+          inflightPoll,
+          new Promise<void>((resolve) => setTimeout(resolve, ATTEMPT_TIMEOUT_MS)),
+        ]);
       }
     },
 
