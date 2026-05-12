@@ -22,7 +22,7 @@ export const sql = postgres(config.databaseUrl, {
   connect_timeout: config.dbAcquireTimeout,
   max_lifetime: config.dbMaxLifetime,
   transform: postgres.camel,
-  connection: { application_name: "lsds-api" },
+  connection: { application_name: "lsds-api", statement_timeout: config.dbStatementTimeoutMs },
   debug: (connId: number) => {
     if (!knownConns.has(connId)) {
       knownConns.add(connId);

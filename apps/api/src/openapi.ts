@@ -133,10 +133,18 @@ const pLimit = {
   schema: { type: "integer", minimum: 1, maximum: 500, default: 50 },
 };
 
-const pOffset = {
-  name: "offset",
+const pCursor = {
+  name: "cursor",
   in: "query",
-  schema: { type: "integer", minimum: 0, default: 0 },
+  schema: { type: "string" },
+  description: "Opaque cursor token returned as nextCursor from a previous page. Omit for the first page.",
+};
+
+const pCount = {
+  name: "count",
+  in: "query",
+  schema: { type: "boolean", default: false },
+  description: "When true, fires COUNT(*) and includes totalCount in the response.",
 };
 
 const r400 = { description: "Validation error", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } };
@@ -427,15 +435,17 @@ export const openApiSpec = {
           { name: "sortBy",          in: "query", schema: { type: "string", enum: ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] } },
           { name: "order",           in: "query", schema: { type: "string", enum: ["asc", "desc"] } },
           pLimit,
-          pOffset,
+          pCursor,
+          pCount,
         ],
         responses: {
           ...jsonOk({
             type: "object",
-            required: ["data", "total"],
+            required: ["data", "nextCursor"],
             properties: {
-              data:  { type: "array", items: nodeResponse },
-              total: { type: "integer" },
+              data:       { type: "array", items: nodeResponse },
+              nextCursor: { type: "string", nullable: true },
+              totalCount: { type: "integer", description: "Only present when ?count=true" },
             },
           }),
           "401": r401,
@@ -627,15 +637,17 @@ export const openApiSpec = {
           { name: "sortBy",          in: "query", schema: { type: "string", enum: ["createdAt", "updatedAt", "type", "layer", "traversalWeight"] } },
           { name: "order",           in: "query", schema: { type: "string", enum: ["asc", "desc"] } },
           pLimit,
-          pOffset,
+          pCursor,
+          pCount,
         ],
         responses: {
           ...jsonOk({
             type: "object",
-            required: ["data", "total"],
+            required: ["data", "nextCursor"],
             properties: {
-              data:  { type: "array", items: edgeResponse },
-              total: { type: "integer" },
+              data:       { type: "array", items: edgeResponse },
+              nextCursor: { type: "string", nullable: true },
+              totalCount: { type: "integer", description: "Only present when ?count=true" },
             },
           }),
           "401": r401,
@@ -869,12 +881,22 @@ export const openApiSpec = {
         parameters: [
           { name: "nodeId",   in: "query", schema: { type: "string", format: "uuid" } },
           { name: "ruleKey",  in: "query", schema: { type: "string" } },
+          { name: "severity", in: "query", schema: { $ref: "#/components/schemas/Severity" } },
           { name: "resolved", in: "query", schema: { type: "boolean" } },
           pLimit,
-          pOffset,
+          pCursor,
+          pCount,
         ],
         responses: {
-          "200": { description: "OK", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: { type: "array", items: violationResponse } } } } } },
+          ...jsonOk({
+            type: "object",
+            required: ["data", "nextCursor"],
+            properties: {
+              data:       { type: "array", items: violationResponse },
+              nextCursor: { type: "string", nullable: true },
+              totalCount: { type: "integer", description: "Only present when ?count=true" },
+            },
+          }),
           "401": r401,
         },
       },
