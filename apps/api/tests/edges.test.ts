@@ -575,4 +575,70 @@ describe("GET /v1/edges cursor pagination", () => {
     const withoutCount = await (await app.request("/v1/edges", { headers: h() })).json();
     expect(withoutCount.totalCount).toBeUndefined();
   });
+
+  it("cursor + ?type= filter: all pages return only matching edges", async () => {
+    const nodes = await Promise.all([0, 1, 2, 3, 4].map((i) => createNode("L4", `fe-n-${i}`)));
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/edges", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ sourceId: nodes[i].id, targetId: nodes[i + 1].id, type: "contains", layer: "L4" }),
+      });
+    }
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[3].id, targetId: nodes[4].id, type: "calls", layer: "L4" }),
+    });
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[0].id, targetId: nodes[4].id, type: "calls", layer: "L4" }),
+    });
+
+    const page1Res = await app.request("/v1/edges?limit=2&type=contains", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+    expect(page1.data.every((e: any) => e.type === "contains")).toBe(true);
+
+    const page2Res = await app.request(`/v1/edges?limit=2&type=contains&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(1);
+    expect(page2.data.every((e: any) => e.type === "contains")).toBe(true);
+
+    const allIds = [...page1.data.map((e: any) => e.id), ...page2.data.map((e: any) => e.id)];
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it("cursor from ?type=contains context reused with ?type=calls: returns 200, only calls edges in response", async () => {
+    const nodes = await Promise.all([0, 1, 2, 3].map((i) => createNode("L4", `fctx-n-${i}`)));
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/edges", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ sourceId: nodes[i].id, targetId: nodes[i + 1].id, type: "contains", layer: "L4" }),
+      });
+    }
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[2].id, targetId: nodes[3].id, type: "calls", layer: "L4" }),
+    });
+    await app.request("/v1/edges", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ sourceId: nodes[0].id, targetId: nodes[3].id, type: "calls", layer: "L4" }),
+    });
+
+    const page1Res = await app.request("/v1/edges?limit=1&type=contains", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.nextCursor).not.toBeNull();
+
+    // Current behavior: type filter is always applied; cursor origin does not bypass the filter
+    const crossRes = await app.request(`/v1/edges?limit=10&type=calls&cursor=${page1.nextCursor}`, { headers: h() });
+    expect(crossRes.status).toBe(200);
+    const cross = await crossRes.json();
+    expect(cross.data.every((e: any) => e.type === "calls")).toBe(true);
+  });
 });

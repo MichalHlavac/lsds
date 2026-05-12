@@ -386,6 +386,66 @@ describe("GET /v1/violations cursor pagination", () => {
     const withoutCount = await (await app.request("/v1/violations", { headers: h() })).json();
     expect(withoutCount.totalCount).toBeUndefined();
   });
+
+  it("cursor + ?ruleKey= filter: all pages return only matching violations", async () => {
+    const node = await createNode();
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.min_length", severity: "WARN", message: "too short" }),
+      });
+    }
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.max_length", severity: "WARN", message: "too long" }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/violations?limit=2&ruleKey=naming.min_length", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+    expect(page1.data.every((v: any) => v.ruleKey === "naming.min_length")).toBe(true);
+
+    const page2Res = await app.request(`/v1/violations?limit=2&ruleKey=naming.min_length&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(1);
+    expect(page2.data.every((v: any) => v.ruleKey === "naming.min_length")).toBe(true);
+
+    const allIds = [...page1.data.map((v: any) => v.id), ...page2.data.map((v: any) => v.id)];
+    expect(new Set(allIds).size).toBe(3);
+  });
+
+  it("cursor from ?ruleKey=naming.min_length context reused with ?ruleKey=naming.max_length: returns 200, only max_length violations in response", async () => {
+    const node = await createNode();
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.min_length", severity: "WARN", message: "too short" }),
+      });
+    }
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/violations", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ nodeId: node.id, ruleKey: "naming.max_length", severity: "WARN", message: "too long" }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/violations?limit=1&ruleKey=naming.min_length", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.nextCursor).not.toBeNull();
+
+    // Current behavior: ruleKey filter is always applied; cursor origin does not bypass the filter
+    const crossRes = await app.request(`/v1/violations?limit=10&ruleKey=naming.max_length&cursor=${page1.nextCursor}`, { headers: h() });
+    expect(crossRes.status).toBe(200);
+    const cross = await crossRes.json();
+    expect(cross.data.every((v: any) => v.ruleKey === "naming.max_length")).toBe(true);
+  });
 });
 
 // ── DELETE /v1/violations/:id ─────────────────────────────────────────────────
