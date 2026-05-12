@@ -40,6 +40,7 @@ const EnvSchema = z
     LSDS_ADMIN_SECRET: z.string().optional(),
     LSDS_WEBHOOK_ENCRYPTION_KEY: z.string().optional(),
     REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(25000),
   })
   .superRefine((data, ctx) => {
     if (data.EMBEDDING_PROVIDER === "openai" && !data.OPENAI_API_KEY) {
@@ -76,6 +77,7 @@ const EnvSchema = z
     lifecycleRetentionDays: data.LIFECYCLE_RETENTION_DAYS,
     adminSecret: data.LSDS_ADMIN_SECRET,
     requestTimeoutMs: data.REQUEST_TIMEOUT_MS,
+    dbStatementTimeoutMs: data.DB_STATEMENT_TIMEOUT_MS,
   }));
 
 function parseConfig() {
