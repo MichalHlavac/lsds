@@ -541,68 +541,94 @@ describe("POST /v1/nodes duplicate", () => {
   });
 });
 
-// ── GET /v1/nodes — total count ───────────────────────────────────────────────
+// ── GET /v1/nodes — cursor pagination ────────────────────────────────────────
 
-describe("GET /v1/nodes total count", () => {
-  it("returns total matching the number of nodes created", async () => {
-    await app.request("/v1/nodes", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ type: "Service", layer: "L4", name: "svc-1" }),
-    });
-    await app.request("/v1/nodes", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ type: "Service", layer: "L4", name: "svc-2" }),
-    });
-
-    const res = await app.request("/v1/nodes", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(typeof body.total).toBe("number");
-    expect(body.total).toBe(2);
-  });
-
-  it("total is 0 for an empty tenant", async () => {
-    const res = await app.request("/v1/nodes", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.total).toBe(0);
-  });
-
-  it("total reflects active filter — ?type= excludes non-matching nodes", async () => {
-    await app.request("/v1/nodes", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ type: "Database", layer: "L3", name: "pg" }),
-    });
-    await app.request("/v1/nodes", {
-      method: "POST",
-      headers: h(),
-      body: JSON.stringify({ type: "Service", layer: "L4", name: "api" }),
-    });
-
-    const res = await app.request("/v1/nodes?type=Database", { headers: h() });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.total).toBe(1);
-    expect(body.data.every((n: NodeRow) => n.type === "Database")).toBe(true);
-  });
-
-  it("total stays consistent with ?limit pagination — full count not page count", async () => {
+describe("GET /v1/nodes cursor pagination", () => {
+  it("first page has nextCursor when there are more rows", async () => {
     for (let i = 0; i < 3; i++) {
       await app.request("/v1/nodes", {
         method: "POST",
         headers: h(),
-        body: JSON.stringify({ type: "Service", layer: "L4", name: `svc-page-${i}` }),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: `cursor-svc-${i}` }),
       });
     }
 
-    const res = await app.request("/v1/nodes?limit=1", { headers: h() });
+    const res = await app.request("/v1/nodes?limit=2", { headers: h() });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data).toHaveLength(1);
-    expect(body.total).toBe(3);
+    expect(body.data).toHaveLength(2);
+    expect(typeof body.nextCursor).toBe("string");
+  });
+
+  it("last page returns nextCursor: null", async () => {
+    for (let i = 0; i < 2; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: `last-svc-${i}` }),
+      });
+    }
+
+    const res = await app.request("/v1/nodes?limit=10", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("fetching with nextCursor returns the correct next page (no overlap, no gap)", async () => {
+    for (let i = 0; i < 4; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Service", layer: "L4", name: `paged-svc-${i}` }),
+      });
+    }
+
+    const page1Res = await app.request("/v1/nodes?limit=2", { headers: h() });
+    const page1 = await page1Res.json();
+    expect(page1.data).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2Res = await app.request(`/v1/nodes?limit=2&cursor=${page1.nextCursor}`, { headers: h() });
+    const page2 = await page2Res.json();
+    expect(page2.data).toHaveLength(2);
+
+    const allIds = [...page1.data.map((n: any) => n.id), ...page2.data.map((n: any) => n.id)];
+    expect(new Set(allIds).size).toBe(4);
+  });
+
+  it("?count=true includes totalCount in response", async () => {
+    for (let i = 0; i < 3; i++) {
+      await app.request("/v1/nodes", {
+        method: "POST",
+        headers: h(),
+        body: JSON.stringify({ type: "Database", layer: "L3", name: `cnt-node-${i}` }),
+      });
+    }
+
+    const res = await app.request("/v1/nodes?count=true&type=Database", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.totalCount).toBe("number");
+    expect(body.totalCount).toBe(3);
+  });
+
+  it("without ?count=true, totalCount is absent", async () => {
+    await app.request("/v1/nodes", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "Service", layer: "L4", name: "no-count-svc" }),
+    });
+
+    const res = await app.request("/v1/nodes", { headers: h() });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.totalCount).toBeUndefined();
+  });
+
+  it("returns 400 for an invalid cursor", async () => {
+    const res = await app.request("/v1/nodes?cursor=notbase64!!!", { headers: h() });
+    expect(res.status).toBe(400);
   });
 });
 

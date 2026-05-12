@@ -26,7 +26,7 @@ import {
   SORT_ORDER_VALUES,
   type NodeSortField,
 } from "./schemas.js";
-import { getTenantId, jsonb, toHttpError } from "./util.js";
+import { getTenantId, jsonb, toHttpError, encodeCursor, decodeCursor } from "./util.js";
 import { propagateNodeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { EmbeddingService } from "../embeddings/index.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
@@ -49,7 +49,8 @@ export function nodesRouter(
     const lifecycleStatus = c.req.query("lifecycleStatus");
     const includeArchived = c.req.query("includeArchived") === "true";
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
-    const offset = Number(c.req.query("offset") ?? 0);
+    const cursorRaw = c.req.query("cursor");
+    const countOpt = c.req.query("count") === "true";
     const sortByRaw = c.req.query("sortBy");
     const orderRaw = c.req.query("order");
 
@@ -58,6 +59,12 @@ export function nodesRouter(
     }
     if (orderRaw && !(SORT_ORDER_VALUES as readonly string[]).includes(orderRaw)) {
       return c.json({ error: "invalid order: must be 'asc' or 'desc'" }, 400);
+    }
+
+    let cursor: { v: string; id: string } | null = null;
+    if (cursorRaw) {
+      cursor = decodeCursor(cursorRaw);
+      if (!cursor) return c.json({ error: "invalid cursor" }, 400);
     }
 
     const sortColMap: Record<NodeSortField, ReturnType<typeof sql>> = {
@@ -69,8 +76,31 @@ export function nodesRouter(
       lifecycleStatus: sql`lifecycle_status`,
     };
 
+    const isDesc = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc";
     const sortCol = sortByRaw ? sortColMap[sortByRaw as NodeSortField] : sql`created_at`;
-    const sortDir = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc" ? sql`DESC` : sql`ASC`;
+    const sortDirSql = isDesc ? sql`DESC` : sql`ASC`;
+
+    type ColSpec = { colSql: ReturnType<typeof sql>; isTs: boolean; getValue: (row: NodeRow) => string };
+    const colSpecMap: Record<NodeSortField, ColSpec> = {
+      name:            { colSql: sql`name`,             isTs: false, getValue: (r) => r.name },
+      createdAt:       { colSql: sql`created_at`,        isTs: true,  getValue: (r) => r.createdAt.toISOString() },
+      updatedAt:       { colSql: sql`updated_at`,        isTs: true,  getValue: (r) => r.updatedAt.toISOString() },
+      type:            { colSql: sql`type`,              isTs: false, getValue: (r) => r.type },
+      layer:           { colSql: sql`layer`,             isTs: false, getValue: (r) => r.layer },
+      lifecycleStatus: { colSql: sql`lifecycle_status`,  isTs: false, getValue: (r) => r.lifecycleStatus },
+    };
+    const colSpec = colSpecMap[(sortByRaw ?? "createdAt") as NodeSortField];
+
+    const cursorClause = cursor
+      ? (() => {
+          const { v, id } = cursor;
+          const vFrag = colSpec.isTs ? sql`${v}::timestamptz` : sql`${v}`;
+          const idFrag = sql`${id}::uuid`;
+          return isDesc
+            ? sql`AND (${colSpec.colSql} < ${vFrag} OR (${colSpec.colSql} = ${vFrag} AND id > ${idFrag}))`
+            : sql`AND (${colSpec.colSql} > ${vFrag} OR (${colSpec.colSql} = ${vFrag} AND id > ${idFrag}))`;
+        })()
+      : sql``;
 
     const whereClause = sql`
       WHERE tenant_id = ${tenantId}
@@ -78,13 +108,24 @@ export function nodesRouter(
         ${type ? sql`AND type = ${type}` : sql``}
         ${layer ? sql`AND layer = ${layer}` : sql``}
         ${lifecycleStatus ? sql`AND lifecycle_status = ${lifecycleStatus}` : !includeArchived ? sql`AND lifecycle_status != 'ARCHIVED'` : sql``}
+        ${cursorClause}
     `;
 
-    const [rows, [{ count }]] = await Promise.all([
-      sql<NodeRow[]>`SELECT * FROM nodes ${whereClause} ORDER BY ${sortCol} ${sortDir} LIMIT ${limit} OFFSET ${offset}`,
-      sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM nodes ${whereClause}`,
-    ]);
-    return c.json({ data: rows, total: Number(count) });
+    const rows = await sql<NodeRow[]>`
+      SELECT * FROM nodes ${whereClause}
+      ORDER BY ${sortCol} ${sortDirSql}, id ASC
+      LIMIT ${limit}
+    `;
+
+    const nextCursor = rows.length === limit
+      ? encodeCursor(colSpec.getValue(rows[rows.length - 1]), rows[rows.length - 1].id)
+      : null;
+
+    if (countOpt) {
+      const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM nodes ${whereClause}`;
+      return c.json({ data: rows, nextCursor, totalCount: Number(count) });
+    }
+    return c.json({ data: rows, nextCursor });
   });
 
   app.post("/", async (c) => {
