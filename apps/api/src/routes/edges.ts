@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { Hono } from "hono";
-import { validateRelationshipEdge, validateGraphCardinality, getRelationshipDefinition } from "@lsds/framework";
+import { validateRelationshipEdge, validateGraphCardinality, getRelationshipDefinition, RelationshipEdgeSchema } from "@lsds/framework";
 import type { RelationshipEdge } from "@lsds/framework";
 import type { AnySql, Sql } from "../db/client.js";
 import type { LsdsCache } from "../cache/index.js";
@@ -153,8 +153,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
 
     const { cardinality } = getRelationshipDefinition(body.type);
     if (cardinality !== "M:N") {
-      type ExistingEdgeRow = { sourceTknId: string; targetTknId: string; type: string; sourceLayer: string; targetLayer: string };
-      const existingEdges = await sql<ExistingEdgeRow[]>`
+      const existingEdges = await sql<Record<string, unknown>[]>`
         SELECT e.source_id AS "sourceTknId", e.target_id AS "targetTknId", e.type,
                sn.layer AS "sourceLayer", tn.layer AS "targetLayer"
         FROM edges e
@@ -174,7 +173,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
           )
       `;
       const cardinalityIssues = validateGraphCardinality([
-        ...existingEdges.map((e) => e as unknown as RelationshipEdge),
+        ...existingEdges.map((e) => RelationshipEdgeSchema.parse(e)),
         {
           type: body.type,
           sourceTknId: body.sourceId,
