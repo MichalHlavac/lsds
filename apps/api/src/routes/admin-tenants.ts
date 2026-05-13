@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Sql } from "../db/client.js";
 import { generateApiKey, sha256hex } from "../auth/api-key.js";
+import { logAdminOperation } from "../db/admin-audit.js";
 
 const PatchTenantRateLimitsSchema = z.object({
   rateLimitRpm: z.number().int().positive(),
@@ -57,6 +58,14 @@ export function adminTenantsRouter(sql: Sql): Hono {
     }
 
     const { tenant, apiKey } = result;
+
+    await logAdminOperation(sql, "tenant.create", tenant!.id, {
+      tenantId: tenant!.id,
+      name: tenant!.name,
+      slug: tenant!.slug,
+      plan: tenant!.plan,
+    });
+
     // apiKey is returned once in plaintext — caller must store it; hash never exposed
     return c.json(
       {
@@ -74,6 +83,11 @@ export function adminTenantsRouter(sql: Sql): Hono {
     const { tenantId } = c.req.param();
     const body = PatchTenantRateLimitsSchema.parse(await c.req.json());
 
+    const [before] = await sql<[{ rateLimitRpm: number; rateLimitBurst: number }?]>`
+      SELECT rate_limit_rpm, rate_limit_burst FROM tenants WHERE id = ${tenantId}
+    `;
+    if (!before) return c.json({ error: "tenant not found" }, 404);
+
     const [row] = await sql<[{ id: string; rateLimitRpm: number; rateLimitBurst: number }?]>`
       UPDATE tenants
       SET
@@ -85,6 +99,12 @@ export function adminTenantsRouter(sql: Sql): Hono {
     `;
 
     if (!row) return c.json({ error: "tenant not found" }, 404);
+
+    await logAdminOperation(sql, "tenant.update_rate_limits", tenantId, {
+      before: { rateLimitRpm: before.rateLimitRpm, rateLimitBurst: before.rateLimitBurst },
+      after: { rateLimitRpm: row.rateLimitRpm, rateLimitBurst: row.rateLimitBurst },
+    });
+
     return c.json({ data: row });
   });
 
@@ -101,10 +121,11 @@ export function adminTenantsRouter(sql: Sql): Hono {
     const hash = await sha256hex(rawKey);
     const prefix = rawKey.slice(0, 8);
 
-    const newKey = await sql.begin(async (tx) => {
-      await tx`
+    const { newKey, revokedIds } = await sql.begin(async (tx) => {
+      const revoked = await tx<{ id: string }[]>`
         UPDATE api_keys SET revoked_at = now()
         WHERE tenant_id = ${tenantId} AND revoked_at IS NULL
+        RETURNING id
       `;
 
       const [apiKey] = await tx<[{ id: string; keyPrefix: string; createdAt: Date }]>`
@@ -113,7 +134,11 @@ export function adminTenantsRouter(sql: Sql): Hono {
         RETURNING id, key_prefix, created_at
       `;
 
-      return apiKey;
+      return { newKey: apiKey, revokedIds: revoked.map((r) => r.id) };
+    });
+
+    await logAdminOperation(sql, "tenant.rotate_api_key", tenantId, {
+      revokedKeyIds: revokedIds,
     });
 
     return c.json({ data: { ...newKey, key: rawKey } });
