@@ -1684,5 +1684,87 @@ export const openApiSpec = {
         },
       },
     },
+    "/api/admin/audit-log": {
+      get: {
+        operationId: "getAdminAuditLog",
+        summary: "List admin operation audit log entries",
+        description: [
+          "Returns admin operation log entries in reverse chronological order.",
+          "Cursor-based pagination via the `before` parameter (ISO timestamp of the last entry received).",
+          "Requires admin Bearer token in the Authorization header.",
+        ].join(" "),
+        tags: ["Admin"],
+        security: [{ adminBearer: [] }],
+        parameters: [
+          {
+            name: "tenantId",
+            in: "query",
+            schema: { type: "string", format: "uuid" },
+            description: "Filter entries by target tenant ID.",
+          },
+          {
+            name: "operation",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["tenant.create", "tenant.update_rate_limits", "tenant.rotate_api_key"],
+            },
+            description: "Filter by operation type.",
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+            description: "Maximum number of entries to return.",
+          },
+          {
+            name: "before",
+            in: "query",
+            schema: { type: "string", format: "date-time" },
+            description: "Cursor: return entries with created_at earlier than this ISO timestamp.",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data", "meta"],
+                  properties: {
+                    data: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        required: ["id", "operation", "targetTenantId", "payload", "createdAt"],
+                        properties: {
+                          id:             { type: "string", format: "uuid" },
+                          operation:      { type: "string", enum: ["tenant.create", "tenant.update_rate_limits", "tenant.rotate_api_key"] },
+                          targetTenantId: { type: ["string", "null"], format: "uuid" },
+                          payload:        { type: "object", additionalProperties: true },
+                          createdAt:      { type: "string", format: "date-time" },
+                        },
+                      },
+                    },
+                    meta: {
+                      type: "object",
+                      required: ["count", "hasMore", "nextBefore"],
+                      properties: {
+                        count:      { type: "integer" },
+                        hasMore:    { type: "boolean" },
+                        nextBefore: { type: ["string", "null"], format: "date-time", description: "Pass as `before` in the next request. Null means no more pages." },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
   },
 } as const;
