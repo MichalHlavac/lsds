@@ -22,6 +22,7 @@ const EnvSchema = z
       .optional()
       .transform((v) => v === "true"),
     LSDS_RATE_LIMIT_RPM: z.coerce.number().int().positive().default(600),
+    RATE_LIMIT_WRITE_RPM: z.coerce.number().int().positive().default(60),
     OIDC_ISSUER: z.string().url().optional(),
     OIDC_AUDIENCE: z.string().optional(),
     OIDC_JWKS_URI: z.string().url().optional(),
@@ -39,6 +40,8 @@ const EnvSchema = z
     LIFECYCLE_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
     LSDS_ADMIN_SECRET: z.string().optional(),
     LSDS_WEBHOOK_ENCRYPTION_KEY: z.string().optional(),
+    REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    DB_STATEMENT_TIMEOUT_MS: z.coerce.number().int().nonnegative().default(25000),
   })
   .superRefine((data, ctx) => {
     if (data.EMBEDDING_PROVIDER === "openai" && !data.OPENAI_API_KEY) {
@@ -62,6 +65,7 @@ const EnvSchema = z
     corsOrigin: data.CORS_ORIGIN,
     rateLimitEnabled: data.LSDS_RATE_LIMIT_ENABLED,
     rateLimitRpm: data.LSDS_RATE_LIMIT_RPM,
+    rateLimitWriteRpm: data.RATE_LIMIT_WRITE_RPM,
     oidcIssuer: data.OIDC_ISSUER,
     oidcAudience: data.OIDC_AUDIENCE,
     oidcJwksUri:
@@ -74,6 +78,8 @@ const EnvSchema = z
     port: data.PORT,
     lifecycleRetentionDays: data.LIFECYCLE_RETENTION_DAYS,
     adminSecret: data.LSDS_ADMIN_SECRET,
+    requestTimeoutMs: data.REQUEST_TIMEOUT_MS,
+    dbStatementTimeoutMs: data.DB_STATEMENT_TIMEOUT_MS,
   }));
 
 function parseConfig() {

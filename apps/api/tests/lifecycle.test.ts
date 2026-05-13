@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant, createTestTenant } from "./test-helpers";
+import type { NodeRow } from "../src/db/types";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -551,7 +552,7 @@ describe("POST /v1/nodes/batch-lifecycle", () => {
     const { data } = await res.json();
     expect(data.succeeded).toHaveLength(2);
     expect(data.failed).toHaveLength(0);
-    expect(data.succeeded.every((n: any) => n.lifecycleStatus === "DEPRECATED")).toBe(true);
+    expect(data.succeeded.every((n: NodeRow) => n.lifecycleStatus === "DEPRECATED")).toBe(true);
   });
 
   it("returns 207 for partial success (one valid, one invalid transition)", async () => {
@@ -940,6 +941,28 @@ describe("POST /v1/lifecycle/nodes/:id/reactivate", () => {
       headers: h(),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("returns 500 with generic message when DB throws (not 400 with stack trace)", async () => {
+    const { LifecycleService } = await import("../src/lifecycle/index.js");
+    const node = await createNode("react-db-err");
+    await app.request(`/v1/lifecycle/nodes/${node.id}/deprecate`, { method: "POST", headers: h() });
+
+    const spy = vi.spyOn(LifecycleService.prototype, "reactivate").mockRejectedValueOnce(
+      new Error("connection to server on socket failed: postgres")
+    );
+    try {
+      const res = await app.request(`/v1/lifecycle/nodes/${node.id}/reactivate`, {
+        method: "POST",
+        headers: h(),
+      });
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe("internal server error");
+      expect(body.error).not.toMatch(/stack|at |postgres/i);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

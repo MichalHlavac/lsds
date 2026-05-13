@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant, createTestTenant } from "./test-helpers";
+import type { NodeHistoryRow, EdgeHistoryRow } from "../src/db/types";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -58,7 +59,7 @@ describe("GET /v1/nodes/:id/history", () => {
     expect(res.status).toBe(200);
     const { data, total } = await res.json();
     expect(total).toBeGreaterThanOrEqual(1);
-    const createEntry = data.find((e: any) => e.op === "CREATE");
+    const createEntry = data.find((e: NodeHistoryRow) => e.op === "CREATE");
     expect(createEntry).toBeDefined();
     expect(createEntry.previous).toBeNull();
     expect(createEntry.current).toBeDefined();
@@ -78,7 +79,7 @@ describe("GET /v1/nodes/:id/history", () => {
     expect(res.status).toBe(200);
     const { data, total } = await res.json();
     expect(total).toBeGreaterThanOrEqual(1);
-    const updateEntry = data.find((e: any) => e.op === "UPDATE");
+    const updateEntry = data.find((e: NodeHistoryRow) => e.op === "UPDATE");
     expect(updateEntry).toBeDefined();
     expect(updateEntry.nodeId).toBe(node.id);
     expect(updateEntry.previous).toBeDefined();
@@ -101,7 +102,7 @@ describe("GET /v1/nodes/:id/history", () => {
 
     const res = await app.request(`/v1/nodes/${node.id}/history`, { headers: h() });
     const { data } = await res.json();
-    const timestamps = data.map((e: any) => new Date(e.changedAt).getTime());
+    const timestamps = data.map((e: NodeHistoryRow) => new Date(e.changedAt).getTime());
     expect(timestamps).toEqual([...timestamps].sort((a, b) => b - a));
   });
 
@@ -116,7 +117,7 @@ describe("GET /v1/nodes/:id/history", () => {
 
     const res = await app.request(`/v1/nodes/${node.id}/history`, { headers: h() });
     const { data } = await res.json();
-    const lcEntry = data.find((e: any) => e.op === "LIFECYCLE_TRANSITION");
+    const lcEntry = data.find((e: NodeHistoryRow) => e.op === "LIFECYCLE_TRANSITION");
     expect(lcEntry).toBeDefined();
     expect(lcEntry.nodeId).toBe(node.id);
   });
@@ -175,7 +176,7 @@ describe("GET /v1/edges/:id/history", () => {
     expect(res.status).toBe(200);
     const { data, total } = await res.json();
     expect(total).toBeGreaterThanOrEqual(1);
-    const createEntry = data.find((e: any) => e.op === "CREATE");
+    const createEntry = data.find((e: EdgeHistoryRow) => e.op === "CREATE");
     expect(createEntry).toBeDefined();
     expect(createEntry.previous).toBeNull();
     expect(createEntry.edgeId).toBe(edge.id);
@@ -195,7 +196,7 @@ describe("GET /v1/edges/:id/history", () => {
     const res = await app.request(`/v1/edges/${edge.id}/history`, { headers: h() });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const updateEntry = data.find((e: any) => e.op === "UPDATE");
+    const updateEntry = data.find((e: EdgeHistoryRow) => e.op === "UPDATE");
     expect(updateEntry).toBeDefined();
     expect(updateEntry.edgeId).toBe(edge.id);
     expect(updateEntry.previous).toBeDefined();
@@ -215,7 +216,7 @@ describe("GET /v1/edges/:id/history", () => {
 
     const res = await app.request(`/v1/edges/${edge.id}/history`, { headers: h() });
     const { data } = await res.json();
-    const lcEntry = data.find((e: any) => e.op === "LIFECYCLE_TRANSITION");
+    const lcEntry = data.find((e: EdgeHistoryRow) => e.op === "LIFECYCLE_TRANSITION");
     expect(lcEntry).toBeDefined();
   });
 });

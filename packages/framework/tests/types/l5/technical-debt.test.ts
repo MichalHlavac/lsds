@@ -8,7 +8,6 @@ import { tknBase } from "./_fixtures.js";
 
 const baseDebt = {
   ...tknBase({ type: "TechnicalDebt", layer: "L5", name: "Inline JSON cache" }),
-  title: "Inline JSON cache instead of Redis",
   description: "Cache layer holds JSON in-process so the API ships before Redis is provisioned.",
   debtType: "DESIGN" as const,
   impact: "Cache loss on every restart, no horizontal scale.",

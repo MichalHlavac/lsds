@@ -25,6 +25,7 @@ export async function cleanTenant(sql: Sql, tid: string): Promise<void> {
   await sql`DELETE FROM webhook_deliveries WHERE tenant_id = ${tid}`;
   await sql`DELETE FROM webhooks WHERE tenant_id = ${tid}`;
   await sql`DELETE FROM audit_log WHERE tenant_id = ${tid}`;
+  await sql`DELETE FROM admin_audit_log WHERE target_tenant_id = ${tid}`;
   // tenant row last — stale_flags has FK to tenants; other tables do not
   await sql`DELETE FROM tenants WHERE id = ${tid}`;
 }

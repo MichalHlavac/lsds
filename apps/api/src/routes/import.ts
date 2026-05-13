@@ -62,7 +62,7 @@ export function importRouter(sql: Sql): Hono {
             INSERT INTO node_history (node_id, tenant_id, op, previous, current)
             VALUES (
               ${row.id}, ${tenantId}, 'CREATE', NULL,
-              ${jsonb(txSql, row as unknown as Record<string, unknown>)}
+              ${jsonb(txSql, row )}
             )
           `;
           lastAuditLogId = await insertAuditLogAndEnqueue(
@@ -111,7 +111,7 @@ export function importRouter(sql: Sql): Hono {
             INSERT INTO edge_history (edge_id, tenant_id, op, previous, current)
             VALUES (
               ${row.id}, ${tenantId}, 'CREATE', NULL,
-              ${jsonb(txSql, row as unknown as Record<string, unknown>)}
+              ${jsonb(txSql, row )}
             )
           `;
           lastAuditLogId = await insertAuditLogAndEnqueue(
