@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { TknBaseSchema } from "../../shared/base.js";
-import { ISO_DATE, PersonRefSchema, UuidSchema } from "../../shared/refs.js";
+import { ISO_DATE, PersonRefSchema } from "../../shared/refs.js";
 
 // ADR has its own status state machine (kap. 4 § L3 / ADR), distinct from
 // TknBase.lifecycle. Lifecycle = node-level (ACTIVE/DEPRECATED/ARCHIVED/PURGE);
@@ -33,23 +33,5 @@ export const AdrSchema = TknBaseSchema.extend({
     .min(1, "ADR.alternativesConsidered must contain at least one option (kap. 4 invariant)"),
   author: PersonRefSchema,
   decisionDate: z.string().regex(ISO_DATE, "ADR.decisionDate must be ISO date (YYYY-MM-DD)"),
-  supersededByAdrId: UuidSchema.optional(),
-}).superRefine((value, ctx) => {
-  if (value.status === "SUPERSEDED" && !value.supersededByAdrId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message:
-        "SUPERSEDED ADR must have supersededByAdrId pointing at the replacing ADR (kap. 4 invariant)",
-      path: ["supersededByAdrId"],
-    });
-  }
-  if (value.status !== "SUPERSEDED" && value.supersededByAdrId !== undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "supersededByAdrId is only valid when status === SUPERSEDED",
-      path: ["supersededByAdrId"],
-    });
-  }
 });
 export type Adr = z.infer<typeof AdrSchema>;
-

@@ -69,34 +69,6 @@ describe("ADR (kap. 4 § L3)", () => {
     expectIssue(AdrSchema.safeParse({ ...baseAdr, decisionDate: "April 15, 2026" }), /ISO date/);
   });
 
-  it("requires supersededByAdrId when status === SUPERSEDED", () => {
-    expectIssue(
-      AdrSchema.safeParse({ ...baseAdr, status: "SUPERSEDED" }),
-      /SUPERSEDED ADR must have supersededByAdrId/,
-    );
-  });
-
-  it("accepts SUPERSEDED with valid supersededByAdrId", () => {
-    expect(
-      AdrSchema.parse({
-        ...baseAdr,
-        status: "SUPERSEDED",
-        supersededByAdrId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-      }),
-    ).toMatchObject({ status: "SUPERSEDED" });
-  });
-
-  it("rejects supersededByAdrId on non-SUPERSEDED status", () => {
-    expectIssue(
-      AdrSchema.safeParse({
-        ...baseAdr,
-        status: "ACCEPTED",
-        supersededByAdrId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-      }),
-      /only valid when status === SUPERSEDED/,
-    );
-  });
-
   it("rejects too-short rationale (≥ 30 chars)", () => {
     expectIssue(AdrSchema.safeParse({ ...baseAdr, rationale: "because" }), /rationale/);
   });
@@ -104,7 +76,6 @@ describe("ADR (kap. 4 § L3)", () => {
   it("rejects unknown status (closed enum)", () => {
     expectIssue(AdrSchema.safeParse({ ...baseAdr, status: "DRAFT" }), /Invalid enum value/);
   });
-
 
   it("exposes the 4-state ADR status machine", () => {
     expect(ADR_STATUSES).toEqual(["PROPOSED", "ACCEPTED", "DEPRECATED", "SUPERSEDED"]);
