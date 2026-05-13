@@ -29,6 +29,7 @@ import { exportRouter } from "./routes/export.js";
 import { tenantRouter } from "./routes/tenant.js";
 import { auditLogRouter } from "./routes/audit-log.js";
 import { staleFlagsRouter } from "./routes/stale-flags.js";
+import { feedbackRouter } from "./routes/feedback.js";
 import { adminTenantsRouter } from "./routes/admin-tenants.js";
 import { adminWebhooksRouter } from "./routes/admin-webhooks.js";
 import { adminAuthMiddleware } from "./middleware/admin-auth.js";
@@ -114,6 +115,7 @@ v1.route("/import", importRouter(sql));
 v1.route("/export", exportRouter(sql));
 v1.route("/tenant", tenantRouter(sql));
 v1.route("/stale-flags", staleFlagsRouter(sql));
+v1.route("/feedback", feedbackRouter(sql));
 
 app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle, embeddingService));

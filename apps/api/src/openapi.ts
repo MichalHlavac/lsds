@@ -174,6 +174,18 @@ const sError = {
   },
 };
 
+const sFeedback = {
+  type: "object",
+  required: ["id", "type", "message", "metadata", "createdAt"],
+  properties: {
+    id:        { type: "string", format: "uuid" },
+    type:      { type: "string", enum: ["bug", "feature", "general"] },
+    message:   { type: "string" },
+    metadata:  { type: ["object", "null"], additionalProperties: true },
+    createdAt: { type: "string", format: "date-time" },
+  },
+};
+
 // --- common parameter and response helpers ---
 
 const pId = {
@@ -279,6 +291,7 @@ export const openApiSpec = {
       ApiKey:           sApiKey,
       AuditLogEntry:    sAuditLogEntry,
       Error:            sError,
+      Feedback:         sFeedback,
     },
   },
 
@@ -1622,6 +1635,35 @@ export const openApiSpec = {
               data: { type: "array", items: nodeResponse },
             },
           }),
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    // ── Feedback ─────────────────────────────────────────────────────────────
+
+    "/v1/feedback": {
+      post: {
+        operationId: "submitFeedback",
+        tags: ["Feedback"],
+        summary: "Submit feedback",
+        description: "Allows tenants to surface bugs or feature requests from within the product. Write-only — no list endpoint.",
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          required: ["message"],
+          properties: {
+            type:     { type: "string", enum: ["bug", "feature", "general"], default: "general" },
+            message:  { type: "string", minLength: 1, maxLength: 5000 },
+            metadata: { type: "object", additionalProperties: true },
+          },
+        }),
+        responses: {
+          "201": {
+            description: "Feedback recorded",
+            content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: { $ref: "#/components/schemas/Feedback" } } } } },
+          },
           "400": r400,
           "401": r401,
         },
