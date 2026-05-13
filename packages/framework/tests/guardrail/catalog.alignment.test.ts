@@ -162,9 +162,9 @@ describe("catalog field-name alignment with kap. 4", () => {
     // severity because pre-implementation, but visible on PERIODIC scan.
     const rule = getGuardrailOrThrow("GR-L1-009");
     expect(rule.scope.object_type).toBe("Requirement");
-    expect(rule.condition).toContain("object.status == 'APPROVED'");
+    expect(rule.condition).toContain("object.status != 'APPROVED'");
     expect(rule.condition).toContain("object.impacts");
-    expect(rule.condition).toContain("== 0");
+    expect(rule.condition).toContain("> 0");
     expect(rule.origin).toBe("SEMANTIC");
     expect(rule.evaluation).toBe("DESCRIPTIVE");
     expect(rule.severity).toBe("INFO");
