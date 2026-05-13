@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { StaleFlagRow } from "../db/types.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, parsePaginationLimit } from "./util.js";
 
 const VALID_OBJECT_TYPES = new Set(["node", "edge"]);
 const VALID_SEVERITIES = new Set(["ERROR", "WARNING", "INFO"]);
@@ -110,8 +110,7 @@ export function staleFlagsRouter(sql: Sql): Hono {
     const objectTypeParam = c.req.query("object_type");
     const severityParam = c.req.query("severity");
     const cursorParam = c.req.query("cursor");
-    const limitRaw = Number(c.req.query("limit") ?? 50);
-    const limit = Math.min(Math.max(1, isNaN(limitRaw) ? 50 : limitRaw), 200);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 200);
 
     if (objectTypeParam && !VALID_OBJECT_TYPES.has(objectTypeParam)) {
       return c.json({ error: "invalid object_type: must be 'node' or 'edge'" }, 400);
