@@ -21,17 +21,23 @@ A typed knowledge graph SSOT for software knowledge across six layers (L1 Busine
 
 ## Running with Docker
 
+### Quick start (design partners / on-prem)
+
+Pull the published image from GHCR — no local build step required:
+
 ```bash
-cp .env.example .env          # adjust credentials if needed
-docker compose up --build
+cp .env.example .env          # set at minimum: POSTGRES_PASSWORD
+docker compose up -d
 ```
 
-The API is available at `http://localhost:3000`. Postgres data is persisted in a named volume (`db_data`). Migrations run automatically before the API starts.
+The API is available at `http://localhost:3001` and the web UI at `http://localhost:3000`. Postgres data is persisted in a named volume (`db_data`). Migrations run automatically on startup.
 
-To run migrations manually:
+Pin to a specific release by setting `LSDS_VERSION=1.x.y` in `.env`.
+
+### Local build (development)
 
 ```bash
-docker compose run --rm migrate
+docker compose up --build
 ```
 
 ## Development (without Docker)
