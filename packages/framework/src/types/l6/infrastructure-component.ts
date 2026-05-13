@@ -32,7 +32,7 @@ export const InfrastructureComponentSchema = TknBaseSchema.extend({
   isManagedService: z.boolean(),
   slaReference: z.string().optional(),
   // Path to Terraform/Pulumi/Crossplane/Helm definition. Required by GR-L6-001.
-  iacReference: z.string().min(1).optional(),
+  iacReference: z.string().min(1),
 }).superRefine((value, ctx) => {
   // Production managed services must declare an SLA reference for incident escalation.
   if (value.environment === "PROD" && value.isManagedService && !value.slaReference) {

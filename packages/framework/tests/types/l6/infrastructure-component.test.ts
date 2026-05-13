@@ -19,6 +19,7 @@ const baseInfra = {
   provider: "AWS RDS",
   isManagedService: true,
   slaReference: "SLA-AWS-RDS-2026",
+  iacReference: "infra/aws/rds/api-postgres.tf",
 };
 
 describe("InfrastructureComponent (L6)", () => {
@@ -88,13 +89,12 @@ describe("InfrastructureComponent (L6)", () => {
     );
   });
 
-  it("accepts iacReference when provided (GR-L6-001)", () => {
-    expect(
-      InfrastructureComponentSchema.parse({
-        ...baseInfra,
-        iacReference: "infra/aws/rds/api-postgres.tf",
-      }),
-    ).toMatchObject({ iacReference: "infra/aws/rds/api-postgres.tf" });
+  it("requires iacReference (kap. 4 § L6 invariant; GR-L6-001 enforced at schema level)", () => {
+    const { iacReference: _omit, ...withoutIac } = baseInfra;
+    expectIssue(
+      InfrastructureComponentSchema.safeParse(withoutIac as unknown as typeof baseInfra),
+      /Required/,
+    );
   });
 
   it("rejects empty iacReference", () => {
