@@ -317,6 +317,154 @@ describe("Rate limit — rate_limit_hit audit event on 429", () => {
   });
 });
 
+// ── Unit: ipWriteRateLimitMiddleware ─────────────────────────────────────────
+
+describe("ipWriteRateLimitMiddleware — unit: write-only, per-IP", () => {
+  async function makeIpApp(rpm: number) {
+    process.env["RATE_LIMIT_WRITE_RPM"] = String(rpm);
+    vi.resetModules();
+    const { InMemoryTokenBucketStore, ipWriteRateLimitMiddleware } = await import(
+      "../src/middleware/rate-limit.js"
+    );
+    const store = new InMemoryTokenBucketStore();
+    const app = new Hono();
+    app.use("/v1/*", ipWriteRateLimitMiddleware(store));
+    app.get("/v1/items", (c) => c.json({ ok: true }));
+    app.post("/v1/items", (c) => c.json({ ok: true }, 201));
+    app.patch("/v1/items/1", (c) => c.json({ ok: true }));
+    app.delete("/v1/items/1", (c) => c.json({ ok: true }));
+    return { app, store };
+  }
+
+  afterEach(() => { vi.resetModules(); delete process.env["RATE_LIMIT_WRITE_RPM"]; });
+
+  it("GET is not rate-limited even when IP bucket is exhausted", async () => {
+    // rpm=1 → burst=1; exhaust with POST, then GET should still pass
+    const { app } = await makeIpApp(1);
+    const ip = "10.0.0.1";
+    await app.request("/v1/items", {
+      method: "POST",
+      headers: { "x-forwarded-for": ip },
+    });
+    // Second POST should 429
+    const post2 = await app.request("/v1/items", {
+      method: "POST",
+      headers: { "x-forwarded-for": ip },
+    });
+    expect(post2.status).toBe(429);
+    // But GET is unaffected
+    const get = await app.request("/v1/items", {
+      method: "GET",
+      headers: { "x-forwarded-for": ip },
+    });
+    expect(get.status).toBe(200);
+  });
+
+  it("exceeding limit returns 429 with Retry-After header", async () => {
+    const { app } = await makeIpApp(1);
+    const ip = "10.0.0.2";
+    await app.request("/v1/items", { method: "POST", headers: { "x-forwarded-for": ip } });
+    const r = await app.request("/v1/items", { method: "POST", headers: { "x-forwarded-for": ip } });
+    expect(r.status).toBe(429);
+    const body = await r.json() as { error: string };
+    expect(body.error).toBe("too many requests");
+    expect(Number(r.headers.get("Retry-After"))).toBeGreaterThan(0);
+  });
+
+  it("PATCH and DELETE are also rate-limited", async () => {
+    const { app } = await makeIpApp(1);
+    const ip = "10.0.0.3";
+    await app.request("/v1/items/1", { method: "PATCH", headers: { "x-forwarded-for": ip } });
+    const r = await app.request("/v1/items/1", { method: "DELETE", headers: { "x-forwarded-for": ip } });
+    expect(r.status).toBe(429);
+  });
+
+  it("different IPs have independent buckets", async () => {
+    const { app } = await makeIpApp(1);
+    await app.request("/v1/items", { method: "POST", headers: { "x-forwarded-for": "10.1.1.1" } });
+    await app.request("/v1/items", { method: "POST", headers: { "x-forwarded-for": "10.1.1.1" } }); // exhausted
+    // Different IP still has capacity
+    const r = await app.request("/v1/items", { method: "POST", headers: { "x-forwarded-for": "10.1.1.2" } });
+    expect(r.status).toBe(201);
+  });
+
+  it("uses first IP from comma-separated X-Forwarded-For", async () => {
+    const { app } = await makeIpApp(1);
+    await app.request("/v1/items", {
+      method: "POST",
+      headers: { "x-forwarded-for": "203.0.113.1, 10.0.0.1, 172.16.0.1" },
+    });
+    // Second request from same real client IP (first in chain)
+    const r = await app.request("/v1/items", {
+      method: "POST",
+      headers: { "x-forwarded-for": "203.0.113.1, 10.0.0.99" },
+    });
+    expect(r.status).toBe(429);
+  });
+});
+
+// ── Integration: ipWriteRateLimitMiddleware via main app ─────────────────────
+
+describe("ipWriteRateLimitMiddleware — integration: N+1 write returns 429", () => {
+  let tid: string;
+
+  beforeEach(async () => {
+    tid = randomUUID();
+    await sql`
+      INSERT INTO tenants (id, name, plan, retention_days)
+      VALUES (${tid}, 'ip-rl-test', 'standard', 730)
+      ON CONFLICT (id) DO NOTHING
+    `;
+    process.env["RATE_LIMIT_WRITE_RPM"] = "2";
+    vi.resetModules();
+  });
+
+  afterEach(async () => {
+    await cleanTenant(sql, tid);
+    await sql`DELETE FROM tenants WHERE id = ${tid}`;
+    delete process.env["RATE_LIMIT_WRITE_RPM"];
+    vi.resetModules();
+  });
+
+  it("third POST to a write endpoint returns 429, GET is unaffected", async () => {
+    const { app: mainApp } = await import("../src/app.js");
+    const ip = "192.0.2.10";
+    const headers = {
+      "Content-Type": "application/json",
+      "x-tenant-id": tid,
+      "x-forwarded-for": ip,
+    };
+
+    // Two writes succeed (burst = rpm = 2)
+    const r1 = await mainApp.request("/v1/nodes", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ type: "service", layer: "L3", name: "svc-a" }),
+    });
+    expect(r1.status).toBe(201);
+
+    const r2 = await mainApp.request("/v1/nodes", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ type: "service", layer: "L3", name: "svc-b" }),
+    });
+    expect(r2.status).toBe(201);
+
+    // Third write is blocked
+    const r3 = await mainApp.request("/v1/nodes", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ type: "service", layer: "L3", name: "svc-c" }),
+    });
+    expect(r3.status).toBe(429);
+    expect(Number(r3.headers.get("Retry-After"))).toBeGreaterThan(0);
+
+    // GET is not affected by the write limit
+    const getRes = await mainApp.request("/v1/nodes", { method: "GET", headers });
+    expect(getRes.status).toBe(200);
+  });
+});
+
 // ── Integration: per-key rate limits at create + patch time ──────────────────
 
 describe("Admin API — per-key rate limit fields", () => {

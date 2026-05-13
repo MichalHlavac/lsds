@@ -34,3 +34,24 @@ export function toHttpError(e: unknown): [{ error: string }, 400 | 500] {
   }
   return [{ error: "internal server error" }, 500];
 }
+
+export function encodeCursor(v: string, id: string): string {
+  return Buffer.from(JSON.stringify({ v, id }), "utf8").toString("base64url");
+}
+
+export function decodeCursor(raw: string): { v: string; id: string } | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "v" in parsed && typeof (parsed as Record<string, unknown>).v === "string" &&
+      "id" in parsed && typeof (parsed as Record<string, unknown>).id === "string"
+    ) {
+      return parsed as { v: string; id: string };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

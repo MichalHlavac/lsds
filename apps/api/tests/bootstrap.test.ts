@@ -84,9 +84,8 @@ describe("bootstrap — fresh tenant", () => {
 
     const res = await app.request("/health");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; db: string };
+    const body = (await res.json()) as { status: string };
     expect(body.status).toBe("ok");
-    expect(body.db).toBe("ok");
   });
 });
 

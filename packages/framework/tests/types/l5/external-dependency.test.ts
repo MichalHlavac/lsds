@@ -3,6 +3,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  DEPENDENCY_TYPES,
+  DEPENDENCY_UPDATE_POLICIES,
   ExternalDependencySchema,
 } from "../../../src/types/l5/external-dependency.js";
 import { expectIssue } from "../../fixtures.js";
@@ -102,6 +104,74 @@ describe("ExternalDependency (L5 — ADR A8)", () => {
       ExternalDependencySchema.safeParse({ ...baseDep, securityAuditDate: "not-a-date" }),
       /Invalid date/,
     );
+  });
+
+  describe("license / dependencyType / updatePolicy (LSDS-920, kap. 4 § L5 / ExternalDependency)", () => {
+    it("accepts a dependency with SPDX license string and round-trips it", () => {
+      const parsed = ExternalDependencySchema.parse({ ...baseDep, license: "Apache-2.0" });
+      expect(parsed.license).toBe("Apache-2.0");
+    });
+
+    it("rejects empty license string (min 1)", () => {
+      expectIssue(
+        ExternalDependencySchema.safeParse({ ...baseDep, license: "" }),
+        /String must contain at least 1 character|too_small/,
+      );
+    });
+
+    it("accepts a vulnerable dep with GPL license + L3 ref (license is independent of vuln gating)", () => {
+      // GR-L5-007 is descriptive-only; the schema must not gate license values
+      // on hasKnownVulnerability. The ADR A8 traceability superrefine still
+      // requires externalSystemRef when hasKnownVulnerability=true.
+      expect(
+        ExternalDependencySchema.parse({
+          ...baseDep,
+          hasKnownVulnerability: true,
+          externalSystemRef: sampleTknRef,
+          license: "GPL-3.0-only",
+        }),
+      ).toMatchObject({ license: "GPL-3.0-only", hasKnownVulnerability: true });
+    });
+
+    it("defaults dependencyType to LIBRARY when omitted (migration safety)", () => {
+      const parsed = ExternalDependencySchema.parse(baseDep);
+      expect(parsed.dependencyType).toBe("LIBRARY");
+    });
+
+    it("accepts every DependencyType enum value", () => {
+      for (const value of DEPENDENCY_TYPES) {
+        expect(
+          ExternalDependencySchema.parse({ ...baseDep, dependencyType: value }).dependencyType,
+        ).toBe(value);
+      }
+    });
+
+    it("rejects invalid dependencyType value", () => {
+      expectIssue(
+        ExternalDependencySchema.safeParse({ ...baseDep, dependencyType: "PLUGIN" }),
+        /Invalid enum value/,
+      );
+    });
+
+    it("accepts every DependencyUpdatePolicy enum value", () => {
+      for (const value of DEPENDENCY_UPDATE_POLICIES) {
+        expect(
+          ExternalDependencySchema.parse({ ...baseDep, updatePolicy: value }).updatePolicy,
+        ).toBe(value);
+      }
+    });
+
+    it("accepts a dependency without updatePolicy (optional)", () => {
+      const parsed = ExternalDependencySchema.parse(baseDep);
+      expect(parsed.updatePolicy).toBeUndefined();
+    });
+
+    it("rejects invalid updatePolicy value", () => {
+      expectIssue(
+        ExternalDependencySchema.safeParse({ ...baseDep, updatePolicy: "ASAP" }),
+        /Invalid enum value/,
+      );
+    });
   });
 
 });

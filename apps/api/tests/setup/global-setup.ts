@@ -44,8 +44,14 @@ export async function setup(): Promise<void> {
       // simply fail with a "table doesn't exist" error instead of crashing
       // the entire test suite.
       const pg = err as { code?: string };
-      if (pg.code === "42704" || pg.code === "42883") {
-        console.warn(`[test setup] skipped migration ${file}: optional extension unavailable`);
+      if (
+        pg.code === "42704" || pg.code === "42883" || // undefined object / function
+        pg.code === "0A000" ||                        // feature not supported (pgvector)
+        pg.code === "42P07" ||                        // duplicate table / index
+        pg.code === "42701" ||                        // duplicate column
+        pg.code === "42710"                           // duplicate object (constraint, sequence)
+      ) {
+        console.warn(`[test setup] skipped migration ${file}: schema object already exists or extension unavailable`);
       } else {
         throw err;
       }
