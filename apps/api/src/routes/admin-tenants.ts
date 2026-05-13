@@ -22,6 +22,34 @@ const CreateTenantSchema = z.object({
 export function adminTenantsRouter(sql: Sql): Hono {
   const app = new Hono();
 
+  // GET / — list all tenants with active (non-revoked) API key counts
+  app.get("/", async (c) => {
+    const rows = await sql<
+      Array<{
+        id: string;
+        name: string;
+        slug: string | null;
+        plan: string;
+        createdAt: Date;
+        activeApiKeyCount: number;
+      }>
+    >`
+      SELECT
+        t.id,
+        t.name,
+        t.slug,
+        t.plan,
+        t.created_at,
+        COUNT(ak.id) FILTER (WHERE ak.revoked_at IS NULL)::int AS active_api_key_count
+      FROM tenants t
+      LEFT JOIN api_keys ak ON ak.tenant_id = t.id
+      GROUP BY t.id, t.name, t.slug, t.plan, t.created_at
+      ORDER BY t.created_at DESC
+    `;
+
+    return c.json({ data: rows });
+  });
+
   // POST / — create tenant + return initial API key (plaintext, never shown again)
   app.post("/", async (c) => {
     const body = CreateTenantSchema.parse(await c.req.json());
