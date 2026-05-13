@@ -159,3 +159,47 @@ describe("cardinality M:N (depends-on) remains unrestricted", () => {
     expect(r2.status).toBe(201);
   });
 });
+
+// ── Negative path: malformed DB row caught by RelationshipEdgeSchema.parse ───
+
+describe("malformed DB edge row caught by RelationshipEdgeSchema.parse", () => {
+  it("returns 400 (ZodError) when the joined node layer is corrupted; would be 422 if parse were removed", async () => {
+    const src = await createNode("L3");
+    const tgt1 = await createNode("L3");
+    const tgt2 = await createNode("L3");
+
+    // Create the first supersedes edge normally.
+    const first = await postEdge(src.id, tgt1.id, "supersedes", "L3");
+    expect(first.status).toBe(201);
+
+    // Plant invalid data by temporarily relaxing the nodes.layer CHECK constraint.
+    // DDL is transactional in PostgreSQL, so DROP + UPDATE + ADD all run under
+    // one ACCESS EXCLUSIVE lock that commits atomically.  NOT VALID re-adds the
+    // constraint without re-checking the pre-existing corrupt row.
+    await sql.begin(async (tx) => {
+      await tx`ALTER TABLE nodes DROP CONSTRAINT IF EXISTS nodes_layer_check`;
+      await tx`UPDATE nodes SET layer = 'NOT_A_LAYER' WHERE id = ${tgt1.id} AND tenant_id = ${tid}`;
+      await tx`ALTER TABLE nodes ADD CONSTRAINT nodes_layer_check
+                CHECK (layer IN ('L1','L2','L3','L4','L5','L6')) NOT VALID`;
+    });
+
+    try {
+      // The cardinality SELECT JOINs tgt1 and returns targetLayer='NOT_A_LAYER'.
+      // RelationshipEdgeSchema.parse throws ZodError; the global onError handler
+      // maps ZodError to 400 with error="validation error".
+      //
+      // Without RelationshipEdgeSchema.parse (the old `as unknown as RelationshipEdge`
+      // cast), validateGraphCardinality would run with the corrupt row and return
+      // 422 CARDINALITY_VIOLATED — so this assertion would fail, detecting the bypass.
+      const res = await postEdge(src.id, tgt2.id, "supersedes", "L3");
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("validation error");
+    } finally {
+      // Restore the corrupt row then run VALIDATE so the constraint is fully
+      // in force before afterEach cleanTenant runs.
+      await sql`UPDATE nodes SET layer = 'L3' WHERE id = ${tgt1.id} AND tenant_id = ${tid}`;
+      await sql`ALTER TABLE nodes VALIDATE CONSTRAINT nodes_layer_check`;
+    }
+  });
+});
