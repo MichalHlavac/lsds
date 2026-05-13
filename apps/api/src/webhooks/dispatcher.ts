@@ -19,13 +19,13 @@ const BACKOFF_SECONDS = [0, 30, 120, 300, 900, 1800] as const;
 
 export interface WebhookDispatcher {
   start(): void;
-  stop(): void;
+  stop(timeoutMs?: number): Promise<void>;
   poll(): Promise<void>;
 }
 
 export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
   let timer: ReturnType<typeof setInterval> | null = null;
-  let running = false;
+  let inflightPoll: Promise<void> | null = null;
 
   async function dispatch(delivery: WebhookDeliveryRow): Promise<void> {
     const webhook = await getWebhook(sql, delivery.tenantId, delivery.webhookId);
@@ -121,34 +121,40 @@ export function createWebhookDispatcher(sql: Sql): WebhookDispatcher {
     }
   }
 
+  async function executePoll(): Promise<void> {
+    let deliveries: WebhookDeliveryRow[];
+    try {
+      deliveries = await sql.begin((tx) => pollPendingDeliveries(tx));
+    } catch (err) {
+      logger.error({ err }, "webhook dispatcher poll failed");
+      return;
+    }
+    await Promise.allSettled(deliveries.map((d) => dispatch(d)));
+  }
+
   return {
     start() {
       if (timer) return;
-      timer = setInterval(() => {
-        if (!running) {
-          running = true;
-          this.poll().finally(() => { running = false; });
-        }
-      }, POLL_INTERVAL_MS);
+      timer = setInterval(() => { this.poll(); }, POLL_INTERVAL_MS);
     },
 
-    stop() {
+    async stop(timeoutMs = ATTEMPT_TIMEOUT_MS) {
       if (timer) {
         clearInterval(timer);
         timer = null;
       }
+      if (inflightPoll) {
+        await Promise.race([
+          inflightPoll,
+          new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+        ]);
+      }
     },
 
-    async poll() {
-      let deliveries: WebhookDeliveryRow[];
-      try {
-        deliveries = await sql.begin((tx) => pollPendingDeliveries(tx));
-      } catch (err) {
-        logger.error({ err }, "webhook dispatcher poll failed");
-        return;
-      }
-
-      await Promise.allSettled(deliveries.map((d) => dispatch(d)));
+    poll() {
+      if (inflightPoll) return inflightPoll;
+      inflightPoll = executePoll().finally(() => { inflightPoll = null; });
+      return inflightPoll;
     },
   };
 }

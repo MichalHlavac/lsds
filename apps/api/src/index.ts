@@ -10,7 +10,7 @@ import { warmPool } from "./db/pool-warm.js";
 import { logger } from "./logger.js";
 import { config } from "./config.js";
 import { runMigrations } from "./db/run-migrations.js";
-import { createWebhookDispatcher } from "./webhooks/dispatcher.js";
+import { createWebhookDispatcher, type WebhookDispatcher } from "./webhooks/dispatcher.js";
 import { isWebhookEncryptionKeySet } from "./webhooks/crypto.js";
 
 if (config.skipMigrations) {
@@ -25,7 +25,10 @@ if (config.skipMigrations) {
   }
 }
 
-serve({ fetch: app.fetch, port: config.port }, (info) => {
+let dispatcher: WebhookDispatcher | null = null;
+let shutdownOnce = false;
+
+const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   logger.info({ port: info.port }, "LSDS API listening");
   warmPool(sql, DB_POOL_MIN).catch((err) =>
     logger.warn({ err }, "pool warm-up failed")
@@ -35,10 +38,37 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
   );
 
   if (isWebhookEncryptionKeySet()) {
-    const dispatcher = createWebhookDispatcher(sql);
+    dispatcher = createWebhookDispatcher(sql);
     dispatcher.start();
     logger.info({}, "webhook dispatcher started");
   } else {
     logger.warn({}, "LSDS_WEBHOOK_ENCRYPTION_KEY is not set — webhook subsystem disabled");
   }
 });
+
+function shutdown(signal: string): void {
+  if (shutdownOnce) return;
+  shutdownOnce = true;
+
+  logger.info({ signal }, "shutdown signal received — draining");
+
+  const hardKill = setTimeout(() => {
+    logger.error({}, "graceful shutdown timed out — hard kill");
+    process.exit(1);
+  }, 10_000);
+  hardKill.unref();
+
+  server.close(() => {
+    void (async () => {
+      if (dispatcher) {
+        await dispatcher.stop();
+      }
+      await sql.end();
+      clearTimeout(hardKill);
+      process.exit(0);
+    })();
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
