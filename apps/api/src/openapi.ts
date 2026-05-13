@@ -1304,6 +1304,50 @@ export const openApiSpec = {
 
     // ── Tenant API Key Management ─────────────────────────────────────────────
 
+    "/v1/tenant/api-keys": {
+      get: {
+        operationId: "listTenantApiKeys",
+        tags: ["Tenant"],
+        summary: "List active API keys",
+        description: "Returns all non-revoked API keys for the authenticated tenant. The key secret is never returned.",
+        security: tenantSecurity,
+        responses: {
+          "200": {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        required: ["id", "tenant_id", "name", "key_prefix", "created_at", "revoked_at", "expires_at", "rate_limit_rpm", "rate_limit_burst"],
+                        properties: {
+                          id:               { type: "string", format: "uuid" },
+                          tenant_id:        { type: "string", format: "uuid" },
+                          name:             { type: "string" },
+                          key_prefix:       { type: "string" },
+                          created_at:       { type: "string", format: "date-time" },
+                          revoked_at:       { type: ["string", "null"], format: "date-time" },
+                          expires_at:       { type: ["string", "null"], format: "date-time" },
+                          rate_limit_rpm:   { type: ["integer", "null"], minimum: 1 },
+                          rate_limit_burst: { type: ["integer", "null"], minimum: 1 },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": r401,
+        },
+      },
+    },
+
     "/v1/tenant/api-keys/rotate": {
       post: {
         operationId: "rotateTenantApiKeys",

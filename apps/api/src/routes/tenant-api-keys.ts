@@ -26,6 +26,19 @@ const PatchApiKeySchema = z
 export function tenantApiKeysRouter(sql: Sql): Hono {
   const app = new Hono();
 
+  // GET / — list all non-revoked API keys for the tenant
+  app.get("/", async (c) => {
+    const tenantId = getTenantId(c);
+    const rows = await sql<Omit<ApiKeyRow, "keyHash">[]>`
+      SELECT id, tenant_id, name, key_prefix, created_at, revoked_at, expires_at,
+             rate_limit_rpm, rate_limit_burst
+      FROM api_keys
+      WHERE tenant_id = ${tenantId} AND revoked_at IS NULL
+      ORDER BY created_at DESC
+    `;
+    return c.json({ data: rows });
+  });
+
   // POST /rotate — revoke all active keys for tenant, issue one new key
   app.post("/rotate", async (c) => {
     const tenantId = getTenantId(c);
