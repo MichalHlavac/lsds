@@ -251,6 +251,24 @@ export const ClassifyChangeSchema = z
   );
 export type ClassifyChange = z.infer<typeof ClassifyChangeSchema>;
 
+export const FeedbackTypeSchema = z.enum(["bug", "feature", "general"]);
+
+export const SubmitFeedbackBodySchema = z.object({
+  type: FeedbackTypeSchema.optional().default("general"),
+  message: z.string().min(1).max(5000),
+  metadata: z.record(z.unknown()).optional(),
+});
+export type SubmitFeedbackBody = z.infer<typeof SubmitFeedbackBodySchema>;
+
+export const FeedbackResponseSchema = z.object({
+  id: z.string().uuid(),
+  type: FeedbackTypeSchema,
+  message: z.string(),
+  metadata: z.record(z.unknown()).nullable(),
+  createdAt: z.string().datetime(),
+});
+export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>;
+
 export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;
 export type NodeSortField = (typeof NODE_SORT_FIELDS)[number];
 
