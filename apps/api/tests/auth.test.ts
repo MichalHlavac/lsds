@@ -75,8 +75,8 @@ describe("/health is always public", () => {
     const { app } = await import("../src/app.js");
     const res = await app.request("/health");
     expect(res.status).toBe(200);
-    const body = await res.json() as { status: string; oidc: boolean };
+    const body = await res.json() as { status: string; uptime: number };
     expect(body.status).toBe("ok");
-    expect(typeof body.oidc).toBe("boolean");
+    expect(typeof body.uptime).toBe("number");
   });
 });
