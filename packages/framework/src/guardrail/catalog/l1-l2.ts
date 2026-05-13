@@ -129,7 +129,7 @@ export const L1_L2_RULES: GuardrailRule[] = [
       triggers: ["PERIODIC"],
     },
     condition:
-      "object.lifecycle == 'ACTIVE' && (now - object.last_review_date) > 180 days",
+      "object.lifecycle != 'ACTIVE' || (now - object.last_review_date) <= 180 days",
     rationale:
       "Strategic goals decay; a goal not reviewed in over 6 months is likely stale, mis-aligned, or already met.",
     remediation:
@@ -166,7 +166,7 @@ export const L1_L2_RULES: GuardrailRule[] = [
       object_type: "Requirement",
       triggers: ["UPDATE", "PERIODIC"],
     },
-    condition: "object.status == 'APPROVED' && object.impacts.length == 0",
+    condition: "object.status != 'APPROVED' || object.impacts.length > 0",
     rationale:
       "An APPROVED requirement with no declared impact list cannot drive change propagation analysis and gives the implementer no map of what to touch.",
     remediation:
