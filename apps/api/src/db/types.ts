@@ -232,3 +232,13 @@ export interface MigrationDraftRow {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface FeedbackRow {
+  id: string;
+  tenantId: string;
+  apiKeyId: string | null;
+  type: "bug" | "feature" | "general";
+  message: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+}
