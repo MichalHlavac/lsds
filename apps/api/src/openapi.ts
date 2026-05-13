@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
-// OpenAPI 3.1 spec covering the minimum viable surface for design partner integration.
+// OpenAPI 3.1 spec covering all published v1 routes.
 // Additive: no existing route behaviour is changed. Extend paths/components here only.
 
 const LAYER_ENUM = ["L1", "L2", "L3", "L4", "L5", "L6"] as const;
@@ -78,7 +78,7 @@ const sEdge = {
     targetId:        { type: "string", format: "uuid" },
     type:            { $ref: "#/components/schemas/RelationshipType" },
     layer:           { $ref: "#/components/schemas/Layer" },
-    traversalWeight: { type: "number", minimum: 0, exclusiveMinimum: true },
+    traversalWeight: { type: "number", exclusiveMinimum: 0 },
     lifecycleStatus: { $ref: "#/components/schemas/LifecycleStatus" },
     attributes:      { type: "object", additionalProperties: true },
     createdAt:       { type: "string", format: "date-time" },
@@ -107,6 +107,62 @@ const sViolation = {
     resolvedAt:   { type: ["string", "null"], format: "date-time" },
     createdAt:    { type: "string", format: "date-time" },
     updatedAt:    { type: "string", format: "date-time" },
+  },
+};
+
+const sGuardrail = {
+  type: "object",
+  required: ["id", "tenantId", "ruleKey", "description", "severity", "enabled", "config", "createdAt", "updatedAt"],
+  properties: {
+    id:          { type: "string", format: "uuid" },
+    tenantId:    { type: "string", format: "uuid" },
+    ruleKey:     { type: "string" },
+    description: { type: "string" },
+    severity:    { $ref: "#/components/schemas/Severity" },
+    enabled:     { type: "boolean" },
+    config:      { type: "object", additionalProperties: true },
+    createdAt:   { type: "string", format: "date-time" },
+    updatedAt:   { type: "string", format: "date-time" },
+  },
+};
+
+const sApiKey = {
+  type: "object",
+  required: ["id", "tenantId", "name", "keyPrefix", "createdAt"],
+  properties: {
+    id:             { type: "string", format: "uuid" },
+    tenantId:       { type: "string", format: "uuid" },
+    name:           { type: "string" },
+    keyPrefix:      { type: "string" },
+    createdAt:      { type: "string", format: "date-time" },
+    revokedAt:      { type: ["string", "null"], format: "date-time" },
+    expiresAt:      { type: ["string", "null"], format: "date-time" },
+    rateLimitRpm:   { type: ["integer", "null"], minimum: 1 },
+    rateLimitBurst: { type: ["integer", "null"], minimum: 1 },
+  },
+};
+
+const sAuditLogEntry = {
+  type: "object",
+  required: ["id", "tenantId", "operation", "entityType", "entityId", "createdAt"],
+  properties: {
+    id:         { type: "string", format: "uuid" },
+    tenantId:   { type: "string", format: "uuid" },
+    apiKeyId:   { type: ["string", "null"], format: "uuid" },
+    operation:  {
+      type: "string",
+      enum: [
+        "node.create", "node.update", "node.delete",
+        "node.deprecate", "node.archive", "node.purge",
+        "edge.create", "edge.update", "edge.delete",
+        "edge.deprecate", "edge.archive", "edge.purge",
+        "rate_limit_hit",
+      ],
+    },
+    entityType: { type: "string" },
+    entityId:   { type: "string", format: "uuid" },
+    diff:       { type: ["object", "null"], additionalProperties: true },
+    createdAt:  { type: "string", format: "date-time" },
   },
 };
 
@@ -169,9 +225,11 @@ const jsonOk = (schema: object, status = "200") => ({
   },
 });
 
-const nodeResponse     = { $ref: "#/components/schemas/Node" };
-const edgeResponse     = { $ref: "#/components/schemas/Edge" };
+const nodeResponse      = { $ref: "#/components/schemas/Node" };
+const edgeResponse      = { $ref: "#/components/schemas/Edge" };
 const violationResponse = { $ref: "#/components/schemas/Violation" };
+const guardrailResponse = { $ref: "#/components/schemas/Guardrail" };
+const apiKeyResponse    = { $ref: "#/components/schemas/ApiKey" };
 
 // --- spec ---
 
@@ -217,6 +275,9 @@ export const openApiSpec = {
       Node:             sNode,
       Edge:             sEdge,
       Violation:        sViolation,
+      Guardrail:        sGuardrail,
+      ApiKey:           sApiKey,
+      AuditLogEntry:    sAuditLogEntry,
       Error:            sError,
     },
   },
@@ -619,6 +680,76 @@ export const openApiSpec = {
       },
     },
 
+    // ── Node Traversal ───────────────────────────────────────────────────────
+
+    "/v1/nodes/{id}/traverse": {
+      post: {
+        operationId: "traverseNode",
+        tags: ["Traversal"],
+        summary: "Traverse graph from a node",
+        description: [
+          "Walks the graph from the given node using a recursive CTE.",
+          "Returns the traversed node IDs with depth metadata and the full Node objects.",
+          "Results are cached per (tenant, nodeId, depth, direction, edgeTypes) for 5 minutes.",
+        ].join(" "),
+        security: tenantSecurity,
+        parameters: [pId],
+        requestBody: jsonBody({
+          type: "object",
+          properties: {
+            depth:     { type: "integer", minimum: 1, maximum: 20, default: 3 },
+            direction: { type: "string", enum: ["outbound", "inbound", "both"], default: "both" },
+            edgeTypes: {
+              type: "array",
+              items: { $ref: "#/components/schemas/RelationshipType" },
+              description: "Filter traversal to these edge types. Omit to traverse all types.",
+            },
+          },
+        }),
+        responses: {
+          "200": {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data", "cached"],
+                  properties: {
+                    cached: { type: "boolean" },
+                    data: {
+                      type: "object",
+                      required: ["root", "depth", "direction", "nodes", "traversal"],
+                      properties: {
+                        root:      { type: "string", format: "uuid" },
+                        depth:     { type: "integer" },
+                        direction: { type: "string", enum: ["outbound", "inbound", "both"] },
+                        nodes:     { type: "array", items: { $ref: "#/components/schemas/Node" } },
+                        traversal: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            required: ["nodeId", "depth"],
+                            properties: {
+                              nodeId: { type: "string", format: "uuid" },
+                              depth:  { type: "integer", minimum: 0 },
+                            },
+                            additionalProperties: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": r400,
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
     // ── Edges ───────────────────────────────────────────────────────────────
 
     "/v1/edges": {
@@ -667,7 +798,7 @@ export const openApiSpec = {
             targetId:        { type: "string", format: "uuid" },
             type:            { $ref: "#/components/schemas/RelationshipType" },
             layer:           { $ref: "#/components/schemas/Layer" },
-            traversalWeight: { type: "number", exclusiveMinimum: true, minimum: 0, default: 1.0 },
+            traversalWeight: { type: "number", exclusiveMinimum: 0, default: 1.0 },
             attributes:      { type: "object", additionalProperties: true, default: {} },
           },
         }),
@@ -704,7 +835,7 @@ export const openApiSpec = {
           type: "object",
           properties: {
             type:            { type: "string", minLength: 1 },
-            traversalWeight: { type: "number", exclusiveMinimum: true, minimum: 0 },
+            traversalWeight: { type: "number", exclusiveMinimum: 0 },
             attributes:      { type: "object", additionalProperties: true },
           },
         }),
@@ -821,6 +952,436 @@ export const openApiSpec = {
       },
     },
 
+    // ── Violations ───────────────────────────────────────────────────────────
+
+    "/v1/violations": {
+      get: {
+        operationId: "listViolations",
+        tags: ["Violations"],
+        summary: "List violations",
+        security: tenantSecurity,
+        parameters: [
+          { name: "nodeId",   in: "query", schema: { type: "string", format: "uuid" } },
+          { name: "ruleKey",  in: "query", schema: { type: "string" } },
+          { name: "severity", in: "query", schema: { $ref: "#/components/schemas/Severity" } },
+          { name: "resolved", in: "query", schema: { type: "boolean" } },
+          pLimit,
+          pCursor,
+          pCount,
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data", "nextCursor"],
+            properties: {
+              data:       { type: "array", items: violationResponse },
+              nextCursor: { type: "string", nullable: true },
+              totalCount: { type: "integer", description: "Only present when ?count=true" },
+            },
+          }),
+          "401": r401,
+        },
+      },
+
+      post: {
+        operationId: "createViolation",
+        tags: ["Violations"],
+        summary: "Create violation",
+        description: "Records a guardrail violation. At least one of nodeId or edgeId should be provided.",
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          required: ["ruleKey", "severity", "message"],
+          properties: {
+            nodeId:       { type: "string", format: "uuid" },
+            edgeId:       { type: "string", format: "uuid" },
+            sourceNodeId: { type: "string", format: "uuid" },
+            targetNodeId: { type: "string", format: "uuid" },
+            ruleKey:      { type: "string", minLength: 1 },
+            severity:     { $ref: "#/components/schemas/Severity" },
+            message:      { type: "string", minLength: 1 },
+            attributes:   { type: "object", additionalProperties: true, default: {} },
+          },
+        }),
+        responses: {
+          "201": { description: "Created", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: violationResponse } } } } },
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    "/v1/violations/batch-resolve": {
+      post: {
+        operationId: "batchResolveViolations",
+        tags: ["Violations"],
+        summary: "Batch resolve violations",
+        description: "Resolves multiple violations in a single operation. Returns 207 if some IDs were not found or already resolved.",
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          required: ["ids"],
+          properties: {
+            ids: { type: "array", items: { type: "string", format: "uuid" }, minItems: 1 },
+          },
+        }),
+        responses: {
+          "200": {
+            description: "All violations resolved",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      type: "object",
+                      required: ["succeeded", "failed"],
+                      properties: {
+                        succeeded: { type: "array", items: violationResponse },
+                        failed: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            required: ["id", "error"],
+                            properties: {
+                              id:    { type: "string", format: "uuid" },
+                              error: { type: "string" },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "207": { description: "Partial success — check failed array" },
+          "400": r400,
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
+    "/v1/violations/{id}": {
+      get: {
+        operationId: "getViolation",
+        tags: ["Violations"],
+        summary: "Get violation by ID",
+        security: tenantSecurity,
+        parameters: [pId],
+        responses: {
+          "200": { description: "OK", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: violationResponse } } } } },
+          "401": r401,
+          "404": r404,
+        },
+      },
+
+      delete: {
+        operationId: "deleteViolation",
+        tags: ["Violations"],
+        summary: "Delete violation",
+        security: tenantSecurity,
+        parameters: [pId],
+        responses: {
+          "200": {
+            description: "Deleted",
+            content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: { type: "object", required: ["id"], properties: { id: { type: "string", format: "uuid" } } } } } } },
+          },
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
+    "/v1/violations/{id}/resolve": {
+      post: {
+        operationId: "resolveViolation",
+        tags: ["Violations"],
+        summary: "Resolve violation",
+        description: "Marks a single violation as resolved. Returns 404 if not found or already resolved.",
+        security: tenantSecurity,
+        parameters: [pId],
+        responses: {
+          "200": { description: "OK", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: violationResponse } } } } },
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
+    // ── Guardrails ───────────────────────────────────────────────────────────
+
+    "/v1/guardrails": {
+      get: {
+        operationId: "listGuardrails",
+        tags: ["Guardrails"],
+        summary: "List guardrail rules",
+        description: "Returns all guardrail rules for the tenant, optionally filtered by enabled state.",
+        security: tenantSecurity,
+        parameters: [
+          { name: "enabled", in: "query", schema: { type: "boolean" }, description: "Filter to only enabled or only disabled rules." },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: {
+              data: { type: "array", items: guardrailResponse },
+            },
+          }),
+          "401": r401,
+        },
+      },
+
+      post: {
+        operationId: "upsertGuardrail",
+        tags: ["Guardrails"],
+        summary: "Create or update guardrail rule",
+        description: "Creates a new guardrail rule, or updates it if a rule with the same ruleKey already exists (upsert by ruleKey).",
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          required: ["ruleKey", "severity"],
+          properties: {
+            ruleKey:     { type: "string", minLength: 1 },
+            description: { type: "string", default: "" },
+            severity:    { $ref: "#/components/schemas/Severity" },
+            enabled:     { type: "boolean", default: true },
+            config:      { type: "object", additionalProperties: true, default: {} },
+          },
+        }),
+        responses: {
+          "201": { description: "Created or updated", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: guardrailResponse } } } } },
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    "/v1/guardrails/{id}": {
+      get: {
+        operationId: "getGuardrail",
+        tags: ["Guardrails"],
+        summary: "Get guardrail rule by ID",
+        security: tenantSecurity,
+        parameters: [pId],
+        responses: {
+          "200": { description: "OK", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: guardrailResponse } } } } },
+          "401": r401,
+          "404": r404,
+        },
+      },
+
+      patch: {
+        operationId: "updateGuardrail",
+        tags: ["Guardrails"],
+        summary: "Update guardrail rule",
+        security: tenantSecurity,
+        parameters: [pId],
+        requestBody: jsonBody({
+          type: "object",
+          properties: {
+            description: { type: "string" },
+            severity:    { $ref: "#/components/schemas/Severity" },
+            enabled:     { type: "boolean" },
+            config:      { type: "object", additionalProperties: true },
+          },
+        }),
+        responses: {
+          "200": { description: "OK", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: guardrailResponse } } } } },
+          "400": r400,
+          "401": r401,
+          "404": r404,
+        },
+      },
+
+      delete: {
+        operationId: "deleteGuardrail",
+        tags: ["Guardrails"],
+        summary: "Delete guardrail rule",
+        security: tenantSecurity,
+        parameters: [pId],
+        responses: {
+          "200": {
+            description: "Deleted",
+            content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: { type: "object", required: ["id"], properties: { id: { type: "string", format: "uuid" } } } } } } },
+          },
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
+    // ── API Keys ─────────────────────────────────────────────────────────────
+
+    "/v1/api-keys": {
+      get: {
+        operationId: "listApiKeys",
+        tags: ["API Keys"],
+        summary: "List API keys",
+        description: "Returns all API keys (active and revoked) for the tenant. Key hashes are never exposed.",
+        security: tenantSecurity,
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: {
+              data: { type: "array", items: apiKeyResponse },
+            },
+          }),
+          "401": r401,
+        },
+      },
+
+      post: {
+        operationId: "createApiKey",
+        tags: ["API Keys"],
+        summary: "Create API key",
+        description: "Issues a new API key. The plaintext key is returned once — store it immediately.",
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          required: ["name"],
+          properties: {
+            name:           { type: "string", minLength: 1, maxLength: 200 },
+            rateLimitRpm:   { type: ["integer", "null"], minimum: 1 },
+            rateLimitBurst: { type: ["integer", "null"], minimum: 1 },
+          },
+        }),
+        responses: {
+          "201": {
+            description: "Created — plaintext key shown once",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      allOf: [
+                        { $ref: "#/components/schemas/ApiKey" },
+                        {
+                          type: "object",
+                          required: ["key"],
+                          properties: {
+                            key: { type: "string", description: "Full plaintext API key — store now, never shown again." },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    "/v1/api-keys/{id}": {
+      delete: {
+        operationId: "revokeApiKey",
+        tags: ["API Keys"],
+        summary: "Revoke API key",
+        description: "Revokes the key by setting revokedAt. Revoked keys are rejected on all subsequent requests.",
+        security: tenantSecurity,
+        parameters: [pId],
+        responses: {
+          "200": {
+            description: "Revoked",
+            content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: { type: "object", required: ["id"], properties: { id: { type: "string", format: "uuid" } } } } } } },
+          },
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
+    // ── Tenant API Key Management ─────────────────────────────────────────────
+
+    "/v1/tenant/api-keys/rotate": {
+      post: {
+        operationId: "rotateTenantApiKeys",
+        tags: ["Tenant"],
+        summary: "Rotate tenant API keys",
+        description: "Revokes all active API keys for the tenant and issues one new key in a single transaction.",
+        security: tenantSecurity,
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string", minLength: 1, maxLength: 200, description: "Name for the new key. Defaults to 'Rotated key'." },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Rotated — new plaintext key shown once",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      allOf: [
+                        { $ref: "#/components/schemas/ApiKey" },
+                        {
+                          type: "object",
+                          required: ["key"],
+                          properties: {
+                            key: { type: "string", description: "Full plaintext API key — store now, never shown again." },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    "/v1/tenant/api-keys/{keyId}": {
+      patch: {
+        operationId: "updateTenantApiKey",
+        tags: ["Tenant"],
+        summary: "Update API key settings",
+        description: "Updates expiry and/or per-key rate limits. Only active (non-revoked) keys can be patched.",
+        security: tenantSecurity,
+        parameters: [{ name: "keyId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: jsonBody({
+          type: "object",
+          properties: {
+            expiresAt:      { type: ["string", "null"], format: "date-time" },
+            rateLimitRpm:   { type: ["integer", "null"], minimum: 1 },
+            rateLimitBurst: { type: ["integer", "null"], minimum: 1 },
+          },
+          description: "At least one field must be provided.",
+        }),
+        responses: {
+          "200": { description: "OK", content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: apiKeyResponse } } } } },
+          "400": r400,
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
     // ── Tenant diagnostics ───────────────────────────────────────────────────
 
     "/v1/tenant/diagnostics": {
@@ -870,33 +1431,255 @@ export const openApiSpec = {
       },
     },
 
-    // ── Violations ───────────────────────────────────────────────────────────
+    // ── Export ───────────────────────────────────────────────────────────────
 
-    "/v1/violations": {
+    "/v1/export": {
       get: {
-        operationId: "listViolations",
-        tags: ["Violations"],
-        summary: "List violations",
+        operationId: "exportGraph",
+        tags: ["Export / Import"],
+        summary: "Full graph export (NDJSON)",
+        description: [
+          "Streams all nodes then all edges for the tenant as newline-delimited JSON (NDJSON).",
+          "Each line is a self-contained JSON object with a 'type' discriminator ('node' or 'edge').",
+          "Edges are guaranteed to appear after all nodes so sourceId/targetId always resolve earlier in the stream.",
+          "Optionally filter by lifecycleStatus and/or layer.",
+        ].join(" "),
         security: tenantSecurity,
         parameters: [
-          { name: "nodeId",   in: "query", schema: { type: "string", format: "uuid" } },
-          { name: "ruleKey",  in: "query", schema: { type: "string" } },
-          { name: "severity", in: "query", schema: { $ref: "#/components/schemas/Severity" } },
-          { name: "resolved", in: "query", schema: { type: "boolean" } },
-          pLimit,
-          pCursor,
-          pCount,
+          { name: "lifecycleStatus", in: "query", schema: { $ref: "#/components/schemas/LifecycleStatus" } },
+          { name: "layer",           in: "query", schema: { $ref: "#/components/schemas/Layer" } },
         ],
+        responses: {
+          "200": {
+            description: "NDJSON stream — one record per line",
+            content: {
+              "application/x-ndjson": {
+                schema: {
+                  oneOf: [
+                    {
+                      type: "object",
+                      required: ["type", "id", "layer", "nodeType", "name", "version", "lifecycleStatus", "attributes", "createdAt"],
+                      properties: {
+                        type:            { type: "string", enum: ["node"] },
+                        id:              { type: "string", format: "uuid" },
+                        layer:           { $ref: "#/components/schemas/Layer" },
+                        nodeType:        { type: "string" },
+                        name:            { type: "string" },
+                        version:         { type: "string" },
+                        lifecycleStatus: { $ref: "#/components/schemas/LifecycleStatus" },
+                        attributes:      { type: "object", additionalProperties: true },
+                        createdAt:       { type: "string", format: "date-time" },
+                      },
+                    },
+                    {
+                      type: "object",
+                      required: ["type", "id", "sourceId", "targetId", "edgeType", "layer", "traversalWeight", "lifecycleStatus", "attributes", "createdAt"],
+                      properties: {
+                        type:            { type: "string", enum: ["edge"] },
+                        id:              { type: "string", format: "uuid" },
+                        sourceId:        { type: "string", format: "uuid" },
+                        targetId:        { type: "string", format: "uuid" },
+                        edgeType:        { type: "string" },
+                        layer:           { $ref: "#/components/schemas/Layer" },
+                        traversalWeight: { type: "number" },
+                        lifecycleStatus: { $ref: "#/components/schemas/LifecycleStatus" },
+                        attributes:      { type: "object", additionalProperties: true },
+                        createdAt:       { type: "string", format: "date-time" },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    // ── Import ───────────────────────────────────────────────────────────────
+
+    "/v1/import/bulk": {
+      post: {
+        operationId: "bulkImport",
+        tags: ["Export / Import"],
+        summary: "Bulk import nodes and edges",
+        description: [
+          "Atomically imports up to 50,000 nodes and edges in a single transaction.",
+          "Edges are validated against cross-layer guardrails before insertion.",
+          "All items must be new — duplicate (type, layer, name) for nodes or (sourceId, targetId, type) for edges returns 409.",
+          "Fires an import.completed webhook after the transaction commits (best-effort).",
+        ].join(" "),
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          required: ["nodes"],
+          properties: {
+            nodes: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["type", "layer", "name"],
+                properties: {
+                  type:            { type: "string", minLength: 1 },
+                  layer:           { $ref: "#/components/schemas/Layer" },
+                  name:            { type: "string", minLength: 1 },
+                  version:         { type: "string", default: "0.1.0" },
+                  lifecycleStatus: { $ref: "#/components/schemas/LifecycleStatus" },
+                  attributes:      { type: "object", additionalProperties: true, default: {} },
+                  owner: {
+                    type: "object",
+                    properties: {
+                      id:   { type: "string" },
+                      name: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            edges: {
+              type: "array",
+              default: [],
+              items: {
+                type: "object",
+                required: ["sourceId", "targetId", "type", "layer"],
+                properties: {
+                  sourceId:        { type: "string", format: "uuid" },
+                  targetId:        { type: "string", format: "uuid" },
+                  type:            { $ref: "#/components/schemas/RelationshipType" },
+                  layer:           { $ref: "#/components/schemas/Layer" },
+                  traversalWeight: { type: "number", exclusiveMinimum: 0, default: 1.0 },
+                  attributes:      { type: "object", additionalProperties: true, default: {} },
+                },
+              },
+            },
+          },
+        }),
+        responses: {
+          "201": {
+            description: "Import completed",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      type: "object",
+                      required: ["created", "errors"],
+                      properties: {
+                        created: {
+                          type: "object",
+                          required: ["nodes", "edges"],
+                          properties: {
+                            nodes: { type: "array", items: { type: "string", format: "uuid" } },
+                            edges: { type: "array", items: { type: "string", format: "uuid" } },
+                          },
+                        },
+                        errors: { type: "array", items: { type: "object", additionalProperties: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": r400,
+          "401": r401,
+          "409": r409,
+          "422": r422,
+        },
+      },
+    },
+
+    // ── Query ────────────────────────────────────────────────────────────────
+
+    "/v1/query/nodes": {
+      post: {
+        operationId: "queryNodes",
+        tags: ["Query"],
+        summary: "Structured node query",
+        description: "Flexible server-side filter combining type, layer, lifecycleStatus, attribute containment, and free-text search.",
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          properties: {
+            type:            { type: "string", minLength: 1 },
+            layer:           { $ref: "#/components/schemas/Layer" },
+            lifecycleStatus: { $ref: "#/components/schemas/LifecycleStatus" },
+            attributes:      { type: "object", additionalProperties: true, description: "Containment filter (PostgreSQL @> operator)." },
+            text:            { type: "string", description: "Case-insensitive substring match on name and type." },
+            limit:           { type: "integer", minimum: 1, maximum: 500, default: 50 },
+            offset:          { type: "integer", minimum: 0, default: 0 },
+          },
+        }),
         responses: {
           ...jsonOk({
             type: "object",
-            required: ["data", "nextCursor"],
+            required: ["data"],
             properties: {
-              data:       { type: "array", items: violationResponse },
-              nextCursor: { type: "string", nullable: true },
-              totalCount: { type: "integer", description: "Only present when ?count=true" },
+              data: { type: "array", items: nodeResponse },
             },
           }),
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    // ── Audit Log ────────────────────────────────────────────────────────────
+
+    "/v1/audit-log": {
+      get: {
+        operationId: "listAuditLog",
+        tags: ["Audit Log"],
+        summary: "List audit log entries",
+        description: [
+          "Returns audit log entries for the tenant in reverse chronological order.",
+          "Cursor-paginated: pass the nextCursor from the previous response as the cursor query parameter.",
+          "Audit log is append-only — DELETE and PATCH are rejected with 405.",
+        ].join(" "),
+        security: tenantSecurity,
+        parameters: [
+          { name: "entity_id",   in: "query", schema: { type: "string", format: "uuid" }, description: "Filter to a specific entity (node or edge) by ID." },
+          { name: "entity_type", in: "query", schema: { type: "string" }, description: "Filter by entity type string (e.g. 'Service', 'Database')." },
+          {
+            name: "operation",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: [
+                "node.create", "node.update", "node.delete",
+                "node.deprecate", "node.archive", "node.purge",
+                "edge.create", "edge.update", "edge.delete",
+                "edge.deprecate", "edge.archive", "edge.purge",
+                "rate_limit_hit",
+              ],
+            },
+          },
+          { name: "from",   in: "query", schema: { type: "string", format: "date-time" }, description: "Return only entries at or after this timestamp." },
+          { name: "to",     in: "query", schema: { type: "string", format: "date-time" }, description: "Return only entries at or before this timestamp." },
+          { name: "cursor", in: "query", schema: { type: "string" }, description: "Opaque cursor from a previous response's nextCursor field." },
+          { name: "limit",  in: "query", schema: { type: "integer", minimum: 1, maximum: 200, default: 50 } },
+        ],
+        responses: {
+          "200": {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["items", "nextCursor"],
+                  properties: {
+                    items:      { type: "array", items: { $ref: "#/components/schemas/AuditLogEntry" } },
+                    nextCursor: { type: ["string", "null"], description: "Pass as cursor in the next request to get the following page. Null means no more pages." },
+                  },
+                },
+              },
+            },
+          },
+          "400": r400,
           "401": r401,
         },
       },
