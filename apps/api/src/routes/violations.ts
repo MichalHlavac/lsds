@@ -70,7 +70,7 @@ export function violationsRouter(sql: Sql): Hono {
 
     if (countOpt) {
       const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM violations ${whereClause}`;
-      return c.json({ data: responseRows, totalCount: Number(count) });
+      return c.json({ data: responseRows, nextCursor, totalCount: Number(count) });
     }
     return c.json({ data: responseRows, nextCursor });
   });
