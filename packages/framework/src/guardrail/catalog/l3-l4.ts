@@ -166,7 +166,7 @@ export const L3_L4_RULES: GuardrailRule[] = [
       object_type: "ExternalSystem",
       triggers: ["PERIODIC"],
     },
-    condition: "(now - object.last_review_date) > 180 days",
+    condition: "(now - object.last_review_date) <= 180 days",
     rationale:
       "External vendors change pricing, SLA, and security posture; an unrefreshed review is operating on stale assumptions.",
     remediation:
