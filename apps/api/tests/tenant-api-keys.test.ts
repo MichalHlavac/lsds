@@ -13,6 +13,80 @@ const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
 beforeEach(() => { tid = randomUUID(); });
 afterEach(async () => { await cleanTenant(sql, tid); });
 
+// ── GET /v1/tenant/api-keys ───────────────────────────────────────────────────
+
+describe("GET /v1/tenant/api-keys", () => {
+  async function createKey(name = "test-key"): Promise<{ id: string; key: string }> {
+    const res = await app.request("/v1/tenant/api-keys/rotate", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ name }),
+    });
+    return (await res.json() as { data: { id: string; key: string } }).data;
+  }
+
+  it("returns 200 with empty array when tenant has no keys", async () => {
+    const res = await app.request("/v1/tenant/api-keys", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json() as { data: unknown[] };
+    expect(Array.isArray(data)).toBe(true);
+    expect(data).toHaveLength(0);
+  });
+
+  it("returns active keys with expected fields and no key_hash", async () => {
+    await createKey("listed-key");
+    const res = await app.request("/v1/tenant/api-keys", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json() as { data: Record<string, unknown>[] };
+    expect(data).toHaveLength(1);
+    const key = data[0];
+    expect(key).toHaveProperty("id");
+    expect(key).toHaveProperty("name", "listed-key");
+    expect(key).toHaveProperty("keyPrefix");
+    expect(key).toHaveProperty("createdAt");
+    expect(key).toHaveProperty("expiresAt");
+    expect(key).toHaveProperty("rateLimitRpm");
+    expect(key).toHaveProperty("rateLimitBurst");
+    expect(key).not.toHaveProperty("keyHash");
+  });
+
+  it("excludes revoked keys", async () => {
+    const { id: activeId } = await createKey("active-key");
+    // Create a second key via /v1/api-keys and immediately revoke it
+    const createRes = await app.request("/v1/api-keys", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ name: "will-be-revoked" }),
+    });
+    const { data: toRevoke } = await createRes.json() as { data: { id: string } };
+    await app.request(`/v1/api-keys/${toRevoke.id}`, { method: "DELETE", headers: h() });
+
+    const res = await app.request("/v1/tenant/api-keys", { headers: h() });
+    expect(res.status).toBe(200);
+    const { data } = await res.json() as { data: { id: string }[] };
+    const ids = data.map((k) => k.id);
+    expect(ids).toContain(activeId);
+    expect(ids).not.toContain(toRevoke.id);
+  });
+
+  it("does not return keys belonging to another tenant", async () => {
+    const otherTid = randomUUID();
+    try {
+      await app.request("/v1/tenant/api-keys/rotate", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-tenant-id": otherTid },
+      });
+
+      const res = await app.request("/v1/tenant/api-keys", { headers: h() });
+      expect(res.status).toBe(200);
+      const { data } = await res.json() as { data: unknown[] };
+      expect(data).toHaveLength(0);
+    } finally {
+      await cleanTenant(sql, otherTid);
+    }
+  });
+});
+
 // ── POST /v1/tenant/api-keys/rotate ──────────────────────────────────────────
 
 describe("POST /v1/tenant/api-keys/rotate", () => {
