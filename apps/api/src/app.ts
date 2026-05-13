@@ -33,6 +33,7 @@ import { adminTenantsRouter } from "./routes/admin-tenants.js";
 import { adminWebhooksRouter } from "./routes/admin-webhooks.js";
 import { adminAuthMiddleware } from "./middleware/admin-auth.js";
 import { openApiSpec } from "./openapi.js";
+import { apiReference } from "@scalar/hono-api-reference";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
 import { apiKeyMiddleware } from "./auth/api-key.js";
 import { requestIdMiddleware } from "./middleware/request-id.js";
@@ -121,6 +122,13 @@ app.route("/agent/v1/architect", architectRouter(sql, guardrails));
 app.route("/agent/v1/migration", migrationRouter(sql));
 
 app.get("/api/openapi.json", (c) => c.json(openApiSpec));
+
+app.get(
+  "/docs",
+  apiReference({
+    url: "/api/openapi.json",
+  })
+);
 
 app.use("/api/admin/*", adminAuthMiddleware);
 app.route("/api/admin/tenants", adminTenantsRouter(sql));
