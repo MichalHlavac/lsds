@@ -52,14 +52,18 @@ export function violationsRouter(sql: Sql): Hono {
         ${cursorClause}
     `;
 
-    const rows = await sql<ViolationRow[]>`
-      SELECT * FROM violations ${whereClause}
+    // cursor_v preserves µs precision; JS Date.toISOString() is ms-only and would
+    // produce an incorrect cursor boundary when rows share the same ms.
+    const rows = await sql<(ViolationRow & { cursorV: string })[]>`
+      SELECT *,
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_v
+      FROM violations ${whereClause}
       ORDER BY created_at DESC, id ASC
       LIMIT ${limit}
     `;
 
     const nextCursor = rows.length === limit
-      ? encodeCursor(rows[rows.length - 1].createdAt.toISOString(), rows[rows.length - 1].id)
+      ? encodeCursor(rows[rows.length - 1].cursorV, rows[rows.length - 1].id)
       : null;
 
     if (countOpt) {
