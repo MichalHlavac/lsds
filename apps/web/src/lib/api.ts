@@ -106,6 +106,22 @@ export interface ApiErrorBody {
   message?: string;
 }
 
+export type FeedbackType = "bug" | "feature" | "general";
+
+export interface SubmitFeedbackPayload {
+  type?: FeedbackType;
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FeedbackResponse {
+  id: string;
+  type: FeedbackType;
+  message: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface LayerSummary {
   layer: Layer;
   nodeCount: number;
@@ -289,6 +305,17 @@ export const api = {
     list: () => request<{ data: LayerSummary[] }>("/v1/layers"),
     getNodes: (layer: Layer, params?: LayerNodeListParams) =>
       request<{ data: NodeRow[] }>(`/v1/layers/${layer}`, { params: params as Params }),
+  },
+
+  feedback: {
+    submit: (payload: SubmitFeedbackPayload) => {
+      const apiKey = process.env.NEXT_PUBLIC_TENANT_API_KEY;
+      return request<{ data: FeedbackResponse }>("/v1/feedback", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: apiKey ? { "X-Api-Key": apiKey } : {},
+      });
+    },
   },
 
   violations: {

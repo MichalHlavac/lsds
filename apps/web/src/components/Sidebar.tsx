@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { GlobalSearch } from "./GlobalSearch";
+import { FeedbackModal } from "./FeedbackModal";
 
 const LAYERS = ["L1", "L2", "L3", "L4", "L5", "L6"] as const;
 
@@ -26,6 +27,8 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
     </Link>
   );
 }
+
+const feedbackEnabled = !!process.env.NEXT_PUBLIC_TENANT_API_KEY;
 
 export function Sidebar() {
   return (
@@ -82,6 +85,12 @@ export function Sidebar() {
           </li>
         </ul>
       </div>
+
+      {feedbackEnabled && (
+        <div className="mt-auto pt-2 border-t border-gray-800">
+          <FeedbackModal />
+        </div>
+      )}
     </nav>
   );
 }
