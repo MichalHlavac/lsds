@@ -66,11 +66,13 @@ export function violationsRouter(sql: Sql): Hono {
       ? encodeCursor(rows[rows.length - 1].cursorV, rows[rows.length - 1].id)
       : null;
 
+    const responseRows = rows.map(({ cursorV: _cv, ...rest }) => rest);
+
     if (countOpt) {
       const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM violations ${whereClause}`;
-      return c.json({ data: rows, nextCursor, totalCount: Number(count) });
+      return c.json({ data: responseRows, totalCount: Number(count) });
     }
-    return c.json({ data: rows, nextCursor });
+    return c.json({ data: responseRows, nextCursor });
   });
 
   app.post("/", async (c) => {
