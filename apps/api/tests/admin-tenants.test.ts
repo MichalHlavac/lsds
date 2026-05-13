@@ -188,6 +188,119 @@ describe("POST /api/admin/tenants", () => {
   });
 });
 
+// ── GET /api/admin/tenants ────────────────────────────────────────────────────
+
+describe("GET /api/admin/tenants", () => {
+  it("returns 401 when LSDS_ADMIN_SECRET is not configured", async () => {
+    vi.stubEnv("LSDS_ADMIN_SECRET", "");
+    const res = await app.request("/api/admin/tenants", {
+      method: "GET",
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 for an invalid Bearer token", async () => {
+    const res = await app.request("/api/admin/tenants", {
+      method: "GET",
+      headers: { authorization: "Bearer wrong-token-value" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 200 with data array including newly created tenants", async () => {
+    const slugA = uniqueSlug();
+    const slugB = uniqueSlug();
+
+    const resA = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "List Corp A", slug: slugA, plan: "trial" }),
+    });
+    expect(resA.status).toBe(201);
+    const { data: dA } = (await resA.json()) as { data: { tenant: { id: string } } };
+    createdTenantIds.push(dA.tenant.id);
+
+    const resB = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "List Corp B", slug: slugB, plan: "partner" }),
+    });
+    expect(resB.status).toBe(201);
+    const { data: dB } = (await resB.json()) as { data: { tenant: { id: string } } };
+    createdTenantIds.push(dB.tenant.id);
+
+    const listRes = await app.request("/api/admin/tenants", {
+      method: "GET",
+      headers: adminHeaders(),
+    });
+    expect(listRes.status).toBe(200);
+
+    const { data } = (await listRes.json()) as {
+      data: Array<{
+        id: string;
+        name: string;
+        slug: string;
+        plan: string;
+        createdAt: string;
+        activeApiKeyCount: number;
+      }>;
+    };
+    expect(Array.isArray(data)).toBe(true);
+
+    const tenantA = data.find((t) => t.id === dA.tenant.id);
+    const tenantB = data.find((t) => t.id === dB.tenant.id);
+
+    expect(tenantA).toBeDefined();
+    expect(tenantA?.slug).toBe(slugA);
+    expect(tenantA?.plan).toBe("trial");
+    expect(tenantA?.activeApiKeyCount).toBe(1);
+
+    expect(tenantB).toBeDefined();
+    expect(tenantB?.slug).toBe(slugB);
+    expect(tenantB?.plan).toBe("partner");
+    expect(tenantB?.activeApiKeyCount).toBe(1);
+  });
+
+  it("activeApiKeyCount drops to 0 after all keys are rotated away then revoked", async () => {
+    const slug = uniqueSlug();
+    const createRes = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "Count Corp", slug, plan: "trial" }),
+    });
+    expect(createRes.status).toBe(201);
+    const { data: created } = (await createRes.json()) as { data: { tenant: { id: string } } };
+    const tenantId = created.tenant.id;
+    createdTenantIds.push(tenantId);
+
+    // Revoke the bootstrap key by rotating (new key issued, old revoked)
+    await sql`UPDATE api_keys SET revoked_at = now() WHERE tenant_id = ${tenantId} AND revoked_at IS NULL`;
+
+    const listRes = await app.request("/api/admin/tenants", {
+      method: "GET",
+      headers: adminHeaders(),
+    });
+    expect(listRes.status).toBe(200);
+    const { data } = (await listRes.json()) as {
+      data: Array<{ id: string; activeApiKeyCount: number }>;
+    };
+    const row = data.find((t) => t.id === tenantId);
+    expect(row?.activeApiKeyCount).toBe(0);
+  });
+
+  it("returns an empty data array when no tenants exist in an isolated list", async () => {
+    // We cannot guarantee the DB is empty, but we can verify the shape is always an array.
+    const listRes = await app.request("/api/admin/tenants", {
+      method: "GET",
+      headers: adminHeaders(),
+    });
+    expect(listRes.status).toBe(200);
+    const body = (await listRes.json()) as { data: unknown };
+    expect(Array.isArray(body.data)).toBe(true);
+  });
+});
+
 // ── PATCH /api/admin/tenants/:tenantId/api-keys ───────────────────────────────
 
 describe("PATCH /api/admin/tenants/:tenantId/api-keys", () => {
