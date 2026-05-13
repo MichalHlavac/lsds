@@ -479,6 +479,67 @@ export const openApiSpec = {
       },
     },
 
+    "/api/admin/diagnostics": {
+      get: {
+        operationId: "adminDiagnostics",
+        tags: ["Admin"],
+        summary: "System-wide diagnostics bundle",
+        description: [
+          "Returns a cross-tenant system snapshot for support triage.",
+          "Includes process info (version, uptime, memory), DB connectivity, pool size, and aggregate counts.",
+          "Response is cached for 30 seconds.",
+        ].join(" "),
+        security: adminSecurity,
+        responses: {
+          "200": {
+            description: "OK",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      type: "object",
+                      required: [
+                        "appVersion", "nodeVersion", "uptime", "memory",
+                        "dbConnected", "dbPoolSize",
+                        "totalTenants", "totalActiveApiKeys", "totalNodes", "totalEdges",
+                        "generatedAt",
+                      ],
+                      properties: {
+                        appVersion:         { type: "string", description: "Value of APP_VERSION env var, or 'unknown'" },
+                        nodeVersion:        { type: "string", description: "process.version" },
+                        uptime:             { type: "number", description: "Process uptime in seconds" },
+                        memory: {
+                          type: "object",
+                          required: ["rss", "heapTotal", "heapUsed", "external"],
+                          properties: {
+                            rss:       { type: "integer" },
+                            heapTotal: { type: "integer" },
+                            heapUsed:  { type: "integer" },
+                            external:  { type: "integer" },
+                          },
+                        },
+                        dbConnected:        { type: "boolean", description: "False when DB query fails" },
+                        dbPoolSize:         { type: "integer", description: "Configured max pool size" },
+                        totalTenants:       { type: "integer", minimum: 0 },
+                        totalActiveApiKeys: { type: "integer", minimum: 0, description: "Non-revoked, non-expired API keys across all tenants" },
+                        totalNodes:         { type: "integer", minimum: 0 },
+                        totalEdges:         { type: "integer", minimum: 0 },
+                        generatedAt:        { type: "string", format: "date-time" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": r401,
+        },
+      },
+    },
+
     // ── Nodes ───────────────────────────────────────────────────────────────
 
     "/v1/nodes": {

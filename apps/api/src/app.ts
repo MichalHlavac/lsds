@@ -31,6 +31,7 @@ import { auditLogRouter } from "./routes/audit-log.js";
 import { staleFlagsRouter } from "./routes/stale-flags.js";
 import { adminTenantsRouter } from "./routes/admin-tenants.js";
 import { adminWebhooksRouter } from "./routes/admin-webhooks.js";
+import { adminDiagnosticsRouter } from "./routes/admin-diagnostics.js";
 import { adminAuthMiddleware } from "./middleware/admin-auth.js";
 import { openApiSpec } from "./openapi.js";
 import { apiReference } from "@scalar/hono-api-reference";
@@ -133,6 +134,7 @@ app.get(
 app.use("/api/admin/*", adminAuthMiddleware);
 app.route("/api/admin/tenants", adminTenantsRouter(sql));
 app.route("/api/admin/webhooks", adminWebhooksRouter(sql));
+app.route("/api/admin/diagnostics", adminDiagnosticsRouter(sql));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
