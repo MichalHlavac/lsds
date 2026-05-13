@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 //
-// Guard: no two migration files may share a numeric prefix unless explicitly grandfathered.
-// Grandfathered duplicates (004, 011) predate this guard and are accepted by the runner's
-// `filename TEXT PRIMARY KEY` constraint. Do NOT extend this list — fix the root cause.
+// Guard: no two migration files may share a numeric prefix.
 
 import { describe, it, expect } from "vitest";
 import { readdirSync } from "node:fs";
@@ -16,9 +14,7 @@ const __dirname = dirname(__filename);
 
 const MIGRATIONS_DIR = resolve(__dirname, "../migrations");
 
-// Prefixes that already existed as duplicates before this guard was introduced.
-// Do NOT add new entries here — fix the root cause instead.
-const GRANDFATHERED_DUPLICATES = new Set(["004", "011", "012"]);
+const GRANDFATHERED_DUPLICATES = new Set<string>();
 
 function extractPrefix(filename: string): string | null {
   const match = /^(\d+)_/.exec(filename);
@@ -83,19 +79,6 @@ describe("findDuplicatePrefixes() — negative: detects new duplicates", () => {
     expect(violations[0].files).toContain("002_extra.sql");
   });
 
-  it("does not flag grandfathered prefixes 004, 011, and 012", () => {
-    const files = [
-      "004_history.sql",
-      "004_migration_drafts.sql",
-      "011_nodes_owner.sql",
-      "011_tenants.sql",
-      "012_history_clock_timestamp.sql",
-      "012_tenant_slug.sql",
-    ];
-    const violations = findDuplicatePrefixes(files, GRANDFATHERED_DUPLICATES);
-    expect(violations).toHaveLength(0);
-  });
-
   it("flags multiple independent new duplicates in one pass", () => {
     const files = [
       "005_a.sql",
@@ -135,7 +118,7 @@ describe("findDuplicatePrefixes() — positive: unique prefixes produce no viola
 // ── real migrations directory guard ───────────────────────────────────────────
 
 describe("apps/api/migrations/ — prefix uniqueness guard", () => {
-  it("has no NEW duplicate prefixes beyond grandfathered 004 and 011", () => {
+  it("has no duplicate prefixes", () => {
     const files = readdirSync(MIGRATIONS_DIR);
     const sqlFiles = files.filter((f) => f.endsWith(".sql"));
 
@@ -146,29 +129,11 @@ describe("apps/api/migrations/ — prefix uniqueness guard", () => {
         .map((v) => `  prefix ${v.prefix}: ${v.files.join(", ")}`)
         .join("\n");
       throw new Error(
-        `New duplicate migration prefixes detected — rename or merge before merging:\n${details}`,
+        `Duplicate migration prefixes detected — rename or merge before merging:\n${details}`,
       );
     }
 
     expect(violations).toHaveLength(0);
-  });
-
-  it("confirms grandfathered prefix 004 has exactly 2 files", () => {
-    const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
-    const files004 = files.filter((f) => extractPrefix(f) === "004");
-    expect(files004).toHaveLength(2);
-  });
-
-  it("confirms grandfathered prefix 011 has exactly 2 files", () => {
-    const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
-    const files011 = files.filter((f) => extractPrefix(f) === "011");
-    expect(files011).toHaveLength(2);
-  });
-
-  it("confirms grandfathered prefix 012 has exactly 3 files", () => {
-    const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
-    const files012 = files.filter((f) => extractPrefix(f) === "012");
-    expect(files012).toHaveLength(3);
   });
 
   it("all sql files have a numeric prefix", () => {

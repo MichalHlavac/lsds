@@ -391,11 +391,11 @@ describe("built-in check: GR-L5-004 (ExternalDependency CRITICAL without securit
   });
 });
 
-// ── GR-L5-007: ExternalDependency with GPL-family license ────────────────────
+// ── GR-L5-007: ExternalDependency with GPL-family license in COMMERCIAL context
 
 describe("built-in check: GR-L5-007 (ExternalDependency GPL license)", () => {
-  it("fires for ExternalDependency with GPL-3.0 license", async () => {
-    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+  it("fires for ExternalDependency with GPL-3.0 license in COMMERCIAL distribution context", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: { distribution: { context: "COMMERCIAL" } } })]);
     const registry = new GuardrailsRegistry(sql);
     const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "GPL-3.0" } });
     const violations = await registry.evaluate("t1", node);
@@ -405,12 +405,28 @@ describe("built-in check: GR-L5-007 (ExternalDependency GPL license)", () => {
     expect(violations[0]?.message).toContain("GPL-3.0");
   });
 
-  it("fires for ExternalDependency with GPL-2.0-only license", async () => {
-    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+  it("fires for ExternalDependency with GPL-2.0-only license in COMMERCIAL distribution context", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: { distribution: { context: "COMMERCIAL" } } })]);
     const registry = new GuardrailsRegistry(sql);
     const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "GPL-2.0-only" } });
     const violations = await registry.evaluate("t1", node);
     expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for GPL-3.0 when distribution.context is not configured (open-source / internal deployment)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "GPL-3.0" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for GPL-3.0 when distribution.context is INTERNAL", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-007", config: { distribution: { context: "INTERNAL" } } })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ExternalDependency", layer: "L5", attributes: { license: "GPL-3.0" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
   });
 
   it("does not fire for ExternalDependency with LGPL-2.1 license (LGPL does not start with GPL)", async () => {

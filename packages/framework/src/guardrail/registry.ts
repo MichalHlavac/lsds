@@ -12,9 +12,12 @@ import {
   Severity,
 } from "./types.js";
 
+// Validate every rule through the schema at module load — mirrors relationship/registry.ts:415
+// so malformed catalog edits fail at import time, not only when validateCatalog() is called.
 const BY_ID: ReadonlyMap<string, GuardrailRule> = (() => {
   const map = new Map<string, GuardrailRule>();
   for (const rule of GUARDRAIL_CATALOG) {
+    GuardrailRuleSchema.parse(rule);
     if (map.has(rule.rule_id)) {
       throw new Error(`Duplicate guardrail rule_id: ${rule.rule_id}`);
     }

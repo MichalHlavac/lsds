@@ -25,7 +25,7 @@ import {
   SORT_ORDER_VALUES,
   type EdgeSortField,
 } from "./schemas.js";
-import { getTenantId, jsonb, toHttpError } from "./util.js";
+import { getTenantId, jsonb, toHttpError, encodeCursor, decodeCursor } from "./util.js";
 import { propagateEdgeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getViolationSuggestion } from "../guardrails/naming.js";
@@ -42,7 +42,8 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const lifecycleStatus = c.req.query("lifecycleStatus");
     const includeArchived = c.req.query("includeArchived") === "true";
     const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
-    const offset = Number(c.req.query("offset") ?? 0);
+    const cursorRaw = c.req.query("cursor");
+    const countOpt = c.req.query("count") === "true";
     const sortByRaw = c.req.query("sortBy");
     const orderRaw = c.req.query("order");
 
@@ -53,6 +54,12 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       return c.json({ error: "invalid order: must be 'asc' or 'desc'" }, 400);
     }
 
+    let cursor: { v: string; id: string } | null = null;
+    if (cursorRaw) {
+      cursor = decodeCursor(cursorRaw);
+      if (!cursor) return c.json({ error: "invalid cursor" }, 400);
+    }
+
     const sortColMap: Record<EdgeSortField, ReturnType<typeof sql>> = {
       createdAt: sql`created_at`,
       updatedAt: sql`updated_at`,
@@ -61,8 +68,30 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
       traversalWeight: sql`traversal_weight`,
     };
 
+    const isDesc = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc";
     const sortCol = sortByRaw ? sortColMap[sortByRaw as EdgeSortField] : sql`created_at`;
-    const sortDir = (orderRaw ?? (sortByRaw ? "asc" : "desc")) === "desc" ? sql`DESC` : sql`ASC`;
+    const sortDirSql = isDesc ? sql`DESC` : sql`ASC`;
+
+    type ColSpec = { colSql: ReturnType<typeof sql>; isTs: boolean; getValue: (row: EdgeRow) => string };
+    const colSpecMap: Record<EdgeSortField, ColSpec> = {
+      createdAt:       { colSql: sql`created_at`,       isTs: true,  getValue: (r) => r.createdAt.toISOString() },
+      updatedAt:       { colSql: sql`updated_at`,       isTs: true,  getValue: (r) => r.updatedAt.toISOString() },
+      type:            { colSql: sql`type`,             isTs: false, getValue: (r) => r.type },
+      layer:           { colSql: sql`layer`,            isTs: false, getValue: (r) => r.layer },
+      traversalWeight: { colSql: sql`traversal_weight`, isTs: false, getValue: (r) => String(r.traversalWeight) },
+    };
+    const colSpec = colSpecMap[(sortByRaw ?? "createdAt") as EdgeSortField];
+
+    const cursorClause = cursor
+      ? (() => {
+          const { v, id } = cursor;
+          const vFrag = colSpec.isTs ? sql`${v}::timestamptz` : sql`${v}`;
+          const idFrag = sql`${id}::uuid`;
+          return isDesc
+            ? sql`AND (${colSpec.colSql} < ${vFrag} OR (${colSpec.colSql} = ${vFrag} AND id > ${idFrag}))`
+            : sql`AND (${colSpec.colSql} > ${vFrag} OR (${colSpec.colSql} = ${vFrag} AND id > ${idFrag}))`;
+        })()
+      : sql``;
 
     const whereClause = sql`
       WHERE tenant_id = ${tenantId}
@@ -71,13 +100,24 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         ${targetId ? sql`AND target_id = ${targetId}` : sql``}
         ${type ? sql`AND type = ${type}` : sql``}
         ${lifecycleStatus ? sql`AND lifecycle_status = ${lifecycleStatus}` : !includeArchived ? sql`AND lifecycle_status != 'ARCHIVED'` : sql``}
+        ${cursorClause}
     `;
 
-    const [rows, [{ count }]] = await Promise.all([
-      sql<EdgeRow[]>`SELECT * FROM edges ${whereClause} ORDER BY ${sortCol} ${sortDir} LIMIT ${limit} OFFSET ${offset}`,
-      sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM edges ${whereClause}`,
-    ]);
-    return c.json({ data: rows, total: Number(count) });
+    const rows = await sql<EdgeRow[]>`
+      SELECT * FROM edges ${whereClause}
+      ORDER BY ${sortCol} ${sortDirSql}, id ASC
+      LIMIT ${limit}
+    `;
+
+    const nextCursor = rows.length === limit
+      ? encodeCursor(colSpec.getValue(rows[rows.length - 1]), rows[rows.length - 1].id)
+      : null;
+
+    if (countOpt) {
+      const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM edges ${whereClause}`;
+      return c.json({ data: rows, nextCursor, totalCount: Number(count) });
+    }
+    return c.json({ data: rows, nextCursor });
   });
 
   app.post("/", async (c) => {

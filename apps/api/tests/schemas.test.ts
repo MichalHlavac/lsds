@@ -13,6 +13,9 @@ import {
   UpdateGuardrailSchema,
   CreateUserSchema,
   CreateTeamSchema,
+  FeedbackTypeSchema,
+  SubmitFeedbackBodySchema,
+  FeedbackResponseSchema,
 } from "../src/routes/schemas";
 import { app } from "../src/app";
 
@@ -601,5 +604,119 @@ describe("POST /v1/violations schema validation", () => {
       body: JSON.stringify({ ruleKey: "x", severity: "WARN", message: "m", nodeId: "bad" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+// ── FeedbackTypeSchema ────────────────────────────────────────────────────────
+
+describe("FeedbackTypeSchema", () => {
+  it("accepts all valid types", () => {
+    for (const type of ["bug", "feature", "general"]) {
+      expect(FeedbackTypeSchema.parse(type)).toBe(type);
+    }
+  });
+
+  it("rejects invalid type", () => {
+    expect(() => FeedbackTypeSchema.parse("complaint")).toThrow();
+  });
+
+  it("rejects empty string", () => {
+    expect(() => FeedbackTypeSchema.parse("")).toThrow();
+  });
+});
+
+// ── SubmitFeedbackBodySchema ──────────────────────────────────────────────────
+
+describe("SubmitFeedbackBodySchema", () => {
+  const valid = { message: "This is useful feedback." };
+
+  it("parses minimal valid body", () => {
+    const r = SubmitFeedbackBodySchema.parse(valid);
+    expect(r.message).toBe("This is useful feedback.");
+  });
+
+  it("applies default type 'general'", () => {
+    expect(SubmitFeedbackBodySchema.parse(valid).type).toBe("general");
+  });
+
+  it("accepts explicit type 'bug'", () => {
+    const r = SubmitFeedbackBodySchema.parse({ ...valid, type: "bug" });
+    expect(r.type).toBe("bug");
+  });
+
+  it("accepts explicit type 'feature'", () => {
+    const r = SubmitFeedbackBodySchema.parse({ ...valid, type: "feature" });
+    expect(r.type).toBe("feature");
+  });
+
+  it("rejects invalid type", () => {
+    expect(() => SubmitFeedbackBodySchema.parse({ ...valid, type: "complaint" })).toThrow();
+  });
+
+  it("rejects empty message", () => {
+    expect(() => SubmitFeedbackBodySchema.parse({ message: "" })).toThrow();
+  });
+
+  it("rejects message exceeding 5000 characters", () => {
+    expect(() => SubmitFeedbackBodySchema.parse({ message: "x".repeat(5001) })).toThrow();
+  });
+
+  it("accepts message of exactly 5000 characters", () => {
+    expect(() => SubmitFeedbackBodySchema.parse({ message: "x".repeat(5000) })).not.toThrow();
+  });
+
+  it("accepts message of exactly 1 character", () => {
+    expect(() => SubmitFeedbackBodySchema.parse({ message: "x" })).not.toThrow();
+  });
+
+  it("accepts optional metadata as a record", () => {
+    const r = SubmitFeedbackBodySchema.parse({ ...valid, metadata: { source: "web", version: 2 } });
+    expect(r.metadata).toEqual({ source: "web", version: 2 });
+  });
+
+  it("metadata is undefined when not provided", () => {
+    expect(SubmitFeedbackBodySchema.parse(valid).metadata).toBeUndefined();
+  });
+
+  it("rejects missing message", () => {
+    expect(() => SubmitFeedbackBodySchema.parse({})).toThrow();
+  });
+});
+
+// ── FeedbackResponseSchema ────────────────────────────────────────────────────
+
+describe("FeedbackResponseSchema", () => {
+  const UUID = "550e8400-e29b-41d4-a716-446655440000";
+  const valid = {
+    id: UUID,
+    type: "bug" as const,
+    message: "Crash on login",
+    metadata: null,
+    createdAt: "2026-05-13T10:00:00.000Z",
+  };
+
+  it("parses a valid feedback response", () => {
+    const r = FeedbackResponseSchema.parse(valid);
+    expect(r.id).toBe(UUID);
+    expect(r.type).toBe("bug");
+    expect(r.message).toBe("Crash on login");
+    expect(r.metadata).toBeNull();
+  });
+
+  it("accepts non-null metadata", () => {
+    const r = FeedbackResponseSchema.parse({ ...valid, metadata: { key: "value" } });
+    expect(r.metadata).toEqual({ key: "value" });
+  });
+
+  it("rejects non-UUID id", () => {
+    expect(() => FeedbackResponseSchema.parse({ ...valid, id: "not-a-uuid" })).toThrow();
+  });
+
+  it("rejects invalid type", () => {
+    expect(() => FeedbackResponseSchema.parse({ ...valid, type: "unknown" })).toThrow();
+  });
+
+  it("rejects invalid datetime for createdAt", () => {
+    expect(() => FeedbackResponseSchema.parse({ ...valid, createdAt: "not-a-date" })).toThrow();
   });
 });

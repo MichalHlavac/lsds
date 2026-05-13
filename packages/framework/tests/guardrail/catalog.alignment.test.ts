@@ -3,6 +3,8 @@
 
 import { describe, expect, it } from "vitest";
 import { getGuardrailOrThrow } from "../../src/guardrail";
+import { ExternalDependencySchema } from "../../src/types/l5/external-dependency.js";
+import { tknBase } from "../fixtures.js";
 
 // Lock-in test for the kap. 4 alignment scan (LSDS-83 → LSDS-90).
 // Each assertion captures a previously drifted field/edge name; if the
@@ -1585,6 +1587,26 @@ describe("GR-L5 implementation-layer guardrail drift guards (GR-L5-001..002, 004
       expect(rule.condition).not.toContain("config.distribution_mode");
       expect(rule.condition).not.toContain("== 'PROPRIETARY'");
       expect(rule.condition).not.toContain("== 'CLOSED_SOURCE'");
+    });
+
+    it("ExternalDependencySchema exposes the `license` attribute the rule reads (LSDS-920)", () => {
+      // Before LSDS-920 the GR-L5-007 condition referenced `object.license`
+      // while ExternalDependencySchema had no such field — the rule was
+      // structurally dead. Lock the schema-side anchor here so any future
+      // rename or removal of `license` breaks this test loudly instead of
+      // silently no-op'ing the rule once a real evaluator lands.
+      const parsed = ExternalDependencySchema.parse({
+        ...tknBase({ type: "ExternalDependency", layer: "L5", name: "license-anchor-fixture" }),
+        description: "Schema license anchor for GR-L5-007.",
+        packageManager: "NPM",
+        packageName: "left-pad",
+        versionConstraint: "^1.0.0",
+        isDirect: true,
+        hasKnownVulnerability: false,
+        criticality: "LOW",
+        license: "MIT",
+      });
+      expect(parsed.license).toBe("MIT");
     });
   });
 });

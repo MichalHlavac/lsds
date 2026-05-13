@@ -416,8 +416,8 @@ describe("webhook retry and backoff", () => {
 
     const dispatcher = createWebhookDispatcher(sql);
 
-    // 4 polls to exhaust all attempts
-    for (let i = 0; i < 4; i++) {
+    // 6 polls to exhaust all attempts
+    for (let i = 0; i < 6; i++) {
       // Force next_attempt to now for each retry
       await sql`UPDATE webhook_deliveries SET next_attempt = now() WHERE tenant_id = ${tid}`;
       await dispatcher.poll();
@@ -427,7 +427,64 @@ describe("webhook retry and backoff", () => {
       SELECT status, attempt_count FROM webhook_deliveries WHERE tenant_id = ${tid}
     `;
     expect(delivery!.status).toBe("failed");
-    expect(delivery!.attemptCount).toBe(4);
+    expect(delivery!.attemptCount).toBe(6);
+  });
+
+  it("marks delivered and stops retrying when attempt 3 succeeds", async () => {
+    let callCount = 0;
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => { body += c; });
+      req.on("end", () => {
+        callCount++;
+        // Fail first 2 attempts, succeed on the 3rd
+        res.writeHead(callCount < 3 ? 500 : 200);
+        res.end();
+      });
+    });
+    await listenOnFreePort(server);
+    const addr = server.address() as { port: number };
+
+    const secret = generateWebhookSecret();
+    const secretEnc = encryptSecret(secret);
+    try {
+      const [wh] = await sql<[{ id: string }]>`
+        INSERT INTO webhooks (tenant_id, url, event_types, secret_enc)
+        VALUES (
+          ${tid}, ${`http://127.0.0.1:${addr.port}/hook`}, ${sql.array(["node.create"])},
+          decode(${secretEnc.toString("hex")}, 'hex')
+        )
+        RETURNING id
+      `;
+      const [entry] = await sql<[{ id: string }]>`
+        INSERT INTO audit_log (tenant_id, api_key_id, operation, entity_type, entity_id)
+        VALUES (${tid}, null, 'node.create', 'Service', ${randomUUID()})
+        RETURNING id
+      `;
+      const [del] = await sql<[{ id: string }]>`
+        INSERT INTO webhook_deliveries (webhook_id, tenant_id, audit_log_id, event_type, payload)
+        VALUES (
+          ${wh!.id}, ${tid}, ${entry!.id}, 'node.create',
+          ${sql.json({ id: entry!.id, event: "node.create", timestamp: new Date().toISOString(), data: {} })}
+        )
+        RETURNING id
+      `;
+
+      const dispatcher = createWebhookDispatcher(sql);
+      for (let i = 0; i < 3; i++) {
+        await sql`UPDATE webhook_deliveries SET next_attempt = now() WHERE id = ${del!.id}`;
+        await dispatcher.poll();
+      }
+
+      const [delivery] = await sql<[{ status: string; attemptCount: number }]>`
+        SELECT status, attempt_count FROM webhook_deliveries WHERE id = ${del!.id}
+      `;
+      expect(delivery!.status).toBe("delivered");
+      expect(delivery!.attemptCount).toBe(3);
+      expect(callCount).toBe(3);
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
   });
 
   it("honors Retry-After header when larger than backoff", async () => {
@@ -560,7 +617,7 @@ describe("webhook audit log emission", () => {
     `;
 
     const dispatcher = createWebhookDispatcher(sql);
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       await sql`UPDATE webhook_deliveries SET next_attempt = now() WHERE id = ${del!.id}`;
       await dispatcher.poll();
     }

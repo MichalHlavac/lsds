@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { app } from "../src/app";
 import { sql } from "../src/db/client";
 import { cleanTenant } from "./test-helpers";
+import type { NodeRow } from "../src/db/types";
+import type { TraversalResult } from "../src/db/traversal-adapter";
 
 let tid: string;
 const h = () => ({ "content-type": "application/json", "x-tenant-id": tid });
@@ -63,7 +65,7 @@ describe("POST /v1/nodes/:id/traverse", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const nodeIds = data.nodes.map((n: any) => n.id);
+    const nodeIds = data.nodes.map((n: NodeRow) => n.id);
     expect(nodeIds).toContain(child.id);
   });
 
@@ -126,7 +128,7 @@ describe("traversalWeight cost ordering", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const childEntry = data.traversal.find((r: any) => r.nodeId === child.id);
+    const childEntry = data.traversal.find((r: TraversalResult) => r.nodeId === child.id);
     expect(childEntry).toBeDefined();
     expect(childEntry.totalCost).toBeCloseTo(2.5);
   });
@@ -140,7 +142,7 @@ describe("traversalWeight cost ordering", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const rootEntry = data.traversal.find((r: any) => r.nodeId === root.id);
+    const rootEntry = data.traversal.find((r: TraversalResult) => r.nodeId === root.id);
     expect(rootEntry).toBeDefined();
     expect(rootEntry.totalCost).toBe(0);
   });
@@ -160,8 +162,8 @@ describe("traversalWeight cost ordering", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const aEntry = data.traversal.find((r: any) => r.nodeId === a.id);
-    const bEntry = data.traversal.find((r: any) => r.nodeId === b.id);
+    const aEntry = data.traversal.find((r: TraversalResult) => r.nodeId === a.id);
+    const bEntry = data.traversal.find((r: TraversalResult) => r.nodeId === b.id);
     expect(aEntry.totalCost).toBeCloseTo(1.0);
     expect(bEntry.totalCost).toBeCloseTo(2.0);
   });
@@ -187,7 +189,7 @@ describe("traversalWeight cost ordering", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const targetEntry = data.traversal.find((r: any) => r.nodeId === target.id);
+    const targetEntry = data.traversal.find((r: TraversalResult) => r.nodeId === target.id);
     expect(targetEntry).toBeDefined();
     // Should have kept the cheap path (0.1 + 0.1 = 0.2), not the expensive one (10.0)
     expect(targetEntry.totalCost).toBeCloseTo(0.2);
@@ -234,7 +236,7 @@ describe("cross-tenant isolation in traversal", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const nodeIds = data.nodes.map((n: any) => n.id);
+    const nodeIds = data.nodes.map((n: NodeRow) => n.id);
     expect(nodeIds).not.toContain(nodeBData.id);
     expect(nodeIds).toContain(childA.id);
   });
@@ -259,7 +261,7 @@ describe("cross-tenant isolation in traversal", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const nodeIds = data.nodes.map((n: any) => n.id);
+    const nodeIds = data.nodes.map((n: NodeRow) => n.id);
     expect(nodeIds).not.toContain(nodeBData.id);
   });
 
@@ -284,7 +286,7 @@ describe("cross-tenant isolation in traversal", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const nodeIds = data.nodes.map((n: any) => n.id);
+    const nodeIds = data.nodes.map((n: NodeRow) => n.id);
     expect(nodeIds).not.toContain(nodeBData.id);
   });
 
@@ -309,7 +311,7 @@ describe("cross-tenant isolation in traversal", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    const nodeIds = data.nodes.map((n: any) => n.id);
+    const nodeIds = data.nodes.map((n: NodeRow) => n.id);
     expect(nodeIds).not.toContain(nodeBData.id);
   });
 });
@@ -327,7 +329,7 @@ describe("POST /v1/query/nodes", () => {
     expect(res.status).toBe(200);
     const { data } = await res.json();
     expect(Array.isArray(data)).toBe(true);
-    expect(data.every((n: any) => n.type === "Service")).toBe(true);
+    expect(data.every((n: NodeRow) => n.type === "Service")).toBe(true);
   });
 
   it("returns 200 with empty array when no nodes match the filter", async () => {
@@ -349,7 +351,7 @@ describe("POST /v1/query/nodes", () => {
     });
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    expect(data.some((n: any) => n.name === "payment-service")).toBe(true);
+    expect(data.some((n: NodeRow) => n.name === "payment-service")).toBe(true);
   });
 
   it("returns 400 for invalid layer value", async () => {
