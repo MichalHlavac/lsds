@@ -352,3 +352,108 @@ describe("PATCH /v1/tenant/api-keys/:keyId", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ── DELETE /v1/tenant/api-keys/:keyId ────────────────────────────────────────
+
+describe("DELETE /v1/tenant/api-keys/:keyId", () => {
+  async function createKey(name = "revoke-test-key"): Promise<{ id: string; key: string }> {
+    const res = await app.request("/v1/tenant/api-keys/rotate", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ name }),
+    });
+    return (await res.json() as { data: { id: string; key: string } }).data;
+  }
+
+  it("revokes the key and returns 204", async () => {
+    const { id } = await createKey();
+    const res = await app.request(`/v1/tenant/api-keys/${id}`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(res.status).toBe(204);
+  });
+
+  it("revoked key is rejected by auth middleware (403)", async () => {
+    const { id, key } = await createKey();
+
+    const del = await app.request(`/v1/tenant/api-keys/${id}`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(del.status).toBe(204);
+
+    const authed = await app.request("/v1/api-keys", {
+      headers: { "X-Api-Key": key },
+    });
+    expect(authed.status).toBe(403);
+  });
+
+  it("returns 404 for a non-existent key id", async () => {
+    const res = await app.request(`/v1/tenant/api-keys/${randomUUID()}`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when revoking an already-revoked key", async () => {
+    const { id } = await createKey();
+
+    await app.request(`/v1/tenant/api-keys/${id}`, { method: "DELETE", headers: h() });
+
+    const res = await app.request(`/v1/tenant/api-keys/${id}`, {
+      method: "DELETE",
+      headers: h(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when revoking another tenant's key", async () => {
+    const otherTid = randomUUID();
+    try {
+      const createRes = await app.request("/v1/api-keys", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-tenant-id": otherTid },
+        body: JSON.stringify({ name: "other-key" }),
+      });
+      const { data: other } = await createRes.json() as { data: { id: string } };
+
+      const res = await app.request(`/v1/tenant/api-keys/${other.id}`, {
+        method: "DELETE",
+        headers: h(),
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      await cleanTenant(sql, otherTid);
+    }
+  });
+
+  it("POST /rotate still works after selective revocation (no regression)", async () => {
+    const { id } = await createKey("key-to-revoke");
+
+    await app.request(`/v1/tenant/api-keys/${id}`, { method: "DELETE", headers: h() });
+
+    const rotateRes = await app.request("/v1/tenant/api-keys/rotate", {
+      method: "POST",
+      headers: h(),
+    });
+    expect(rotateRes.status).toBe(201);
+    const { data } = await rotateRes.json() as { data: Record<string, unknown> };
+    expect(data.key).toMatch(/^lsds_[0-9a-f]{32}$/);
+  });
+
+  it("writes an audit log entry on revocation", async () => {
+    const { id } = await createKey();
+    await app.request(`/v1/tenant/api-keys/${id}`, { method: "DELETE", headers: h() });
+
+    const [entry] = await sql<[{ operation: string; entityId: string }?]>`
+      SELECT operation, entity_id FROM audit_log
+      WHERE tenant_id = ${tid} AND operation = 'api_key.revoked'
+      ORDER BY created_at DESC LIMIT 1
+    `;
+    expect(entry).toBeDefined();
+    expect(entry!.operation).toBe("api_key.revoked");
+    expect(entry!.entityId).toBe(id);
+  });
+});

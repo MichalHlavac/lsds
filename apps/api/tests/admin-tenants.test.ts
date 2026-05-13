@@ -475,3 +475,131 @@ describe("admin_audit_log", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+// ── DELETE /api/admin/tenants/:tenantId/api-keys/:keyId ──────────────────────
+
+describe("DELETE /api/admin/tenants/:tenantId/api-keys/:keyId", () => {
+  async function createTenantWithKey(): Promise<{ tenantId: string; keyId: string; key: string }> {
+    const slug = uniqueSlug();
+    const res = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "Revoke Corp", slug, plan: "trial" }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = await res.json() as {
+      data: { tenant: { id: string }; apiKey: { id: string; key: string } };
+    };
+    createdTenantIds.push(data.tenant.id);
+    return { tenantId: data.tenant.id, keyId: data.apiKey.id, key: data.apiKey.key };
+  }
+
+  it("revokes the key and returns 204", async () => {
+    const { tenantId, keyId } = await createTenantWithKey();
+    const res = await app.request(`/api/admin/tenants/${tenantId}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(204);
+  });
+
+  it("revoked key is rejected by auth middleware (403)", async () => {
+    const { tenantId, keyId, key } = await createTenantWithKey();
+
+    const del = await app.request(`/api/admin/tenants/${tenantId}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    expect(del.status).toBe(204);
+
+    const authed = await app.request("/v1/api-keys", {
+      headers: { "X-Api-Key": key },
+    });
+    expect(authed.status).toBe(403);
+  });
+
+  it("returns 404 for a non-existent keyId", async () => {
+    const { tenantId } = await createTenantWithKey();
+    const res = await app.request(`/api/admin/tenants/${tenantId}/api-keys/${randomUUID()}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when revoking an already-revoked key", async () => {
+    const { tenantId, keyId } = await createTenantWithKey();
+
+    await app.request(`/api/admin/tenants/${tenantId}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+
+    const res = await app.request(`/api/admin/tenants/${tenantId}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when keyId belongs to a different tenant", async () => {
+    const { tenantId: tid1, keyId } = await createTenantWithKey();
+    const { tenantId: tid2 } = await createTenantWithKey();
+
+    const res = await app.request(`/api/admin/tenants/${tid2}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(404);
+
+    // Original key must still be active (no cross-tenant damage)
+    const [row] = await sql<[{ revokedAt: Date | null }?]>`
+      SELECT revoked_at FROM api_keys WHERE id = ${keyId} AND tenant_id = ${tid1}
+    `;
+    expect(row?.revokedAt).toBeNull();
+  });
+
+  it("writes an admin_audit_log entry on revocation", async () => {
+    const { tenantId, keyId } = await createTenantWithKey();
+
+    await app.request(`/api/admin/tenants/${tenantId}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+
+    const [entry] = await sql<[{ operation: string; payload: { keyId: string } }?]>`
+      SELECT operation, payload FROM admin_audit_log
+      WHERE target_tenant_id = ${tenantId} AND operation = 'tenant.revoke_api_key'
+      ORDER BY created_at DESC LIMIT 1
+    `;
+    expect(entry).toBeDefined();
+    expect(entry!.operation).toBe("tenant.revoke_api_key");
+    expect(entry!.payload.keyId).toBe(keyId);
+  });
+
+  it("PATCH /rotate still works after selective revocation (no regression)", async () => {
+    const { tenantId, keyId } = await createTenantWithKey();
+
+    await app.request(`/api/admin/tenants/${tenantId}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: adminHeaders(),
+    });
+
+    const rotateRes = await app.request(`/api/admin/tenants/${tenantId}/api-keys`, {
+      method: "PATCH",
+      headers: adminHeaders(),
+    });
+    expect(rotateRes.status).toBe(200);
+    const { data } = await rotateRes.json() as { data: { key: string } };
+    expect(data.key).toMatch(/^lsds_[0-9a-f]{32}$/);
+  });
+
+  it("returns 401 for invalid Bearer token", async () => {
+    const { tenantId, keyId } = await createTenantWithKey();
+    const res = await app.request(`/api/admin/tenants/${tenantId}/api-keys/${keyId}`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
