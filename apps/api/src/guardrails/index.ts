@@ -155,16 +155,21 @@ const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
       };
     },
   ],
-  // ── GR-L5-007: ExternalDependency with GPL-family license ───────────────────
+  // ── GR-L5-007: ExternalDependency with GPL-family license in COMMERCIAL context
+  // Catalog condition: !(object.license matches 'GPL*' && config.distribution.context == 'COMMERCIAL')
+  // Only flags GPL when the tenant has configured distribution.context = 'COMMERCIAL';
+  // open-source and internal deployments are intentionally exempt.
   [
     "GR-L5-007",
-    (subject) => {
+    (subject, config) => {
       const node = nodeOfType(subject, "ExternalDependency");
       if (!node) return null;
       const attrs = nodeAttrs(subject);
       if (!attrs) return null;
       const license = attrs["license"];
       if (typeof license !== "string" || !license.toUpperCase().startsWith("GPL")) return null;
+      const distribution = config["distribution"] as Record<string, unknown> | undefined;
+      if ((distribution?.["context"] as string | undefined) !== "COMMERCIAL") return null;
       return {
         ruleKey: "GR-L5-007",
         severity: "WARN",
