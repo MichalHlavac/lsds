@@ -231,6 +231,32 @@ describe("PATCH /api/admin/tenants/:tenantId/api-keys", () => {
     expect(res.status).toBe(404);
   });
 
+  it("creates audit row with operation=tenant.rotate_api_key after rotation", async () => {
+    const slug = uniqueSlug();
+    const createRes = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "AuditRotate Corp", slug, plan: "trial" }),
+    });
+    expect(createRes.status).toBe(201);
+    const { data: created } = (await createRes.json()) as { data: { tenant: { id: string } } };
+    const tenantId = created.tenant.id;
+    createdTenantIds.push(tenantId);
+
+    const rotateRes = await app.request(`/api/admin/tenants/${tenantId}/api-keys`, {
+      method: "PATCH",
+      headers: adminHeaders(),
+    });
+    expect(rotateRes.status).toBe(200);
+
+    const [logRow] = await sql<[{ operation: string; targetTenantId: string } | undefined]>`
+      SELECT operation, target_tenant_id FROM admin_audit_log
+      WHERE target_tenant_id = ${tenantId} AND operation = 'tenant.rotate_api_key'
+    `;
+    expect(logRow).toBeDefined();
+    expect(logRow!.operation).toBe("tenant.rotate_api_key");
+  });
+
   it("rejects the old key on tenant routes after rotation", async () => {
     const slug = uniqueSlug();
     const createRes = await app.request("/api/admin/tenants", {
@@ -265,5 +291,74 @@ describe("PATCH /api/admin/tenants/:tenantId/api-keys", () => {
       headers: { "x-api-key": oldKey },
     });
     expect(afterRotate.status).toBe(403);
+  });
+});
+
+// ── admin_audit_log ───────────────────────────────────────────────────────────
+
+describe("admin_audit_log", () => {
+  it("tenant.create: audit row created after POST /api/admin/tenants", async () => {
+    const slug = uniqueSlug();
+    const res = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "AuditCreate Corp", slug, plan: "trial" }),
+    });
+    expect(res.status).toBe(201);
+    const { data } = (await res.json()) as { data: { tenant: { id: string } } };
+    const tenantId = data.tenant.id;
+    createdTenantIds.push(tenantId);
+
+    const rows = await sql<{ operation: string }[]>`
+      SELECT operation FROM admin_audit_log
+      WHERE target_tenant_id = ${tenantId}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.operation).toBe("tenant.create");
+  });
+
+  it("tenant.update_rate_limits: audit row created after PATCH /api/admin/tenants/:id", async () => {
+    const slug = uniqueSlug();
+    const createRes = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "AuditRL Corp", slug, plan: "partner" }),
+    });
+    expect(createRes.status).toBe(201);
+    const { data: created } = (await createRes.json()) as { data: { tenant: { id: string } } };
+    const tenantId = created.tenant.id;
+    createdTenantIds.push(tenantId);
+
+    // Clear the create audit row so we can count cleanly
+    await sql`DELETE FROM admin_audit_log WHERE target_tenant_id = ${tenantId}`;
+
+    const patchRes = await app.request(`/api/admin/tenants/${tenantId}`, {
+      method: "PATCH",
+      headers: adminHeaders(),
+      body: JSON.stringify({ rateLimitRpm: 500 }),
+    });
+    expect(patchRes.status).toBe(200);
+
+    const rows = await sql<{ operation: string }[]>`
+      SELECT operation FROM admin_audit_log
+      WHERE target_tenant_id = ${tenantId}
+    `;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.operation).toBe("tenant.update_rate_limits");
+  });
+
+  it("failed admin request creates NO audit row", async () => {
+    const nonExistentId = randomUUID();
+    const res = await app.request(`/api/admin/tenants/${nonExistentId}`, {
+      method: "PATCH",
+      headers: adminHeaders(),
+      body: JSON.stringify({ rateLimitRpm: 100 }),
+    });
+    expect(res.status).toBe(404);
+
+    const rows = await sql<{ id: string }[]>`
+      SELECT id FROM admin_audit_log WHERE target_tenant_id = ${nonExistentId}
+    `;
+    expect(rows).toHaveLength(0);
   });
 });

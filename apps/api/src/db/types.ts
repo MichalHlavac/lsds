@@ -157,6 +157,19 @@ export type AuditOperation =
   | "webhook.delivered"
   | "webhook.exhausted";
 
+export type AdminOperation =
+  | "tenant.create"
+  | "tenant.update_rate_limits"
+  | "tenant.rotate_api_key";
+
+export interface AdminAuditLogRow {
+  id: string;
+  operation: AdminOperation;
+  targetTenantId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: Date;
+}
+
 export interface AuditDiff {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
