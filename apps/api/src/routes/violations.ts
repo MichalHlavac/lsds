@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { ViolationRow } from "../db/types.js";
 import { CreateViolationSchema, BatchIdsSchema } from "./schemas.js";
-import { getTenantId, jsonb, encodeCursor, decodeCursor } from "./util.js";
+import { getTenantId, jsonb, encodeCursor, decodeCursor, parsePaginationLimit } from "./util.js";
 
 async function lookupEdgeEndpoints(
   sql: Sql,
@@ -28,7 +28,7 @@ export function violationsRouter(sql: Sql): Hono {
     const ruleKey = c.req.query("ruleKey");
     const severity = c.req.query("severity");
     const resolved = c.req.query("resolved");
-    const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 500);
     const cursorRaw = c.req.query("cursor");
     const countOpt = c.req.query("count") === "true";
 

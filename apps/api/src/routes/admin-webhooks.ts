@@ -19,6 +19,7 @@ import {
   generateWebhookSecret,
   isWebhookEncryptionKeySet,
 } from "../webhooks/crypto.js";
+import { parsePaginationLimit } from "./util.js";
 
 const MAX_WEBHOOKS = 10;
 
@@ -197,7 +198,7 @@ export function adminWebhooksRouter(sql: Sql): Hono {
     const webhook = await getWebhook(sql, tenantId, id);
     if (!webhook) return c.json({ error: "not found" }, 404);
 
-    const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 200);
     const cursor = c.req.query("cursor") ?? null;
 
     const { rows, nextCursor } = await listDeliveries(sql, tenantId, id, limit, cursor);

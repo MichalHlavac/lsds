@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { LayerSchema } from "@lsds/shared";
 import type { Sql } from "../db/client.js";
 import type { NodeRow } from "../db/types.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, parsePaginationLimit } from "./util.js";
 
 export function layersRouter(sql: Sql): Hono {
   const app = new Hono();
@@ -30,7 +30,7 @@ export function layersRouter(sql: Sql): Hono {
 
     const type = c.req.query("type");
     const lifecycleStatus = c.req.query("lifecycleStatus");
-    const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 500);
     const offset = Number(c.req.query("offset") ?? 0);
 
     const rows = await sql<NodeRow[]>`
