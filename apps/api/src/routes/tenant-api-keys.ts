@@ -7,6 +7,7 @@ import type { Sql } from "../db/client.js";
 import type { ApiKeyRow } from "../db/types.js";
 import { getTenantId } from "./util.js";
 import { generateApiKey, sha256hex } from "../auth/api-key.js";
+import { insertAuditLog } from "../db/audit.js";
 
 const RotateApiKeySchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -95,6 +96,26 @@ export function tenantApiKeysRouter(sql: Sql): Hono {
 
     if (!row) return c.json({ error: "not found" }, 404);
     return c.json({ data: row });
+  });
+
+  // DELETE /:keyId — revoke a single key belonging to the authenticated tenant
+  app.delete("/:keyId", async (c) => {
+    const tenantId = getTenantId(c);
+    const keyId = c.req.param("keyId");
+    const apiKeyId = c.get("apiKeyId") ?? null;
+
+    const [row] = await sql<[{ id: string }?]>`
+      UPDATE api_keys
+      SET revoked_at = now()
+      WHERE id = ${keyId} AND tenant_id = ${tenantId} AND revoked_at IS NULL
+      RETURNING id
+    `;
+
+    if (!row) return c.json({ error: "not found" }, 404);
+
+    await insertAuditLog(sql, tenantId, apiKeyId, "api_key.revoked", "api_key", keyId, null);
+
+    return new Response(null, { status: 204 });
   });
 
   return app;

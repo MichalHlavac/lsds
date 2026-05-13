@@ -155,12 +155,14 @@ export type AuditOperation =
   | "rate_limit_hit"
   | "webhook.attempt"
   | "webhook.delivered"
-  | "webhook.exhausted";
+  | "webhook.exhausted"
+  | "api_key.revoked";
 
 export type AdminOperation =
   | "tenant.create"
   | "tenant.update_rate_limits"
-  | "tenant.rotate_api_key";
+  | "tenant.rotate_api_key"
+  | "tenant.revoke_api_key";
 
 export interface AdminAuditLogRow {
   id: string;

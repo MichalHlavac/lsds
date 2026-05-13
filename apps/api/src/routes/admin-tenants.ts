@@ -172,5 +172,23 @@ export function adminTenantsRouter(sql: Sql): Hono {
     return c.json({ data: { ...newKey, key: rawKey } });
   });
 
+  // DELETE /:tenantId/api-keys/:keyId — admin selective revocation of a single key
+  app.delete("/:tenantId/api-keys/:keyId", async (c) => {
+    const { tenantId, keyId } = c.req.param();
+
+    const [row] = await sql<[{ id: string }?]>`
+      UPDATE api_keys
+      SET revoked_at = now()
+      WHERE id = ${keyId} AND tenant_id = ${tenantId} AND revoked_at IS NULL
+      RETURNING id
+    `;
+
+    if (!row) return c.json({ error: "not found" }, 404);
+
+    await logAdminOperation(sql, "tenant.revoke_api_key", tenantId, { keyId });
+
+    return new Response(null, { status: 204 });
+  });
+
   return app;
 }
