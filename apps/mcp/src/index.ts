@@ -999,6 +999,41 @@ server.tool(
   }
 );
 
+// ── Feedback tools ───────────────────────────────────────────────────────────
+
+server.tool(
+  "lsds_submit_feedback",
+  "Submit feedback about the LSDS knowledge graph or the quality of an agent response. Use when you observe structural issues, stale data, incorrect metadata, or want to flag a problem for human review.",
+  {
+    content: z
+      .string()
+      .min(1)
+      .describe(
+        "Feedback text. Be specific: reference node IDs, edge types, guardrail keys, or response text where relevant."
+      ),
+    category: z
+      .enum(["graph_quality", "agent_response", "missing_data", "incorrect_data", "other"])
+      .optional(),
+    severity: z
+      .enum(["low", "medium", "high"])
+      .optional()
+      .describe("Defaults to medium if omitted"),
+    refNodeId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("UUID of the node the feedback relates to, if applicable"),
+  },
+  async ({ content, category, severity, refNodeId }) => {
+    try {
+      const data = await client.submitFeedback({ content, category, severity, refNodeId });
+      return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: String(e) }], isError: true };
+    }
+  }
+);
+
 // ── Start server ─────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
