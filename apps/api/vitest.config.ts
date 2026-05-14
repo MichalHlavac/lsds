@@ -15,6 +15,14 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     environment: "node",
     globalSetup: ["./tests/setup/global-setup.ts"],
-    env: { LOG_LEVEL: "silent", LSDS_ADMIN_SECRET: "test-admin-secret" },
+    env: {
+      LOG_LEVEL: "silent",
+      LSDS_ADMIN_SECRET: "test-admin-secret",
+      // Resolved at config-load time so that CI's explicit DATABASE_URL is not
+      // overwritten by the worker's setupEnv pass. Falls back to the pgvector
+      // container port so that local runs without DATABASE_URL stay consistent
+      // with global-setup.ts (which also defaults to 5455).
+      DATABASE_URL: process.env.DATABASE_URL ?? "postgres://lsds:lsds@localhost:5455/lsds",
+    },
   },
 });

@@ -420,6 +420,8 @@ describe("ipWriteRateLimitMiddleware — integration: N+1 write returns 429", ()
   });
 
   afterEach(async () => {
+    const { sql: freshSql } = await import("../src/db/client.js");
+    await freshSql.end({ timeout: 1 }).catch(() => {});
     await cleanTenant(sql, tid);
     await sql`DELETE FROM tenants WHERE id = ${tid}`;
     delete process.env["RATE_LIMIT_WRITE_RPM"];
@@ -462,7 +464,7 @@ describe("ipWriteRateLimitMiddleware — integration: N+1 write returns 429", ()
     // GET is not affected by the write limit
     const getRes = await mainApp.request("/v1/nodes", { method: "GET", headers });
     expect(getRes.status).toBe(200);
-  });
+  }, 15_000);
 });
 
 // ── Integration: per-key rate limits at create + patch time ──────────────────

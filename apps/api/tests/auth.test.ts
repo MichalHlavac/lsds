@@ -73,10 +73,15 @@ describe("/health is always public", () => {
     delete process.env["OIDC_ISSUER"];
     vi.resetModules();
     const { app } = await import("../src/app.js");
-    const res = await app.request("/health");
-    expect(res.status).toBe(200);
-    const body = await res.json() as { status: string; uptime: number };
-    expect(body.status).toBe("ok");
-    expect(typeof body.uptime).toBe("number");
-  });
+    const { sql: freshSql } = await import("../src/db/client.js");
+    try {
+      const res = await app.request("/health");
+      expect(res.status).toBe(200);
+      const body = await res.json() as { status: string; uptime: number };
+      expect(body.status).toBe("ok");
+      expect(typeof body.uptime).toBe("number");
+    } finally {
+      await freshSql.end({ timeout: 1 }).catch(() => {});
+    }
+  }, 15_000);
 });
