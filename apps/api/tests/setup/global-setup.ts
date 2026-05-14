@@ -35,7 +35,7 @@ export function assertMigrationCount(
 // Ensures the database schema is up to date so integration tests can run
 // against a real Postgres instance.
 export async function setup(): Promise<void> {
-  const url = process.env.DATABASE_URL ?? "postgres://lsds:lsds@localhost:5432/lsds";
+  const url = process.env.DATABASE_URL ?? "postgres://lsds:lsds@localhost:5455/lsds";
   const sql = postgres(url, { max: 1 });
 
   await sql`

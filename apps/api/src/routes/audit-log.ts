@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { AuditLogRow, AuditOperation } from "../db/types.js";
-import { getTenantId } from "./util.js";
+import { getTenantId, parsePaginationLimit } from "./util.js";
 
 const VALID_OPERATIONS = new Set<string>([
   "node.create", "node.update", "node.delete",
@@ -49,8 +49,7 @@ export function auditLogRouter(sql: Sql): Hono {
     const fromParam = c.req.query("from") ?? undefined;
     const toParam = c.req.query("to") ?? undefined;
     const cursorParam = c.req.query("cursor") ?? undefined;
-    const limitRaw = Number(c.req.query("limit") ?? 50);
-    const limit = Math.min(Math.max(1, isNaN(limitRaw) ? 50 : limitRaw), 200);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 200);
 
     if (operationParam && !VALID_OPERATIONS.has(operationParam)) {
       return c.json({ error: `invalid operation; must be one of: ${[...VALID_OPERATIONS].join(", ")}` }, 400);

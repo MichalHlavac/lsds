@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { ViolationRow } from "../db/types.js";
 import { CreateViolationSchema, BatchIdsSchema } from "./schemas.js";
-import { getTenantId, jsonb, encodeCursor, decodeCursor } from "./util.js";
+import { getTenantId, jsonb, encodeCursor, decodeCursor, parsePaginationLimit } from "./util.js";
 
 async function lookupEdgeEndpoints(
   sql: Sql,
@@ -28,7 +28,7 @@ export function violationsRouter(sql: Sql): Hono {
     const ruleKey = c.req.query("ruleKey");
     const severity = c.req.query("severity");
     const resolved = c.req.query("resolved");
-    const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 500);
     const cursorRaw = c.req.query("cursor");
     const countOpt = c.req.query("count") === "true";
 
@@ -52,21 +52,27 @@ export function violationsRouter(sql: Sql): Hono {
         ${cursorClause}
     `;
 
-    const rows = await sql<ViolationRow[]>`
-      SELECT * FROM violations ${whereClause}
+    // cursor_v preserves µs precision; JS Date.toISOString() is ms-only and would
+    // produce an incorrect cursor boundary when rows share the same ms.
+    const rows = await sql<(ViolationRow & { cursorV: string })[]>`
+      SELECT *,
+        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_v
+      FROM violations ${whereClause}
       ORDER BY created_at DESC, id ASC
       LIMIT ${limit}
     `;
 
     const nextCursor = rows.length === limit
-      ? encodeCursor(rows[rows.length - 1].createdAt.toISOString(), rows[rows.length - 1].id)
+      ? encodeCursor(rows[rows.length - 1].cursorV, rows[rows.length - 1].id)
       : null;
+
+    const responseRows = rows.map(({ cursorV: _cv, ...rest }) => rest);
 
     if (countOpt) {
       const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM violations ${whereClause}`;
-      return c.json({ data: rows, nextCursor, totalCount: Number(count) });
+      return c.json({ data: responseRows, nextCursor, totalCount: Number(count) });
     }
-    return c.json({ data: rows, nextCursor });
+    return c.json({ data: responseRows, nextCursor });
   });
 
   app.post("/", async (c) => {

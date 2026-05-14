@@ -870,4 +870,76 @@ describe("createLsdsClient", () => {
     expect(opts.method).toBe("POST");
     expect(JSON.parse(opts.body as string)).toEqual({});
   });
+
+  // ── Feedback ─────────────────────────────────────────────────────────────
+
+  it("submitFeedback sends POST to /v1/feedback with message only when no optional fields given", async () => {
+    const created = { id: "fb-1", type: "general", message: "stale data", metadata: null, createdAt: "2026-05-14T00:00:00.000Z" };
+    const fetch = mockFetch({ data: created }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    const result = await client.submitFeedback({ content: "stale data" });
+
+    expect(result).toEqual(created);
+    const [url, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://localhost:3001/v1/feedback");
+    expect(opts.method).toBe("POST");
+    const body = JSON.parse(opts.body as string);
+    expect(body).toEqual({ message: "stale data" });
+    expect((opts.headers as Record<string, string>)["x-tenant-id"]).toBe("test-tenant");
+  });
+
+  it("submitFeedback maps category, severity, and refNodeId into metadata", async () => {
+    const nodeId = "00000000-0000-0000-0000-000000000099";
+    const fetch = mockFetch({ data: { id: "fb-2", type: "general", message: "bad edge", metadata: { category: "graph_quality", severity: "high", refNodeId: nodeId }, createdAt: "2026-05-14T00:00:00.000Z" } }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.submitFeedback({
+      content: "bad edge",
+      category: "graph_quality",
+      severity: "high",
+      refNodeId: nodeId,
+    });
+
+    const [, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string);
+    expect(body.message).toBe("bad edge");
+    expect(body.metadata).toEqual({ category: "graph_quality", severity: "high", refNodeId: nodeId });
+  });
+
+  it("submitFeedback omits metadata key when no optional fields given", async () => {
+    const fetch = mockFetch({ data: { id: "fb-3", type: "general", message: "ok", metadata: null, createdAt: "2026-05-14T00:00:00.000Z" } }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.submitFeedback({ content: "ok" });
+
+    const [, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string);
+    expect(body).not.toHaveProperty("metadata");
+  });
+
+  it("submitFeedback includes only provided optional fields in metadata", async () => {
+    const fetch = mockFetch({ data: { id: "fb-4", type: "general", message: "check this", metadata: { severity: "low" }, createdAt: "2026-05-14T00:00:00.000Z" } }, 201);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await client.submitFeedback({ content: "check this", severity: "low" });
+
+    const [, opts] = fetch.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string);
+    expect(body.metadata).toEqual({ severity: "low" });
+    expect(body.metadata).not.toHaveProperty("category");
+    expect(body.metadata).not.toHaveProperty("refNodeId");
+  });
+
+  it("submitFeedback throws on API error", async () => {
+    const fetch = mockFetch({ error: "validation error" }, 400);
+    vi.stubGlobal("fetch", fetch);
+
+    const client = createLsdsClient(mockConfig);
+    await expect(client.submitFeedback({ content: "x" })).rejects.toThrow("400");
+  });
 });

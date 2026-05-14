@@ -5,14 +5,14 @@ import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { SnapshotRow } from "../db/types.js";
 import { CreateSnapshotSchema } from "./schemas.js";
-import { getTenantId, jsonb } from "./util.js";
+import { getTenantId, jsonb, parsePaginationLimit } from "./util.js";
 
 export function snapshotsRouter(sql: Sql): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
     const tenantId = getTenantId(c);
-    const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 500);
     const offset = Number(c.req.query("offset") ?? 0);
 
     const rows = await sql<SnapshotRow[]>`

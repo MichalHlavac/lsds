@@ -25,7 +25,7 @@ import {
   SORT_ORDER_VALUES,
   type EdgeSortField,
 } from "./schemas.js";
-import { getTenantId, jsonb, toHttpError, encodeCursor, decodeCursor } from "./util.js";
+import { getTenantId, jsonb, toHttpError, encodeCursor, decodeCursor, parsePaginationLimit } from "./util.js";
 import { propagateEdgeChange, fetchStaleFlagsForObject } from "../stale-flags.js";
 import type { GuardrailsRegistry } from "../guardrails/index.js";
 import { getViolationSuggestion } from "../guardrails/naming.js";
@@ -41,7 +41,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
     const type = c.req.query("type");
     const lifecycleStatus = c.req.query("lifecycleStatus");
     const includeArchived = c.req.query("includeArchived") === "true";
-    const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
+    const limit = parsePaginationLimit(c.req.query("limit"), 50, 500);
     const cursorRaw = c.req.query("cursor");
     const countOpt = c.req.query("count") === "true";
     const sortByRaw = c.req.query("sortBy");
@@ -475,7 +475,7 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
   app.get("/:id/history", async (c) => {
     const tenantId = getTenantId(c);
     const { id } = c.req.param();
-    const limit = Math.min(Number(c.req.query("limit") ?? 20), 500);
+    const limit = parsePaginationLimit(c.req.query("limit"), 20, 500);
     const offset = Number(c.req.query("offset") ?? 0);
 
     const [edge] = await sql<{ id: string }[]>`

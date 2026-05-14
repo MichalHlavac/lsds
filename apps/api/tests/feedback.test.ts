@@ -109,4 +109,34 @@ describe("POST /v1/feedback", () => {
     });
     expect(res.status).toBe(201);
   });
+
+  it("returns 400 when message field is absent from body", async () => {
+    const res = await app.request("/v1/feedback", {
+      method: "POST",
+      headers: h(),
+      body: JSON.stringify({ type: "bug" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when x-tenant-id header is missing", async () => {
+    const res = await app.request("/v1/feedback", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "no tenant" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("two identical submissions each return 201 with distinct IDs (no duplicate guard)", async () => {
+    const body = JSON.stringify({ message: "same message" });
+    const [r1, r2] = await Promise.all([
+      app.request("/v1/feedback", { method: "POST", headers: h(), body }),
+      app.request("/v1/feedback", { method: "POST", headers: h(), body }),
+    ]);
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
+    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    expect(d1.data.id).not.toBe(d2.data.id);
+  });
 });
