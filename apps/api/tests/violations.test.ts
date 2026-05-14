@@ -387,6 +387,15 @@ describe("GET /v1/violations cursor pagination", () => {
     expect(withoutCount.totalCount).toBeUndefined();
   });
 
+  it("?count=true with pagination still returns nextCursor", async () => {
+    const node = await createNode();
+    for (let i = 0; i < 3; i++) await createViolation(node.id);
+    const res = await app.request("/v1/violations?limit=2&count=true", { headers: h() });
+    const body = await res.json();
+    expect(body.totalCount).toBe(3);
+    expect(typeof body.nextCursor).toBe("string");
+  });
+
   it("cursor + ?ruleKey= filter: all pages return only matching violations", async () => {
     const node = await createNode();
     for (let i = 0; i < 3; i++) {

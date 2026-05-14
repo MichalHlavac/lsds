@@ -35,6 +35,11 @@ export function toHttpError(e: unknown): [{ error: string }, 400 | 500] {
   return [{ error: "internal server error" }, 500];
 }
 
+export function parsePaginationLimit(raw: string | undefined, defaultVal: number, max: number): number {
+  const n = Number(raw ?? defaultVal);
+  return Math.min(Math.max(1, isNaN(n) ? defaultVal : n), max);
+}
+
 export function encodeCursor(v: string, id: string): string {
   return Buffer.from(JSON.stringify({ v, id }), "utf8").toString("base64url");
 }
