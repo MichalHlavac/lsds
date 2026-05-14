@@ -353,6 +353,23 @@ export function createLsdsClient(config: LsdsClientConfig) {
       maxDepth?: number;
     }) => req("POST", "/agent/v1/architect/impact-predict", body),
 
+    // ── Feedback ───────────────────────────────────────────────────────────
+    submitFeedback: (body: {
+      content: string;
+      category?: "graph_quality" | "agent_response" | "missing_data" | "incorrect_data" | "other";
+      severity?: "low" | "medium" | "high";
+      refNodeId?: string;
+    }) => {
+      const metadata: Record<string, unknown> = {};
+      if (body.category !== undefined) metadata["category"] = body.category;
+      if (body.severity !== undefined) metadata["severity"] = body.severity;
+      if (body.refNodeId !== undefined) metadata["refNodeId"] = body.refNodeId;
+      return req("POST", "/v1/feedback", {
+        message: body.content,
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+      });
+    },
+
     // ── Bulk Import ────────────────────────────────────────────────────────
     bulkImport: (body: {
       nodes: Array<{
