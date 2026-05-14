@@ -5,6 +5,32 @@ import postgres from "postgres";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+// Minimum fraction of migration files that must appear in _migrations after
+// setup. If DATABASE_URL drifts to the wrong port, migrations silently no-op
+// (duplicate-object errors) and the count stays near zero — this guard catches
+// that before tests produce silent empty-result failures.
+const MIGRATION_COVERAGE_FLOOR = 0.8;
+
+/**
+ * Asserts that the connected DB has at least `minimum` applied migrations.
+ * Exported as a pure function so it can be unit-tested without a live DB.
+ */
+export function assertMigrationCount(
+  count: number,
+  minimum: number,
+  totalFiles: number,
+  url: string,
+): void {
+  if (count < minimum) {
+    throw new Error(
+      `[test setup] Startup assertion failed: _migrations has ${count} row(s) but expected >= ${minimum} (out of ${totalFiles} migration files).\n` +
+      `The connected database appears unpopulated or is the wrong Postgres instance.\n` +
+      `DATABASE_URL=${url}\n` +
+      `Check DB_PORT or the port in DATABASE_URL (e.g. pgvector port 5455 vs standard port 5432).`,
+    );
+  }
+}
+
 // Runs once in the main Vitest process before any workers start.
 // Ensures the database schema is up to date so integration tests can run
 // against a real Postgres instance.
@@ -57,6 +83,16 @@ export async function setup(): Promise<void> {
       }
     }
   }
+
+  // Startup assertion: verify the connected DB is properly populated.
+  // If DATABASE_URL pointed to the wrong postgres port, migrations above will
+  // have silently no-op'd (all objects already exist → duplicate-object skip)
+  // and _migrations will have fewer rows than expected.
+  const [row] = await sql`SELECT COUNT(*)::int AS count FROM _migrations`;
+  const migrationCount = row.count as number;
+  const minimumMigrations = Math.ceil(files.length * MIGRATION_COVERAGE_FLOOR);
+  assertMigrationCount(migrationCount, minimumMigrations, files.length, url);
+  console.log(`[test setup] DB assertion passed: ${migrationCount}/${files.length} migrations in _migrations`);
 
   await sql.end();
 }
