@@ -94,8 +94,9 @@ describe("lsds_submit_feedback MCP tool handler", () => {
       });
 
       expect(result.isError).toBeFalsy();
-      expect(result.content).toHaveLength(1);
-      const item = result.content[0] as { type: string; text: string };
+      const content = result.content as Array<{ type: string; text: string }>;
+      expect(content).toHaveLength(1);
+      const item = content[0];
       expect(item.type).toBe("text");
       expect(JSON.parse(item.text)).toEqual(stored);
       expect(submitFeedback).toHaveBeenCalledWith({
@@ -122,7 +123,8 @@ describe("lsds_submit_feedback MCP tool handler", () => {
       });
 
       expect(result.isError).toBe(true);
-      const item = result.content[0] as { type: string; text: string };
+      const content = result.content as Array<{ type: string; text: string }>;
+      const item = content[0];
       expect(item.type).toBe("text");
       expect(item.text).toContain("500 internal server error");
     } finally {
