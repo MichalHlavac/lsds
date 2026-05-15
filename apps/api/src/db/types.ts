@@ -162,7 +162,8 @@ export type AdminOperation =
   | "tenant.create"
   | "tenant.update_rate_limits"
   | "tenant.rotate_api_key"
-  | "tenant.revoke_api_key";
+  | "tenant.revoke_api_key"
+  | "partner.create";
 
 export interface AdminAuditLogRow {
   id: string;

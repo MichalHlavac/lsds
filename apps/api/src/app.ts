@@ -32,11 +32,11 @@ import { staleFlagsRouter } from "./routes/stale-flags.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import { usageEventsRouter } from "./routes/usage-events.js";
 import { adminTenantsRouter } from "./routes/admin-tenants.js";
+import { adminPartnersRouter } from "./routes/admin-partners.js";
 import { adminWebhooksRouter } from "./routes/admin-webhooks.js";
 import { adminDiagnosticsRouter } from "./routes/admin-diagnostics.js";
 import { adminAuditLogRouter } from "./routes/admin-audit-log.js";
 import { adminEmbeddingsRouter } from "./routes/admin-embeddings.js";
-import { adminPartnersRouter } from "./routes/admin-partners.js";
 import { adminUsageEventsRouter } from "./routes/admin-usage-events.js";
 import { adminAuthMiddleware } from "./middleware/admin-auth.js";
 import { openApiSpec } from "./openapi.js";
@@ -141,11 +141,11 @@ app.get(
 
 app.use("/api/admin/*", adminAuthMiddleware);
 app.route("/api/admin/tenants", adminTenantsRouter(sql));
+app.route("/api/admin/partners", adminPartnersRouter(sql));
 app.route("/api/admin/webhooks", adminWebhooksRouter(sql));
 app.route("/api/admin/diagnostics", adminDiagnosticsRouter(sql));
 app.route("/api/admin/audit-log", adminAuditLogRouter(sql));
 app.route("/api/admin/embeddings", adminEmbeddingsRouter(sql, embeddingService));
-app.route("/api/admin/partners", adminPartnersRouter(sql));
 app.route("/api/admin/usage-events", adminUsageEventsRouter(sql));
 
 app.onError((err, c) => {
