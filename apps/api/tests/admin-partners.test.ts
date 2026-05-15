@@ -372,10 +372,11 @@ describe("POST /api/admin/partners", () => {
     expect(body.createdAt).toBeDefined();
     createdTenantIds.push(body.tenantId);
 
-    const [row] = await sql<[{ plan: string }?]>`
-      SELECT plan FROM tenants WHERE id = ${body.tenantId}
+    const [row] = await sql<[{ plan: string; partnerStatus: string }?]>`
+      SELECT plan, partner_status FROM tenants WHERE id = ${body.tenantId}
     `;
     expect(row?.plan).toBe("partner");
+    expect(row?.partnerStatus).toBe("active");
   });
 
   it("plaintext apiKey authenticates against the API", async () => {
