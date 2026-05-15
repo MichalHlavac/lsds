@@ -2,11 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { describe, expect, it } from "vitest";
-<<<<<<< HEAD
 import { decodeCursor, encodeCursor, parsePaginationLimit, toHttpError } from "../src/routes/util.js";
-=======
-import { parsePaginationLimit, toHttpError, encodeCursor, decodeCursor } from "../src/routes/util.js";
->>>>>>> af21242 (refactor(api): consolidate cursor serialization — migrate stale-flags and audit-log to shared util.ts)
 
 describe("toHttpError", () => {
   it("returns 400 with domain message for a plain Error", () => {
