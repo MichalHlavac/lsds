@@ -70,6 +70,13 @@ describe("GET /api/admin/diagnostics", () => {
     expect(typeof data["totalActiveApiKeys"]).toBe("number");
     expect(typeof data["totalNodes"]).toBe("number");
     expect(typeof data["totalEdges"]).toBe("number");
+
+    const emb = data["embeddings"] as Record<string, unknown>;
+    expect(typeof emb["total"]).toBe("number");
+    expect(typeof emb["populated"]).toBe("number");
+    expect(typeof emb["missing"]).toBe("number");
+    expect((emb["total"] as number)).toBeGreaterThanOrEqual(0);
+
     expect(typeof data["generatedAt"]).toBe("string");
     expect(() => new Date(data["generatedAt"] as string).toISOString()).not.toThrow();
   });
@@ -163,12 +170,13 @@ describe("GET /api/admin/diagnostics", () => {
       headers: adminHeaders(`10.77.${Math.floor(Math.random() * 256)}.99`),
     });
     expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { dbConnected: boolean; totalTenants: number; totalNodes: number; totalEdges: number; totalActiveApiKeys: number } };
+    const { data } = (await res.json()) as { data: { dbConnected: boolean; totalTenants: number; totalNodes: number; totalEdges: number; totalActiveApiKeys: number; embeddings: { total: number; populated: number; missing: number } } };
     expect(data.dbConnected).toBe(false);
     expect(data.totalTenants).toBe(0);
     expect(data.totalNodes).toBe(0);
     expect(data.totalEdges).toBe(0);
     expect(data.totalActiveApiKeys).toBe(0);
+    expect(data.embeddings).toEqual({ total: 0, populated: 0, missing: 0 });
 
     vi.doUnmock("../src/db/client.js");
     vi.resetModules();

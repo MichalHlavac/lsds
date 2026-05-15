@@ -24,6 +24,7 @@ interface AdminDiagnosticsPayload {
   totalActiveApiKeys: number;
   totalNodes: number;
   totalEdges: number;
+  embeddings: { total: number; populated: number; missing: number };
   generatedAt: string;
 }
 
@@ -44,6 +45,12 @@ export function adminDiagnosticsRouter(sql: Sql): Hono {
       totalEdges: number;
     }
 
+    interface EmbeddingStatsRow {
+      total: number;
+      populated: number;
+      missing: number;
+    }
+
     let dbConnected = true;
     let row: DiagnosticsRow;
 
@@ -58,6 +65,21 @@ export function adminDiagnosticsRouter(sql: Sql): Hono {
     } catch {
       dbConnected = false;
       row = { totalTenants: 0, totalActiveApiKeys: 0, totalNodes: 0, totalEdges: 0 };
+    }
+
+    let embeddingStats: EmbeddingStatsRow = { total: 0, populated: 0, missing: 0 };
+    if (dbConnected) {
+      try {
+        [embeddingStats] = await sql<[EmbeddingStatsRow]>`
+          SELECT
+            count(*)::int                   AS total,
+            count(embedding)::int           AS populated,
+            (count(*) - count(embedding))::int AS missing
+          FROM nodes
+        `;
+      } catch {
+        // pgvector extension or embedding column unavailable — return zeros
+      }
     }
 
     const mem = process.memoryUsage();
@@ -77,6 +99,7 @@ export function adminDiagnosticsRouter(sql: Sql): Hono {
       totalActiveApiKeys: row.totalActiveApiKeys,
       totalNodes: row.totalNodes,
       totalEdges: row.totalEdges,
+      embeddings: embeddingStats,
       generatedAt: new Date().toISOString(),
     };
 
