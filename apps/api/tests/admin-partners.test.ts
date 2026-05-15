@@ -478,3 +478,231 @@ describe("POST /api/admin/partners", () => {
     expect(entry!.operation).toBe("partner.create");
   });
 });
+
+// ── GET /api/admin/partners/:tenantId/usage ───────────────────────────────────
+
+type UsageSummary = {
+  tenantId: string;
+  period: { from: string; to: string };
+  totals: {
+    events: number;
+    nodeCreated: number;
+    edgeCreated: number;
+    requirementAdded: number;
+    violationChecked: number;
+    graphTraversed: number;
+    mcpQuery: number;
+  };
+  dailyBreakdown: Array<{
+    date: string;
+    events: number;
+    nodeCreated: number;
+    edgeCreated: number;
+    requirementAdded: number;
+    violationChecked: number;
+    graphTraversed: number;
+    mcpQuery: number;
+  }>;
+};
+
+describe("GET /api/admin/partners/:tenantId/usage — auth", () => {
+  it("returns 401 when LSDS_ADMIN_SECRET is not configured", async () => {
+    vi.stubEnv("LSDS_ADMIN_SECRET", "");
+    const res = await app.request("/api/admin/partners/00000000-0000-0000-0000-000000000000/usage", {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 for an invalid Bearer token", async () => {
+    const res = await app.request("/api/admin/partners/00000000-0000-0000-0000-000000000000/usage", {
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /api/admin/partners/:tenantId/usage — not found", () => {
+  it("returns 404 for an unknown partner tenantId", async () => {
+    const res = await app.request(
+      "/api/admin/partners/00000000-0000-0000-0000-000000000000/usage",
+      { headers: adminHeaders() }
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for a non-UUID tenantId", async () => {
+    const res = await app.request("/api/admin/partners/not-a-uuid/usage", {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for a non-partner tenant (plan=trial)", async () => {
+    const trialRes = await app.request("/api/admin/tenants", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "Trial Only", slug: uniqueSlug(), plan: "trial" }),
+    });
+    expect(trialRes.status).toBe(201);
+    const { data } = (await trialRes.json()) as { data: { tenant: { id: string } } };
+    createdTenantIds.push(data.tenant.id);
+
+    const res = await app.request(`/api/admin/partners/${data.tenant.id}/usage`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/admin/partners/:tenantId/usage — happy path", () => {
+  it("returns correct response shape with zero totals when no events", async () => {
+    const { id } = await createPartner("Usage Shape Partner");
+
+    const res = await app.request(`/api/admin/partners/${id}/usage`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as UsageSummary;
+
+    expect(body.tenantId).toBe(id);
+    expect(body.period.from).toBeDefined();
+    expect(body.period.to).toBeDefined();
+    expect(body.totals.events).toBe(0);
+    expect(body.totals.nodeCreated).toBe(0);
+    expect(body.totals.edgeCreated).toBe(0);
+    expect(body.totals.requirementAdded).toBe(0);
+    expect(body.totals.violationChecked).toBe(0);
+    expect(body.totals.graphTraversed).toBe(0);
+    expect(body.totals.mcpQuery).toBe(0);
+    expect(Array.isArray(body.dailyBreakdown)).toBe(true);
+    // Default 30-day period → 31 days inclusive (today + 30)
+    expect(body.dailyBreakdown.length).toBeGreaterThanOrEqual(30);
+  });
+
+  it("totals match inserted usage_events", async () => {
+    const { id } = await createPartner("Usage Totals Partner");
+
+    await sql`
+      INSERT INTO usage_events (tenant_id, event_type)
+      VALUES
+        (${id}, 'NODE_CREATED'),
+        (${id}, 'NODE_CREATED'),
+        (${id}, 'MCP_QUERY')
+    `;
+
+    const res = await app.request(`/api/admin/partners/${id}/usage`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const { totals } = (await res.json()) as UsageSummary;
+
+    expect(totals.events).toBe(3);
+    expect(totals.nodeCreated).toBe(2);
+    expect(totals.mcpQuery).toBe(1);
+    expect(totals.edgeCreated).toBe(0);
+  });
+
+  it("daily breakdown contains an entry for today with correct count", async () => {
+    const { id } = await createPartner("Usage Daily Partner");
+
+    await sql`
+      INSERT INTO usage_events (tenant_id, event_type)
+      VALUES (${id}, 'EDGE_CREATED')
+    `;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await app.request(`/api/admin/partners/${id}/usage`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const { dailyBreakdown } = (await res.json()) as UsageSummary;
+
+    const todayEntry = dailyBreakdown.find((d) => d.date === today);
+    expect(todayEntry).toBeDefined();
+    expect(todayEntry!.edgeCreated).toBe(1);
+    expect(todayEntry!.events).toBe(1);
+  });
+
+  it("zero-fills days with no events in range", async () => {
+    const { id } = await createPartner("Usage Zero-fill Partner");
+
+    // No events inserted — all days must be zero
+    const from = "2026-01-01";
+    const to = "2026-01-03";
+    const res = await app.request(
+      `/api/admin/partners/${id}/usage?from=${from}&to=${to}`,
+      { headers: adminHeaders() }
+    );
+    expect(res.status).toBe(200);
+    const { dailyBreakdown, totals } = (await res.json()) as UsageSummary;
+
+    // Should have exactly 3 entries: Jan 1, Jan 2, Jan 3
+    expect(dailyBreakdown.length).toBe(3);
+    expect(dailyBreakdown.map((d) => d.date).sort()).toEqual(["2026-01-01", "2026-01-02", "2026-01-03"]);
+    for (const day of dailyBreakdown) {
+      expect(day.events).toBe(0);
+    }
+    expect(totals.events).toBe(0);
+  });
+
+  it("date range filter excludes events outside [from, to]", async () => {
+    const { id } = await createPartner("Usage Range Partner");
+
+    // Insert one event inside range, one outside
+    await sql`
+      INSERT INTO usage_events (tenant_id, event_type, created_at)
+      VALUES
+        (${id}, 'NODE_CREATED', '2026-03-15T12:00:00Z'),
+        (${id}, 'NODE_CREATED', '2026-04-01T12:00:00Z')
+    `;
+
+    const res = await app.request(
+      `/api/admin/partners/${id}/usage?from=2026-03-01&to=2026-03-31`,
+      { headers: adminHeaders() }
+    );
+    expect(res.status).toBe(200);
+    const { totals } = (await res.json()) as UsageSummary;
+
+    expect(totals.nodeCreated).toBe(1);
+    expect(totals.events).toBe(1);
+  });
+
+  it("does not include events from other tenants", async () => {
+    const { id: idA } = await createPartner("Usage Isolation A");
+    const { id: idB } = await createPartner("Usage Isolation B");
+
+    // Insert event for B only
+    await sql`
+      INSERT INTO usage_events (tenant_id, event_type)
+      VALUES (${idB}, 'MCP_QUERY')
+    `;
+
+    const res = await app.request(`/api/admin/partners/${idA}/usage`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(200);
+    const { totals } = (await res.json()) as UsageSummary;
+
+    expect(totals.events).toBe(0);
+    expect(totals.mcpQuery).toBe(0);
+  });
+
+  it("returns 400 for invalid 'from' date", async () => {
+    const { id } = await createPartner("Usage Bad From Partner");
+
+    const res = await app.request(`/api/admin/partners/${id}/usage?from=not-a-date`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for invalid 'to' date", async () => {
+    const { id } = await createPartner("Usage Bad To Partner");
+
+    const res = await app.request(`/api/admin/partners/${id}/usage?to=not-a-date`, {
+      headers: adminHeaders(),
+    });
+    expect(res.status).toBe(400);
+  });
+});
