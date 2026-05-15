@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { describe, expect, it } from "vitest";
-import { parsePaginationLimit, toHttpError } from "../src/routes/util.js";
+import { decodeCursor, encodeCursor, parsePaginationLimit, toHttpError } from "../src/routes/util.js";
 
 describe("toHttpError", () => {
   it("returns 400 with domain message for a plain Error", () => {
@@ -125,5 +125,77 @@ describe("parsePaginationLimit", () => {
   // defaultVal lower-bounds via max(1)
   it("clamps defaultVal to 1 when defaultVal is 0", () => {
     expect(parsePaginationLimit(undefined, 0, 500)).toBe(1);
+  });
+});
+
+describe("encodeCursor / decodeCursor", () => {
+  it("round-trips a cursor with typical v and id values", () => {
+    const encoded = encodeCursor("v1", "node-abc-123");
+    expect(decodeCursor(encoded)).toEqual({ v: "v1", id: "node-abc-123" });
+  });
+
+  it("round-trips a cursor containing unicode characters", () => {
+    const encoded = encodeCursor("2026-05-15T12:00:00Z", "urn:node:héllo");
+    expect(decodeCursor(encoded)).toEqual({ v: "2026-05-15T12:00:00Z", id: "urn:node:héllo" });
+  });
+
+  it("encodeCursor produces base64url-safe output with no +, /, or = characters", () => {
+    const encoded = encodeCursor("v1", "id-with-special/chars+here==");
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("decodeCursor returns null for an empty string", () => {
+    expect(decodeCursor("")).toBeNull();
+  });
+
+  it("decodeCursor returns null for a token containing base64url-invalid characters", () => {
+    // !@#$%^&*() are all outside the base64url alphabet; Buffer skips them,
+    // yielding an empty buffer whose UTF-8 string fails JSON.parse.
+    expect(decodeCursor("!@#$%^&*()")).toBeNull();
+  });
+
+  it("decodeCursor returns null when the token decodes to invalid JSON", () => {
+    const token = Buffer.from("{invalid json", "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null when v is absent from the payload", () => {
+    const token = Buffer.from(JSON.stringify({ id: "node-123" }), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null when id is absent from the payload", () => {
+    const token = Buffer.from(JSON.stringify({ v: "v1" }), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null for an empty-object payload", () => {
+    const token = Buffer.from(JSON.stringify({}), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null when v is not a string", () => {
+    const token = Buffer.from(JSON.stringify({ v: 1, id: "node-123" }), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null when id is not a string", () => {
+    const token = Buffer.from(JSON.stringify({ v: "v1", id: 42 }), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null when the payload is a JSON string, not an object", () => {
+    const token = Buffer.from(JSON.stringify("not-an-object"), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null when the payload is JSON null", () => {
+    const token = Buffer.from(JSON.stringify(null), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
+  });
+
+  it("decodeCursor returns null when the payload is a JSON array", () => {
+    const token = Buffer.from(JSON.stringify(["v1", "id1"]), "utf8").toString("base64url");
+    expect(decodeCursor(token)).toBeNull();
   });
 });
