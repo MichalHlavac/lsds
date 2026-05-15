@@ -52,6 +52,24 @@ export function violationsRouter(sql: Sql): Hono {
         ${cursorClause}
     `;
 
+    if (countOpt) {
+      // cursor_v preserves µs precision; JS Date.toISOString() is ms-only and would
+      // produce an incorrect cursor boundary when rows share the same ms.
+      const rows = await sql<(ViolationRow & { cursorV: string; totalCount: string })[]>`
+        SELECT *,
+          to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_v,
+          COUNT(*) OVER()::text AS total_count
+        FROM violations ${whereClause}
+        ORDER BY created_at DESC, id ASC
+        LIMIT ${limit}
+      `;
+      const nextCursor = rows.length === limit
+        ? encodeCursor(rows[rows.length - 1].cursorV, rows[rows.length - 1].id)
+        : null;
+      const responseRows = rows.map(({ cursorV: _cv, totalCount: _tc, ...rest }) => rest);
+      return c.json({ data: responseRows, nextCursor, totalCount: Number(rows[0]?.totalCount ?? 0) });
+    }
+
     // cursor_v preserves µs precision; JS Date.toISOString() is ms-only and would
     // produce an incorrect cursor boundary when rows share the same ms.
     const rows = await sql<(ViolationRow & { cursorV: string })[]>`
@@ -61,17 +79,10 @@ export function violationsRouter(sql: Sql): Hono {
       ORDER BY created_at DESC, id ASC
       LIMIT ${limit}
     `;
-
     const nextCursor = rows.length === limit
       ? encodeCursor(rows[rows.length - 1].cursorV, rows[rows.length - 1].id)
       : null;
-
     const responseRows = rows.map(({ cursorV: _cv, ...rest }) => rest);
-
-    if (countOpt) {
-      const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM violations ${whereClause}`;
-      return c.json({ data: responseRows, nextCursor, totalCount: Number(count) });
-    }
     return c.json({ data: responseRows, nextCursor });
   });
 

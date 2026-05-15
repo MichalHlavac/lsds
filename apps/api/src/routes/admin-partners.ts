@@ -78,32 +78,30 @@ export function adminPartnersRouter(sql: Sql): Hono {
     const limit = parsePaginationLimit(query.limit, 20, 100);
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
 
-    const rows = await sql<PartnerRow[]>`
-      SELECT
-        t.id,
-        t.name,
-        t.partner_status,
-        t.created_at,
-        (
-          SELECT MAX(ue.created_at) FROM usage_events ue WHERE ue.tenant_id = t.id
-        ) AS last_active_at,
-        (
-          SELECT COUNT(*)::int FROM nodes n WHERE n.tenant_id = t.id
-        ) AS node_count
-      FROM tenants t
-      WHERE t.plan = 'partner'
-        ${query.status ? sql`AND t.partner_status = ${query.status}` : sql``}
+    // CTE computes COUNT(*) OVER() before cursor so total reflects the full filter.
+    // Correlated subqueries (last_active_at, node_count) run only for the page rows.
+    const rows = await sql<(PartnerRow & { total: number })[]>`
+      WITH base AS (
+        SELECT t.id, t.name, t.partner_status, t.created_at,
+               COUNT(*) OVER()::int AS total
+        FROM tenants t
+        WHERE t.plan = 'partner'
+          ${query.status ? sql`AND t.partner_status = ${query.status}` : sql``}
+      ),
+      paged AS (
+        SELECT * FROM base
         ${cursor
-          ? sql`AND (t.created_at < ${cursor.v}::timestamptz OR (t.created_at = ${cursor.v}::timestamptz AND t.id < ${cursor.id}::uuid))`
+          ? sql`WHERE (created_at < ${cursor.v}::timestamptz OR (created_at = ${cursor.v}::timestamptz AND id < ${cursor.id}::uuid))`
           : sql``}
-      ORDER BY t.created_at DESC, t.id DESC
-      LIMIT ${limit + 1}
-    `;
-
-    const [{ total }] = await sql<[{ total: number }]>`
-      SELECT COUNT(*)::int AS total FROM tenants
-      WHERE plan = 'partner'
-        ${query.status ? sql`AND partner_status = ${query.status}` : sql``}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${limit + 1}
+      )
+      SELECT
+        p.*,
+        (SELECT MAX(ue.created_at) FROM usage_events ue WHERE ue.tenant_id = p.id) AS last_active_at,
+        (SELECT COUNT(*)::int FROM nodes n WHERE n.tenant_id = p.id) AS node_count
+      FROM paged p
+      ORDER BY p.created_at DESC, p.id DESC
     `;
 
     const hasMore = rows.length > limit;
@@ -115,7 +113,7 @@ export function adminPartnersRouter(sql: Sql): Hono {
         : null;
 
     return c.json({
-      partners: items.map((r) => ({
+      partners: items.map(({ total: _t, ...r }) => ({
         tenantId: r.id,
         name: r.name,
         status: r.partnerStatus,
@@ -124,7 +122,7 @@ export function adminPartnersRouter(sql: Sql): Hono {
         nodeCount: r.nodeCount,
       })),
       nextCursor,
-      total,
+      total: rows[0]?.total ?? 0,
     });
   });
 
