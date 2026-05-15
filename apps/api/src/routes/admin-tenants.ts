@@ -67,8 +67,9 @@ export function adminTenantsRouter(sql: Sql): Hono {
       if (existing) return { conflict: true } as const;
 
       const [tenant] = await tx<[{ id: string; name: string; slug: string; plan: string; createdAt: Date }]>`
-        INSERT INTO tenants (id, name, slug, plan, retention_days)
-        VALUES (gen_random_uuid(), ${body.name}, ${body.slug}, ${body.plan}, 730)
+        INSERT INTO tenants (id, name, slug, plan, retention_days, partner_status)
+        VALUES (gen_random_uuid(), ${body.name}, ${body.slug}, ${body.plan}, 730,
+          ${body.plan === "partner" ? "active" : null})
         RETURNING id, name, slug, plan, created_at
       `;
 

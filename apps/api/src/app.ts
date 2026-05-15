@@ -36,6 +36,7 @@ import { adminWebhooksRouter } from "./routes/admin-webhooks.js";
 import { adminDiagnosticsRouter } from "./routes/admin-diagnostics.js";
 import { adminAuditLogRouter } from "./routes/admin-audit-log.js";
 import { adminEmbeddingsRouter } from "./routes/admin-embeddings.js";
+import { adminPartnersRouter } from "./routes/admin-partners.js";
 import { adminAuthMiddleware } from "./middleware/admin-auth.js";
 import { openApiSpec } from "./openapi.js";
 import { apiReference } from "@scalar/hono-api-reference";
@@ -143,6 +144,7 @@ app.route("/api/admin/webhooks", adminWebhooksRouter(sql));
 app.route("/api/admin/diagnostics", adminDiagnosticsRouter(sql));
 app.route("/api/admin/audit-log", adminAuditLogRouter(sql));
 app.route("/api/admin/embeddings", adminEmbeddingsRouter(sql, embeddingService));
+app.route("/api/admin/partners", adminPartnersRouter(sql));
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
