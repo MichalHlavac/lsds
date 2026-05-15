@@ -224,12 +224,13 @@ describe("GET /v1/usage/events", () => {
   });
 
   it("filters by after (ISO timestamp)", async () => {
-    const first = await post("NODE_CREATED");
+    await post("NODE_CREATED");
+    // Capture boundary after first INSERT completes (before sleep + second INSERT)
+    // so first.created_at < boundary < second.created_at — no ms-truncation heuristic needed.
+    const boundary = new Date().toISOString();
     await new Promise((r) => setTimeout(r, 5));
     await post("EDGE_CREATED");
 
-    // +1ms to account for sub-ms DB precision truncated in the ISO response
-    const boundary = new Date(new Date(first.createdAt).getTime() + 1).toISOString();
     const url = `/v1/usage/events?after=${encodeURIComponent(boundary)}`;
     const res = await app.request(url, { headers: h() });
     expect(res.status).toBe(200);
