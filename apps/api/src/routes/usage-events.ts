@@ -51,8 +51,9 @@ export function usageEventsRouter(sql: Sql): Hono {
 
     const afterDate = parsed.after ? new Date(parsed.after) : null;
 
-    const rows = await sql<UsageEventRow[]>`
-      SELECT * FROM usage_events
+    const rows = await sql<(UsageEventRow & { totalCount: number })[]>`
+      SELECT *, COUNT(*) OVER()::int AS total_count
+      FROM usage_events
       WHERE tenant_id = ${tenantId}
         ${parsed.eventType ? sql`AND event_type = ${parsed.eventType}` : sql``}
         ${afterDate ? sql`AND created_at > ${afterDate}` : sql``}
@@ -60,14 +61,7 @@ export function usageEventsRouter(sql: Sql): Hono {
       LIMIT ${parsed.limit}
     `;
 
-    const [{ count }] = await sql<{ count: number }[]>`
-      SELECT COUNT(*)::int AS count FROM usage_events
-      WHERE tenant_id = ${tenantId}
-        ${parsed.eventType ? sql`AND event_type = ${parsed.eventType}` : sql``}
-        ${afterDate ? sql`AND created_at > ${afterDate}` : sql``}
-    `;
-
-    return c.json({ events: rows.map(rowToEvent), total: count });
+    return c.json({ events: rows.map(rowToEvent), total: rows[0]?.totalCount ?? 0 });
   });
 
   return app;
