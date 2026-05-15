@@ -197,4 +197,14 @@ describe("encodeCursor / decodeCursor", () => {
     const raw = Buffer.from(JSON.stringify({ v: null, id: null }), "utf8").toString("base64url");
     expect(decodeCursor(raw)).toBeNull();
   });
+
+  it("decodeCursor returns null for old stale-flags cursor format {raisedAt, id}", () => {
+    const old = Buffer.from(JSON.stringify({ raisedAt: "2026-01-01T00:00:00.000Z", id: "x" }), "utf8").toString("base64url");
+    expect(decodeCursor(old)).toBeNull();
+  });
+
+  it("decodeCursor returns null for old audit-log cursor format {createdAt, id}", () => {
+    const old = Buffer.from(JSON.stringify({ createdAt: "2026-01-01T00:00:00.000Z", id: "x" }), "utf8").toString("base64url");
+    expect(decodeCursor(old)).toBeNull();
+  });
 });
