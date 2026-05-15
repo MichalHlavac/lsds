@@ -86,8 +86,7 @@ describe("POST /api/admin/embeddings/backfill — provider disabled", () => {
 // ── validation ────────────────────────────────────────────────────────────────
 
 describe("POST /api/admin/embeddings/backfill — validation", () => {
-  it("returns 400 when batchSize exceeds 500", async () => {
-    if (!EMBEDDING_ENABLED) return; // schema validation only reachable when provider is up
+  maybeIt("returns 400 when batchSize exceeds 500", async () => {
     const res = await app.request("/api/admin/embeddings/backfill", {
       method: "POST",
       headers: { ...adminHeaders(), "content-type": "application/json" },
@@ -96,8 +95,7 @@ describe("POST /api/admin/embeddings/backfill — validation", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 when tenantId is not a valid UUID", async () => {
-    if (!EMBEDDING_ENABLED) return;
+  maybeIt("returns 400 when tenantId is not a valid UUID", async () => {
     const res = await app.request("/api/admin/embeddings/backfill", {
       method: "POST",
       headers: { ...adminHeaders(), "content-type": "application/json" },
