@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 //
-// Integration tests for GET /api/admin/partners.
+// Integration tests for GET and POST /api/admin/partners.
 // All DB assertions hit real Postgres — no database mocks (ADR A6).
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -25,9 +25,13 @@ function uniqueSlug(): string {
   return `partner-test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function uniqueName(): string {
+  return `Test Partner ${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 const createdTenantIds: string[] = [];
 
-/** Helper: create a partner tenant via the admin API and track it for cleanup. */
+/** Helper: create a partner tenant via the admin tenants API and track it for cleanup. */
 async function createPartner(name: string): Promise<{ id: string }> {
   const res = await app.request("/api/admin/tenants", {
     method: "POST",
@@ -48,7 +52,7 @@ afterEach(async () => {
   rateLimitWindows.clear();
 });
 
-// ── Auth guard ────────────────────────────────────────────────────────────────
+// ── GET — Auth guard ──────────────────────────────────────────────────────────
 
 describe("GET /api/admin/partners — auth", () => {
   it("returns 401 when LSDS_ADMIN_SECRET is not configured", async () => {
@@ -72,7 +76,7 @@ describe("GET /api/admin/partners — auth", () => {
   });
 });
 
-// ── Happy path ────────────────────────────────────────────────────────────────
+// ── GET — Happy path ──────────────────────────────────────────────────────────
 
 describe("GET /api/admin/partners — happy path", () => {
   it("returns 200 with correct response shape", async () => {
@@ -109,7 +113,6 @@ describe("GET /api/admin/partners — happy path", () => {
   });
 
   it("does not include non-partner tenants (plan=trial)", async () => {
-    // Create a trial tenant directly — should not appear in /partners
     const trialRes = await app.request("/api/admin/tenants", {
       method: "POST",
       headers: adminHeaders(),
@@ -141,14 +144,13 @@ describe("GET /api/admin/partners — happy path", () => {
   });
 });
 
-// ── Status filter ─────────────────────────────────────────────────────────────
+// ── GET — Status filter ───────────────────────────────────────────────────────
 
 describe("GET /api/admin/partners — status filter", () => {
   it("returns only active partners when status=active", async () => {
     const { id: activeId } = await createPartner("Active Partner A");
     const { id: churnedId } = await createPartner("Churned Partner B");
 
-    // Manually set churnedId to churned
     await sql`UPDATE tenants SET partner_status = 'churned' WHERE id = ${churnedId}`;
 
     const res = await app.request("/api/admin/partners?status=active", {
@@ -216,13 +218,9 @@ describe("GET /api/admin/partners — status filter", () => {
     });
     const { total: churnedTotal } = (await churnedRes.json()) as { total: number };
 
-    // activeTotal must include aId, churnedTotal must include bId
-    // We can't assert exact numbers (other tests may have leftover data in parallel),
-    // but we can verify the filtered totals are distinct and both >= 1
     expect(activeTotal).toBeGreaterThanOrEqual(1);
     expect(churnedTotal).toBeGreaterThanOrEqual(1);
 
-    // Confirm cross-contamination: active total must not include bId's count
     const allRes = await app.request("/api/admin/partners", {
       headers: adminHeaders(),
     });
@@ -230,16 +228,14 @@ describe("GET /api/admin/partners — status filter", () => {
     expect(allTotal).toBeGreaterThanOrEqual(activeTotal);
     expect(allTotal).toBeGreaterThanOrEqual(churnedTotal);
 
-    // Avoid "unused variable" TS error
     void aId;
   });
 });
 
-// ── Cursor pagination ─────────────────────────────────────────────────────────
+// ── GET — Cursor pagination ───────────────────────────────────────────────────
 
 describe("GET /api/admin/partners — pagination", () => {
   it("paginates with limit and nextCursor", async () => {
-    // Create 3 partners; request limit=2 — should get nextCursor
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) {
       const { id } = await createPartner(`Paginate Partner ${i}`);
@@ -257,10 +253,8 @@ describe("GET /api/admin/partners — pagination", () => {
     };
 
     expect(page1.partners.length).toBe(2);
-    // total includes all partners regardless of page
     expect(page1.total).toBeGreaterThanOrEqual(3);
 
-    // If our 3 partners are the most-recently-created, nextCursor should be set
     if (page1.nextCursor !== null) {
       const page2Res = await app.request(
         `/api/admin/partners?limit=2&cursor=${encodeURIComponent(page1.nextCursor)}`,
@@ -272,7 +266,6 @@ describe("GET /api/admin/partners — pagination", () => {
         nextCursor: string | null;
       };
       expect(Array.isArray(page2.partners)).toBe(true);
-      // No overlap between pages
       const page1Ids = new Set(page1.partners.map((p) => p.tenantId));
       for (const p of page2.partners) {
         expect(page1Ids.has(p.tenantId)).toBe(false);
@@ -283,13 +276,11 @@ describe("GET /api/admin/partners — pagination", () => {
   it("returns null nextCursor when results fit within limit", async () => {
     await createPartner("Solo Partner");
 
-    // Use a large limit — all results fit
     const res = await app.request("/api/admin/partners?limit=100", {
       headers: adminHeaders(),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { partners: unknown[]; nextCursor: string | null };
-    // If total <= 100, nextCursor is null
     if (body.partners.length < 100) {
       expect(body.nextCursor).toBeNull();
     }
@@ -315,7 +306,6 @@ describe("GET /api/admin/partners — pagination", () => {
 
   it("partners are ordered by createdAt DESC", async () => {
     const { id: first } = await createPartner("Order First");
-    // Small delay to guarantee distinct created_at values
     await new Promise((r) => setTimeout(r, 10));
     const { id: second } = await createPartner("Order Second");
 
@@ -333,13 +323,12 @@ describe("GET /api/admin/partners — pagination", () => {
   });
 });
 
-// ── nodeCount ─────────────────────────────────────────────────────────────────
+// ── GET — nodeCount ───────────────────────────────────────────────────────────
 
 describe("GET /api/admin/partners — nodeCount", () => {
   it("nodeCount reflects current node count for the tenant", async () => {
     const { id } = await createPartner("Node Count Partner");
 
-    // Insert 2 nodes directly
     await sql`
       INSERT INTO nodes (tenant_id, type, layer, name)
       VALUES
@@ -356,5 +345,136 @@ describe("GET /api/admin/partners — nodeCount", () => {
     };
     const partner = partners.find((p) => p.tenantId === id);
     expect(partner?.nodeCount).toBe(2);
+  });
+});
+
+// ── POST — Happy path & auth ──────────────────────────────────────────────────
+
+describe("POST /api/admin/partners", () => {
+  it("creates partner tenant and returns 201 with plaintext apiKey", async () => {
+    const name = uniqueName();
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name, contactEmail: "admin@acme.com", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(201);
+
+    const body = (await res.json()) as {
+      tenantId: string;
+      name: string;
+      apiKey: string;
+      createdAt: string;
+    };
+    expect(body.tenantId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(body.name).toBe(name);
+    expect(body.apiKey).toMatch(/^lsds_[0-9a-f]{32}$/);
+    expect(body.createdAt).toBeDefined();
+    createdTenantIds.push(body.tenantId);
+
+    const [row] = await sql<[{ plan: string; partnerStatus: string }?]>`
+      SELECT plan, partner_status FROM tenants WHERE id = ${body.tenantId}
+    `;
+    expect(row?.plan).toBe("partner");
+    expect(row?.partnerStatus).toBe("active");
+  });
+
+  it("plaintext apiKey authenticates against the API", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: uniqueName(), contactEmail: "test@example.com", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(201);
+    const { tenantId, apiKey } = (await res.json()) as { tenantId: string; apiKey: string };
+    createdTenantIds.push(tenantId);
+
+    const authed = await app.request("/v1/nodes", {
+      headers: { "x-api-key": apiKey },
+    });
+    expect(authed.status).not.toBe(403);
+  });
+
+  it("returns 409 on duplicate name with existing tenantId", async () => {
+    const name = uniqueName();
+    const first = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name, contactEmail: "first@example.com", tier: "design_partner" }),
+    });
+    expect(first.status).toBe(201);
+    const { tenantId } = (await first.json()) as { tenantId: string };
+    createdTenantIds.push(tenantId);
+
+    const second = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name, contactEmail: "second@example.com", tier: "design_partner" }),
+    });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error: string; tenantId: string };
+    expect(body.tenantId).toBe(tenantId);
+  });
+
+  it("returns 401 when LSDS_ADMIN_SECRET is not configured", async () => {
+    vi.stubEnv("LSDS_ADMIN_SECRET", "");
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: uniqueName(), contactEmail: "x@x.com", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 for invalid Bearer token", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer wrong-token-value",
+      },
+      body: JSON.stringify({ name: uniqueName(), contactEmail: "x@x.com", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 when contactEmail is invalid", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(`10.1.${Math.floor(Math.random() * 256)}.1`),
+      body: JSON.stringify({ name: uniqueName(), contactEmail: "not-an-email", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues: Array<{ path: string[] }> };
+    expect(body.error).toBe("validation error");
+    expect(body.issues.some((i) => i.path.includes("contactEmail"))).toBe(true);
+  });
+
+  it("returns 400 when tier is not design_partner", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(`10.2.${Math.floor(Math.random() * 256)}.1`),
+      body: JSON.stringify({ name: uniqueName(), contactEmail: "ok@example.com", tier: "trial" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("creates audit log entry with operation=partner.create", async () => {
+    const name = uniqueName();
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name, contactEmail: "audit@example.com", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(201);
+    const { tenantId } = (await res.json()) as { tenantId: string };
+    createdTenantIds.push(tenantId);
+
+    const [entry] = await sql<[{ operation: string }?]>`
+      SELECT operation FROM admin_audit_log
+      WHERE target_tenant_id = ${tenantId} AND operation = 'partner.create'
+    `;
+    expect(entry).toBeDefined();
+    expect(entry!.operation).toBe("partner.create");
   });
 });
