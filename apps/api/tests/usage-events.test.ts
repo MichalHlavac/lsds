@@ -224,11 +224,14 @@ describe("GET /v1/usage/events", () => {
   });
 
   it("filters by after (ISO timestamp)", async () => {
-    await post("NODE_CREATED");
-    // Capture boundary after first INSERT completes (before sleep + second INSERT)
-    // so first.created_at < boundary < second.created_at — no ms-truncation heuristic needed.
-    const boundary = new Date().toISOString();
-    await new Promise((r) => setTimeout(r, 5));
+    const firstEvent = await post("NODE_CREATED");
+    // Derive boundary from the DB-returned createdAt +1ms to avoid µs-truncation races:
+    // JS Date.toISOString() has ms precision, but PG stores µs. If first.created_at is
+    // e.g. .650123Z and boundary is captured as .650Z, PG sees .650123 > .650000 = true
+    // and incorrectly includes the first event. Adding 1ms guarantees boundary is strictly
+    // after the first event regardless of sub-ms DB clock variance.
+    const boundary = new Date(new Date(firstEvent.createdAt).getTime() + 1).toISOString();
+    await new Promise((r) => setTimeout(r, 20));
     await post("EDGE_CREATED");
 
     const url = `/v1/usage/events?after=${encodeURIComponent(boundary)}`;
