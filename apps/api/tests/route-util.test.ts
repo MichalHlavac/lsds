@@ -2,7 +2,11 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { describe, expect, it } from "vitest";
+<<<<<<< HEAD
 import { decodeCursor, encodeCursor, parsePaginationLimit, toHttpError } from "../src/routes/util.js";
+=======
+import { parsePaginationLimit, toHttpError, encodeCursor, decodeCursor } from "../src/routes/util.js";
+>>>>>>> af21242 (refactor(api): consolidate cursor serialization — migrate stale-flags and audit-log to shared util.ts)
 
 describe("toHttpError", () => {
   it("returns 400 with domain message for a plain Error", () => {
@@ -196,5 +200,15 @@ describe("encodeCursor / decodeCursor", () => {
   it("decodeCursor returns null when both fields are null", () => {
     const raw = Buffer.from(JSON.stringify({ v: null, id: null }), "utf8").toString("base64url");
     expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null for old stale-flags cursor format {raisedAt, id}", () => {
+    const old = Buffer.from(JSON.stringify({ raisedAt: "2026-01-01T00:00:00.000Z", id: "x" }), "utf8").toString("base64url");
+    expect(decodeCursor(old)).toBeNull();
+  });
+
+  it("decodeCursor returns null for old audit-log cursor format {createdAt, id}", () => {
+    const old = Buffer.from(JSON.stringify({ createdAt: "2026-01-01T00:00:00.000Z", id: "x" }), "utf8").toString("base64url");
+    expect(decodeCursor(old)).toBeNull();
   });
 });

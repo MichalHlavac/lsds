@@ -4,33 +4,10 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { StaleFlagRow } from "../db/types.js";
-import { getTenantId, parsePaginationLimit } from "./util.js";
+import { getTenantId, parsePaginationLimit, encodeCursor, decodeCursor } from "./util.js";
 
 const VALID_OBJECT_TYPES = new Set(["node", "edge"]);
 const VALID_SEVERITIES = new Set(["ERROR", "WARNING", "INFO"]);
-
-interface CursorPayload {
-  raisedAt: string;
-  id: string;
-}
-
-function encodeCursor(raisedAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify({ raisedAt: raisedAt.toISOString(), id })).toString("base64url");
-}
-
-function decodeCursor(cursor: string): CursorPayload | null {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
-    if (
-      typeof parsed === "object" && parsed !== null &&
-      "raisedAt" in parsed && typeof (parsed as Record<string, unknown>).raisedAt === "string" &&
-      "id" in parsed && typeof (parsed as Record<string, unknown>).id === "string"
-    ) {
-      return parsed as CursorPayload;
-    }
-  } catch { /* invalid cursor */ }
-  return null;
-}
 
 interface StaleFlagEntry {
   id: string;
@@ -119,7 +96,7 @@ export function staleFlagsRouter(sql: Sql): Hono {
       return c.json({ error: "invalid severity: must be 'ERROR', 'WARNING', or 'INFO'" }, 400);
     }
 
-    let cursor: CursorPayload | null = null;
+    let cursor: { v: string; id: string } | null = null;
     if (cursorParam) {
       cursor = decodeCursor(cursorParam);
       if (!cursor) return c.json({ error: "invalid cursor" }, 400);
@@ -134,7 +111,7 @@ export function staleFlagsRouter(sql: Sql): Hono {
           ${objectTypeParam ? sql`AND object_type = ${objectTypeParam}` : sql``}
           ${severityParam ? sql`AND severity = ${severityParam}` : sql``}
           ${cursor
-            ? sql`AND (raised_at < ${cursor.raisedAt} OR (raised_at = ${cursor.raisedAt} AND id < ${cursor.id}))`
+            ? sql`AND (raised_at < ${cursor.v} OR (raised_at = ${cursor.v} AND id < ${cursor.id}))`
             : sql``}
         ORDER BY raised_at DESC, id DESC
         LIMIT ${limit + 1}
@@ -151,7 +128,7 @@ export function staleFlagsRouter(sql: Sql): Hono {
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
     const last = items[items.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.raisedAt, last.id) : null;
+    const nextCursor = hasMore && last ? encodeCursor(last.raisedAt.toISOString(), last.id) : null;
 
     return c.json({
       items: items.map(toEntry),
