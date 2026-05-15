@@ -224,13 +224,13 @@ describe("GET /v1/usage/events", () => {
   });
 
   it("filters by after (ISO timestamp)", async () => {
-    await post("NODE_CREATED");
-    const afterTimestamp = new Date().toISOString();
-    // Small delay to ensure the second event has a later timestamp
+    const first = await post("NODE_CREATED");
     await new Promise((r) => setTimeout(r, 5));
     await post("EDGE_CREATED");
 
-    const url = `/v1/usage/events?after=${encodeURIComponent(afterTimestamp)}`;
+    // +1ms to account for sub-ms DB precision truncated in the ISO response
+    const boundary = new Date(new Date(first.createdAt).getTime() + 1).toISOString();
+    const url = `/v1/usage/events?after=${encodeURIComponent(boundary)}`;
     const res = await app.request(url, { headers: h() });
     expect(res.status).toBe(200);
     const { events } = await res.json();
