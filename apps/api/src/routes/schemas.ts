@@ -269,6 +269,30 @@ export const FeedbackResponseSchema = z.object({
 });
 export type FeedbackResponse = z.infer<typeof FeedbackResponseSchema>;
 
+export const UsageEventTypeSchema = z.enum([
+  "NODE_CREATED",
+  "EDGE_CREATED",
+  "REQUIREMENT_ADDED",
+  "VIOLATION_CHECKED",
+  "GRAPH_TRAVERSED",
+  "MCP_QUERY",
+]);
+export type UsageEventType = z.infer<typeof UsageEventTypeSchema>;
+
+export const CreateUsageEventSchema = z.object({
+  eventType: UsageEventTypeSchema,
+  entityId: z.string().uuid().optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+export type CreateUsageEvent = z.infer<typeof CreateUsageEventSchema>;
+
+export const GetUsageEventsQuerySchema = z.object({
+  eventType: UsageEventTypeSchema.optional(),
+  after: z.string().datetime({ offset: true }).optional(),
+  limit: z.coerce.number().int().positive().max(500).optional().default(50),
+});
+export type GetUsageEventsQuery = z.infer<typeof GetUsageEventsQuerySchema>;
+
 export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;
 export type NodeSortField = (typeof NODE_SORT_FIELDS)[number];
 

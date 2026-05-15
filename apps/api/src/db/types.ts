@@ -242,3 +242,20 @@ export interface FeedbackRow {
   metadata: Record<string, unknown> | null;
   createdAt: Date;
 }
+
+export type UsageEventType =
+  | "NODE_CREATED"
+  | "EDGE_CREATED"
+  | "REQUIREMENT_ADDED"
+  | "VIOLATION_CHECKED"
+  | "GRAPH_TRAVERSED"
+  | "MCP_QUERY";
+
+export interface UsageEventRow {
+  id: string;
+  tenantId: string;
+  eventType: UsageEventType;
+  entityId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+}
