@@ -4,7 +4,7 @@
 import { Hono } from "hono";
 import type { Sql } from "../db/client.js";
 import type { AuditLogRow, AuditOperation } from "../db/types.js";
-import { getTenantId, parsePaginationLimit } from "./util.js";
+import { getTenantId, parsePaginationLimit, encodeCursor, decodeCursor } from "./util.js";
 
 const VALID_OPERATIONS = new Set<string>([
   "node.create", "node.update", "node.delete",
@@ -13,29 +13,6 @@ const VALID_OPERATIONS = new Set<string>([
   "edge.deprecate", "edge.archive", "edge.purge",
   "rate_limit_hit",
 ]);
-
-interface CursorPayload {
-  createdAt: string;
-  id: string;
-}
-
-function encodeCursor(createdAt: Date, id: string): string {
-  return Buffer.from(JSON.stringify({ createdAt: createdAt.toISOString(), id })).toString("base64url");
-}
-
-function decodeCursor(cursor: string): CursorPayload | null {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
-    if (
-      typeof parsed === "object" && parsed !== null &&
-      "createdAt" in parsed && typeof (parsed as Record<string, unknown>).createdAt === "string" &&
-      "id" in parsed && typeof (parsed as Record<string, unknown>).id === "string"
-    ) {
-      return parsed as CursorPayload;
-    }
-  } catch { /* invalid cursor */ }
-  return null;
-}
 
 export function auditLogRouter(sql: Sql): Hono {
   const app = new Hono();
@@ -66,7 +43,7 @@ export function auditLogRouter(sql: Sql): Hono {
       if (isNaN(toDate.getTime())) return c.json({ error: "invalid 'to' date" }, 400);
     }
 
-    let cursor: CursorPayload | null = null;
+    let cursor: { v: string; id: string } | null = null;
     if (cursorParam) {
       cursor = decodeCursor(cursorParam);
       if (!cursor) return c.json({ error: "invalid cursor" }, 400);
@@ -81,7 +58,7 @@ export function auditLogRouter(sql: Sql): Hono {
         ${fromDate ? sql`AND created_at >= ${fromDate}` : sql``}
         ${toDate ? sql`AND created_at <= ${toDate}` : sql``}
         ${cursor
-          ? sql`AND (created_at < ${cursor.createdAt} OR (created_at = ${cursor.createdAt} AND id < ${cursor.id}))`
+          ? sql`AND (created_at < ${cursor.v} OR (created_at = ${cursor.v} AND id < ${cursor.id}))`
           : sql``}
       ORDER BY created_at DESC, id DESC
       LIMIT ${limit + 1}
@@ -90,7 +67,7 @@ export function auditLogRouter(sql: Sql): Hono {
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
     const last = items[items.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
+    const nextCursor = hasMore && last ? encodeCursor(last.createdAt.toISOString(), last.id) : null;
 
     return c.json({ items, nextCursor });
   });

@@ -37,7 +37,10 @@ import { adminDiagnosticsRouter } from "./routes/admin-diagnostics.js";
 import { adminAuditLogRouter } from "./routes/admin-audit-log.js";
 import { adminEmbeddingsRouter } from "./routes/admin-embeddings.js";
 import { adminPartnersRouter } from "./routes/admin-partners.js";
+import { adminUsageEventsRouter } from "./routes/admin-usage-events.js";
+import { adminMetricsRouter } from "./routes/admin-metrics.js";
 import { adminAuthMiddleware } from "./middleware/admin-auth.js";
+import { metricsMiddleware } from "./middleware/metrics.js";
 import { openApiSpec } from "./openapi.js";
 import { apiReference } from "@scalar/hono-api-reference";
 import { oidcMiddleware, oidcEnabled } from "./auth/oidc.js";
@@ -74,6 +77,7 @@ app.use(
 app.use("*", requestIdMiddleware);
 app.use("*", requestLoggerMiddleware);
 app.use("*", requestTimeoutMiddleware());
+app.use("*", metricsMiddleware);
 
 app.get("/health/live", (c) => {
   return c.json({ status: "alive", ts: new Date().toISOString() });
@@ -145,6 +149,10 @@ app.route("/api/admin/diagnostics", adminDiagnosticsRouter(sql));
 app.route("/api/admin/audit-log", adminAuditLogRouter(sql));
 app.route("/api/admin/embeddings", adminEmbeddingsRouter(sql, embeddingService));
 app.route("/api/admin/partners", adminPartnersRouter(sql));
+app.route("/api/admin/usage-events", adminUsageEventsRouter(sql));
+
+app.use("/api/metrics", adminAuthMiddleware);
+app.route("/api/metrics", adminMetricsRouter());
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();

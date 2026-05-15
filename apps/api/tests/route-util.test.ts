@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 
 import { describe, expect, it } from "vitest";
-import { parsePaginationLimit, toHttpError } from "../src/routes/util.js";
+import { decodeCursor, encodeCursor, parsePaginationLimit, toHttpError } from "../src/routes/util.js";
 
 describe("toHttpError", () => {
   it("returns 400 with domain message for a plain Error", () => {
@@ -125,5 +125,86 @@ describe("parsePaginationLimit", () => {
   // defaultVal lower-bounds via max(1)
   it("clamps defaultVal to 1 when defaultVal is 0", () => {
     expect(parsePaginationLimit(undefined, 0, 500)).toBe(1);
+  });
+});
+
+describe("encodeCursor / decodeCursor", () => {
+  it("round-trips: decodeCursor(encodeCursor(v, id)) returns original values", () => {
+    expect(decodeCursor(encodeCursor("1.0", "abc-123"))).toEqual({ v: "1.0", id: "abc-123" });
+  });
+
+  it("round-trips with values that contain base64url-unsafe characters", () => {
+    expect(decodeCursor(encodeCursor("node:v2", "id/with+chars="))).toEqual({
+      v: "node:v2",
+      id: "id/with+chars=",
+    });
+  });
+
+  it("encodeCursor produces a base64url string (no +, /, or = padding)", () => {
+    const cursor = encodeCursor("v1", "some-id");
+    expect(cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("decodeCursor returns null for empty string", () => {
+    expect(decodeCursor("")).toBeNull();
+  });
+
+  it("decodeCursor returns null for non-base64url garbage characters", () => {
+    expect(decodeCursor("!!!not-base64!!!")).toBeNull();
+  });
+
+  it("decodeCursor returns null for valid base64url encoding of non-JSON bytes", () => {
+    const raw = Buffer.from("not json at all", "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null for valid JSON string (not an object)", () => {
+    const raw = Buffer.from(JSON.stringify("just-a-string"), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null for JSON null", () => {
+    const raw = Buffer.from(JSON.stringify(null), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null for empty JSON object (missing both fields)", () => {
+    const raw = Buffer.from(JSON.stringify({}), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null when v field is missing", () => {
+    const raw = Buffer.from(JSON.stringify({ id: "abc" }), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null when id field is missing", () => {
+    const raw = Buffer.from(JSON.stringify({ v: "1.0" }), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null when v is a number, not a string", () => {
+    const raw = Buffer.from(JSON.stringify({ v: 1, id: "abc" }), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null when id is a number, not a string", () => {
+    const raw = Buffer.from(JSON.stringify({ v: "1.0", id: 42 }), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null when both fields are null", () => {
+    const raw = Buffer.from(JSON.stringify({ v: null, id: null }), "utf8").toString("base64url");
+    expect(decodeCursor(raw)).toBeNull();
+  });
+
+  it("decodeCursor returns null for old stale-flags cursor format {raisedAt, id}", () => {
+    const old = Buffer.from(JSON.stringify({ raisedAt: "2026-01-01T00:00:00.000Z", id: "x" }), "utf8").toString("base64url");
+    expect(decodeCursor(old)).toBeNull();
+  });
+
+  it("decodeCursor returns null for old audit-log cursor format {createdAt, id}", () => {
+    const old = Buffer.from(JSON.stringify({ createdAt: "2026-01-01T00:00:00.000Z", id: "x" }), "utf8").toString("base64url");
+    expect(decodeCursor(old)).toBeNull();
   });
 });
