@@ -186,6 +186,70 @@ const sFeedback = {
   },
 };
 
+const sUsageEvent = {
+  type: "object",
+  required: ["id", "eventType", "entityId", "metadata", "createdAt"],
+  properties: {
+    id:        { type: "string", format: "uuid" },
+    eventType: {
+      type: "string",
+      enum: ["NODE_CREATED", "EDGE_CREATED", "REQUIREMENT_ADDED", "VIOLATION_CHECKED", "GRAPH_TRAVERSED", "MCP_QUERY"],
+    },
+    entityId:  { type: ["string", "null"], format: "uuid" },
+    metadata:  { type: ["object", "null"], additionalProperties: true },
+    createdAt: { type: "string", format: "date-time" },
+  },
+};
+
+const sStaleFlagEntry = {
+  type: "object",
+  required: ["id", "objectId", "objectType", "severity", "message", "viaRelationshipType", "depth", "raisedAt", "sourceChangeId"],
+  properties: {
+    id:                   { type: "string", format: "uuid" },
+    objectId:             { type: "string", format: "uuid" },
+    objectType:           { type: "string", enum: ["node", "edge"] },
+    severity:             { type: "string", enum: ["ERROR", "WARNING", "INFO"] },
+    message:              { type: "string" },
+    viaRelationshipType:  { type: "string" },
+    depth:                { type: "integer", minimum: 0 },
+    raisedAt:             { type: "string", format: "date-time" },
+    sourceChangeId:       { type: "string", format: "uuid" },
+  },
+};
+
+const sWebhook = {
+  type: "object",
+  required: ["id", "url", "eventTypes", "isActive", "createdAt", "updatedAt"],
+  properties: {
+    id:         { type: "string", format: "uuid" },
+    url:        { type: "string", format: "uri" },
+    eventTypes: { type: "array", items: { type: "string" } },
+    isActive:   { type: "boolean" },
+    createdAt:  { type: "string", format: "date-time" },
+    updatedAt:  { type: "string", format: "date-time" },
+  },
+};
+
+const sWebhookDelivery = {
+  type: "object",
+  required: ["id", "webhookId", "tenantId", "auditLogId", "eventType", "payload", "status", "attemptCount", "nextAttempt", "lastResponseStatus", "lastError", "createdAt", "updatedAt"],
+  properties: {
+    id:                 { type: "string", format: "uuid" },
+    webhookId:          { type: "string", format: "uuid" },
+    tenantId:           { type: "string", format: "uuid" },
+    auditLogId:         { type: "string", format: "uuid" },
+    eventType:          { type: "string" },
+    payload:            { type: "object", additionalProperties: true },
+    status:             { type: "string", enum: ["pending", "delivered", "failed"] },
+    attemptCount:       { type: "integer", minimum: 0 },
+    nextAttempt:        { type: "string", format: "date-time" },
+    lastResponseStatus: { type: ["integer", "null"] },
+    lastError:          { type: ["string", "null"] },
+    createdAt:          { type: "string", format: "date-time" },
+    updatedAt:          { type: "string", format: "date-time" },
+  },
+};
+
 // --- common parameter and response helpers ---
 
 const pId = {
@@ -292,6 +356,10 @@ export const openApiSpec = {
       AuditLogEntry:    sAuditLogEntry,
       Error:            sError,
       Feedback:         sFeedback,
+      UsageEvent:       sUsageEvent,
+      StaleFlagEntry:   sStaleFlagEntry,
+      Webhook:          sWebhook,
+      WebhookDelivery:  sWebhookDelivery,
     },
   },
 
@@ -1831,6 +1899,444 @@ export const openApiSpec = {
         },
       },
     },
+    // ── Usage Events ─────────────────────────────────────────────────────────
+
+    "/v1/usage/events": {
+      post: {
+        operationId: "createUsageEvent",
+        tags: ["Usage Events"],
+        summary: "Record a usage event",
+        description: "Records a single usage event scoped to the calling tenant. Used for design partner analytics and billing.",
+        security: tenantSecurity,
+        requestBody: jsonBody({
+          type: "object",
+          required: ["eventType"],
+          properties: {
+            eventType: {
+              type: "string",
+              enum: ["NODE_CREATED", "EDGE_CREATED", "REQUIREMENT_ADDED", "VIOLATION_CHECKED", "GRAPH_TRAVERSED", "MCP_QUERY"],
+            },
+            entityId: { type: "string", format: "uuid", description: "Optional reference to the entity that triggered the event." },
+            metadata: { type: "object", additionalProperties: true, description: "Arbitrary context payload." },
+          },
+        }),
+        responses: {
+          "201": {
+            description: "Event recorded",
+            content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: { $ref: "#/components/schemas/UsageEvent" } } } } },
+          },
+          "400": r400,
+          "401": r401,
+        },
+      },
+
+      get: {
+        operationId: "listUsageEvents",
+        tags: ["Usage Events"],
+        summary: "List usage events",
+        description: "Returns usage events for the tenant in reverse chronological order. Optionally filter by event type and time window.",
+        security: tenantSecurity,
+        parameters: [
+          {
+            name: "eventType",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["NODE_CREATED", "EDGE_CREATED", "REQUIREMENT_ADDED", "VIOLATION_CHECKED", "GRAPH_TRAVERSED", "MCP_QUERY"],
+            },
+          },
+          {
+            name: "after",
+            in: "query",
+            schema: { type: "string", format: "date-time" },
+            description: "Return only events created after this ISO 8601 timestamp (exclusive).",
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 500, default: 50 },
+          },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["events", "total"],
+            properties: {
+              events: { type: "array", items: { $ref: "#/components/schemas/UsageEvent" } },
+              total:  { type: "integer", minimum: 0, description: "Total count of matching events (not just this page)." },
+            },
+          }),
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    // ── Stale Flags ───────────────────────────────────────────────────────────
+
+    "/v1/stale-flags/summary": {
+      get: {
+        operationId: "getStaleFlagsSummary",
+        tags: ["Stale Flags"],
+        summary: "Stale-flags summary",
+        description: "Returns aggregate counts of stale flags by object type and severity for the tenant.",
+        security: tenantSecurity,
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: {
+              data: {
+                type: "object",
+                required: ["byObjectType", "bySeverity", "oldestFlagAt"],
+                properties: {
+                  byObjectType: {
+                    type: "object",
+                    required: ["node", "edge"],
+                    properties: {
+                      node: { type: "integer", minimum: 0 },
+                      edge: { type: "integer", minimum: 0 },
+                    },
+                  },
+                  bySeverity: {
+                    type: "object",
+                    required: ["ERROR", "WARNING", "INFO"],
+                    properties: {
+                      ERROR:   { type: "integer", minimum: 0 },
+                      WARNING: { type: "integer", minimum: 0 },
+                      INFO:    { type: "integer", minimum: 0 },
+                    },
+                  },
+                  oldestFlagAt: { type: ["string", "null"], format: "date-time", description: "Timestamp of the oldest unresolved stale flag, or null if none exist." },
+                },
+              },
+            },
+          }),
+          "401": r401,
+        },
+      },
+    },
+
+    "/v1/stale-flags": {
+      get: {
+        operationId: "listStaleFlags",
+        tags: ["Stale Flags"],
+        summary: "List stale flags",
+        description: "Returns stale propagation flags for the tenant, ordered by raised_at descending. Cursor-paginated.",
+        security: tenantSecurity,
+        parameters: [
+          {
+            name: "object_type",
+            in: "query",
+            schema: { type: "string", enum: ["node", "edge"] },
+            description: "Filter to flags on nodes or edges only.",
+          },
+          {
+            name: "severity",
+            in: "query",
+            schema: { type: "string", enum: ["ERROR", "WARNING", "INFO"] },
+          },
+          {
+            name: "cursor",
+            in: "query",
+            schema: { type: "string" },
+            description: "Opaque base64url cursor from a previous response's nextCursor field.",
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+          },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["items", "nextCursor", "totalCount"],
+            properties: {
+              items:      { type: "array", items: { $ref: "#/components/schemas/StaleFlagEntry" } },
+              nextCursor: { type: ["string", "null"], description: "Pass as cursor in the next request. Null means no more pages." },
+              totalCount: { type: "integer", minimum: 0, description: "Total matching flags (unaffected by cursor position)." },
+            },
+          }),
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    // ── Admin: Design Partners ────────────────────────────────────────────────
+
+    "/api/admin/partners": {
+      get: {
+        operationId: "adminListPartners",
+        tags: ["Admin"],
+        summary: "List design partner tenants",
+        description: "Returns all tenants with plan=partner, enriched with last-active and node-count metrics. Cursor-paginated.",
+        security: adminSecurity,
+        parameters: [
+          {
+            name: "status",
+            in: "query",
+            schema: { type: "string", enum: ["active", "churned", "paused"] },
+            description: "Filter by partner status.",
+          },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+          },
+          {
+            name: "cursor",
+            in: "query",
+            schema: { type: "string" },
+            description: "Opaque cursor from a previous response's nextCursor field.",
+          },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["partners", "nextCursor", "total"],
+            properties: {
+              partners: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["tenantId", "name", "status", "createdAt", "lastActiveAt", "nodeCount"],
+                  properties: {
+                    tenantId:     { type: "string", format: "uuid" },
+                    name:         { type: "string" },
+                    status:       { type: ["string", "null"], enum: ["active", "churned", "paused", null] },
+                    createdAt:    { type: "string", format: "date-time" },
+                    lastActiveAt: { type: ["string", "null"], format: "date-time", description: "Timestamp of the last recorded usage event, or null." },
+                    nodeCount:    { type: "integer", minimum: 0 },
+                  },
+                },
+              },
+              nextCursor: { type: ["string", "null"], description: "Pass as cursor in the next request. Null means no more pages." },
+              total:      { type: "integer", minimum: 0, description: "Total matching partner tenants." },
+            },
+          }),
+          "401": r401,
+        },
+      },
+    },
+
+    // ── Admin: Webhooks ───────────────────────────────────────────────────────
+
+    "/api/admin/webhooks": {
+      post: {
+        operationId: "adminCreateWebhook",
+        tags: ["Admin Webhooks"],
+        summary: "Register webhook endpoint",
+        description: [
+          "Creates a new webhook endpoint for the tenant identified by x-tenant-id.",
+          "The plaintext signing secret is returned once — store it immediately.",
+          "Maximum 10 active webhooks per tenant.",
+          "Requires LSDS_WEBHOOK_ENCRYPTION_KEY to be configured (503 otherwise).",
+        ].join(" "),
+        security: adminSecurity,
+        parameters: [
+          { name: "x-tenant-id", in: "header", required: true, schema: { type: "string", format: "uuid" }, description: "Target tenant ID." },
+        ],
+        requestBody: jsonBody({
+          type: "object",
+          required: ["url", "eventTypes"],
+          properties: {
+            url:        { type: "string", format: "uri", description: "Destination URL. Must use https://." },
+            eventTypes: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1, description: "List of event type strings to subscribe to." },
+          },
+        }),
+        responses: {
+          "201": {
+            description: "Webhook created — signing secret shown once",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["data"],
+                  properties: {
+                    data: {
+                      allOf: [
+                        { $ref: "#/components/schemas/Webhook" },
+                        {
+                          type: "object",
+                          required: ["secret"],
+                          properties: {
+                            secret: { type: "string", description: "Plaintext HMAC signing secret — store now, never shown again." },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "400": r400,
+          "401": r401,
+          "422": r422,
+          "503": { description: "Webhook subsystem not configured (missing encryption key)", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+
+      get: {
+        operationId: "adminListWebhooks",
+        tags: ["Admin Webhooks"],
+        summary: "List webhook endpoints",
+        description: "Returns all webhook endpoints for the tenant identified by x-tenant-id. Secrets are never returned.",
+        security: adminSecurity,
+        parameters: [
+          { name: "x-tenant-id", in: "header", required: true, schema: { type: "string", format: "uuid" }, description: "Target tenant ID." },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: {
+              data: { type: "array", items: { $ref: "#/components/schemas/Webhook" } },
+            },
+          }),
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
+    "/api/admin/webhooks/{id}": {
+      get: {
+        operationId: "adminGetWebhook",
+        tags: ["Admin Webhooks"],
+        summary: "Get webhook by ID",
+        description: "Returns a single webhook endpoint. Secret is never returned.",
+        security: adminSecurity,
+        parameters: [
+          pId,
+          { name: "x-tenant-id", in: "header", required: true, schema: { type: "string", format: "uuid" }, description: "Target tenant ID." },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: { data: { $ref: "#/components/schemas/Webhook" } },
+          }),
+          "401": r401,
+          "404": r404,
+        },
+      },
+
+      patch: {
+        operationId: "adminUpdateWebhook",
+        tags: ["Admin Webhooks"],
+        summary: "Update webhook endpoint",
+        description: "Updates URL, event types, or active state. At least one field must be provided.",
+        security: adminSecurity,
+        parameters: [
+          pId,
+          { name: "x-tenant-id", in: "header", required: true, schema: { type: "string", format: "uuid" }, description: "Target tenant ID." },
+        ],
+        requestBody: jsonBody({
+          type: "object",
+          properties: {
+            url:        { type: "string", format: "uri", description: "New destination URL. Must use https://." },
+            eventTypes: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 },
+            isActive:   { type: "boolean" },
+          },
+        }),
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: { data: { $ref: "#/components/schemas/Webhook" } },
+          }),
+          "400": r400,
+          "401": r401,
+          "404": r404,
+        },
+      },
+
+      delete: {
+        operationId: "adminDeleteWebhook",
+        tags: ["Admin Webhooks"],
+        summary: "Delete webhook endpoint",
+        description: "Permanently removes the webhook endpoint and all associated delivery history.",
+        security: adminSecurity,
+        parameters: [
+          pId,
+          { name: "x-tenant-id", in: "header", required: true, schema: { type: "string", format: "uuid" }, description: "Target tenant ID." },
+        ],
+        responses: {
+          "200": {
+            description: "Deleted",
+            content: { "application/json": { schema: { type: "object", required: ["data"], properties: { data: { type: "object", required: ["id"], properties: { id: { type: "string", format: "uuid" } } } } } } },
+          },
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
+    "/api/admin/webhooks/{id}/rotate-secret": {
+      post: {
+        operationId: "adminRotateWebhookSecret",
+        tags: ["Admin Webhooks"],
+        summary: "Rotate webhook signing secret",
+        description: "Generates a new HMAC signing secret for the webhook. The new plaintext secret is returned once — store it immediately.",
+        security: adminSecurity,
+        parameters: [
+          pId,
+          { name: "x-tenant-id", in: "header", required: true, schema: { type: "string", format: "uuid" }, description: "Target tenant ID." },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: {
+              data: {
+                type: "object",
+                required: ["id", "secret", "updatedAt"],
+                properties: {
+                  id:        { type: "string", format: "uuid" },
+                  secret:    { type: "string", description: "New plaintext signing secret — store now, never shown again." },
+                  updatedAt: { type: "string", format: "date-time" },
+                },
+              },
+            },
+          }),
+          "401": r401,
+          "404": r404,
+          "503": { description: "Webhook subsystem not configured (missing encryption key)", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/api/admin/webhooks/{id}/deliveries": {
+      get: {
+        operationId: "adminListWebhookDeliveries",
+        tags: ["Admin Webhooks"],
+        summary: "List webhook delivery history",
+        description: "Returns the paginated delivery attempt history for the specified webhook endpoint.",
+        security: adminSecurity,
+        parameters: [
+          pId,
+          { name: "x-tenant-id", in: "header", required: true, schema: { type: "string", format: "uuid" }, description: "Target tenant ID." },
+          { name: "limit",  in: "query", schema: { type: "integer", minimum: 1, maximum: 200, default: 50 } },
+          { name: "cursor", in: "query", schema: { type: "string" }, description: "Opaque cursor from a previous response's nextCursor field." },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data", "nextCursor"],
+            properties: {
+              data:       { type: "array", items: { $ref: "#/components/schemas/WebhookDelivery" } },
+              nextCursor: { type: ["string", "null"] },
+            },
+          }),
+          "401": r401,
+          "404": r404,
+        },
+      },
+    },
+
     "/api/admin/audit-log": {
       get: {
         operationId: "getAdminAuditLog",
