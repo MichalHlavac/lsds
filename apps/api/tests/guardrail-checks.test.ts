@@ -1750,3 +1750,146 @@ describe("built-in check: GR-L5-006 (CodeModule without validated-by Test)", () 
   });
 });
 
+// ── L1 + L2 built-in checks — positive (compliant) + negative (violation) ────
+
+function mkReg(ruleKey: string, cfg: Record<string, unknown> = {}) {
+  return new GuardrailsRegistry(makeSqlWith([makeGuardrailRow({ ruleKey, config: cfg })]));
+}
+
+describe("built-in check: GR-L1-001 (BusinessCapability traces-to BusinessGoal)", () => {
+  it("passes when outgoingEdges contains traces-to→BusinessGoal", async () => {
+    const v = await mkReg("GR-L1-001").evaluate("t1", makeNodeRow({ type: "BusinessCapability", layer: "L1", attributes: { outgoingEdges: [{ type: "traces-to", targetType: "BusinessGoal" }] } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires ERROR when no traces-to→BusinessGoal edge exists", async () => {
+    const v = await mkReg("GR-L1-001").evaluate("t1", makeNodeRow({ type: "BusinessCapability", layer: "L1", attributes: {} }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L1-001", severity: "ERROR" });
+  });
+});
+
+describe("built-in check: GR-L1-005 (Requirement part-of BusinessCapability)", () => {
+  it("passes when outgoingEdges contains part-of→BusinessCapability", async () => {
+    const v = await mkReg("GR-L1-005").evaluate("t1", makeNodeRow({ type: "Requirement", layer: "L1", attributes: { outgoingEdges: [{ type: "part-of", targetType: "BusinessCapability" }] } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires ERROR when no part-of→BusinessCapability edge exists", async () => {
+    const v = await mkReg("GR-L1-005").evaluate("t1", makeNodeRow({ type: "Requirement", layer: "L1", attributes: {} }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L1-005", severity: "ERROR" });
+  });
+});
+
+describe("built-in check: GR-L1-006 (BusinessGoal without supporting BusinessCapability)", () => {
+  it("passes when incomingEdges contains traces-to from BusinessCapability", async () => {
+    const v = await mkReg("GR-L1-006").evaluate("t1", makeNodeRow({ type: "BusinessGoal", layer: "L1", attributes: { incomingEdges: [{ type: "traces-to", sourceType: "BusinessCapability" }] } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires WARN when no BusinessCapability traces to this BusinessGoal", async () => {
+    const v = await mkReg("GR-L1-006").evaluate("t1", makeNodeRow({ type: "BusinessGoal", layer: "L1", attributes: { incomingEdges: [] } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L1-006", severity: "WARN" });
+  });
+});
+
+describe("built-in check: GR-L1-007 (ACTIVE BusinessGoal stale review)", () => {
+  it("passes when ACTIVE BusinessGoal was reviewed within 180 days", async () => {
+    const recent = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const v = await mkReg("GR-L1-007").evaluate("t1", makeNodeRow({ type: "BusinessGoal", layer: "L1", lifecycleStatus: "ACTIVE", attributes: { lastReviewDate: recent } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires WARN when ACTIVE BusinessGoal was last reviewed > 180 days ago", async () => {
+    const stale = new Date(Date.now() - 200 * 86400000).toISOString().slice(0, 10);
+    const v = await mkReg("GR-L1-007").evaluate("t1", makeNodeRow({ type: "BusinessGoal", layer: "L1", lifecycleStatus: "ACTIVE", attributes: { lastReviewDate: stale } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L1-007", severity: "WARN" });
+  });
+});
+
+describe("built-in check: GR-L1-008 (IMPLEMENTED Requirement unchanged impact targets)", () => {
+  it("passes when IMPLEMENTED Requirement has impactTargetsModified=true", async () => {
+    const v = await mkReg("GR-L1-008").evaluate("t1", makeNodeRow({ type: "Requirement", layer: "L1", attributes: { status: "IMPLEMENTED", impactTargetsModified: true } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires WARN when IMPLEMENTED Requirement has impactTargetsModified=false", async () => {
+    const v = await mkReg("GR-L1-008").evaluate("t1", makeNodeRow({ type: "Requirement", layer: "L1", attributes: { status: "IMPLEMENTED", impactTargetsModified: false } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L1-008", severity: "WARN" });
+  });
+});
+
+describe("built-in check: GR-L1-009 (APPROVED Requirement without declared impacts)", () => {
+  it("passes when APPROVED Requirement has at least one declared impact", async () => {
+    const v = await mkReg("GR-L1-009").evaluate("t1", makeNodeRow({ type: "Requirement", layer: "L1", attributes: { status: "APPROVED", impacts: [{ target: "ServiceX", action: "MODIFY" }] } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires INFO when APPROVED Requirement has an empty impacts list", async () => {
+    const v = await mkReg("GR-L1-009").evaluate("t1", makeNodeRow({ type: "Requirement", layer: "L1", attributes: { status: "APPROVED", impacts: [] } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L1-009", severity: "INFO" });
+  });
+});
+
+describe("built-in check: GR-L2-001 (BoundedContext ubiquitous language terms)", () => {
+  it("passes when BoundedContext meets the default minimum (3) terms", async () => {
+    const v = await mkReg("GR-L2-001").evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: { ubiquitousLanguage: ["Order", "Payment", "Invoice"] } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires ERROR and respects configurable threshold when below minimum terms", async () => {
+    const v = await mkReg("GR-L2-001", { l2: { min_terms_per_context: 5 } }).evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: { ubiquitousLanguage: ["Order"] } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L2-001", severity: "ERROR" });
+    expect(v[0]?.message).toContain("5");
+  });
+});
+
+describe("built-in check: GR-L2-002 (BoundedContext traces-to BusinessCapability)", () => {
+  it("passes when outgoingEdges contains traces-to→BusinessCapability", async () => {
+    const v = await mkReg("GR-L2-002").evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: { outgoingEdges: [{ type: "traces-to", targetType: "BusinessCapability" }] } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires ERROR when no traces-to→BusinessCapability edge exists", async () => {
+    const v = await mkReg("GR-L2-002").evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: {} }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L2-002", severity: "ERROR" });
+  });
+});
+
+describe("built-in check: GR-L2-005 (DomainEvent past-tense naming)", () => {
+  it("passes when DomainEvent name ends with 'ed'", async () => {
+    const v = await mkReg("GR-L2-005").evaluate("t1", makeNodeRow({ type: "DomainEvent", layer: "L2", name: "OrderPlaced" }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires WARN when DomainEvent name does not end with 'ed'", async () => {
+    const v = await mkReg("GR-L2-005").evaluate("t1", makeNodeRow({ type: "DomainEvent", layer: "L2", name: "PlaceOrder" }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L2-005", severity: "WARN" });
+    expect(v[0]?.message).toContain("PlaceOrder");
+  });
+});
+
+describe("built-in check: GR-L2-006 (BoundedContext cyclic context-integration)", () => {
+  it("passes when hasCyclicContextIntegration is false", async () => {
+    const v = await mkReg("GR-L2-006").evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: { hasCyclicContextIntegration: false } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires ERROR when hasCyclicContextIntegration=true", async () => {
+    const v = await mkReg("GR-L2-006").evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: { hasCyclicContextIntegration: true } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L2-006", severity: "ERROR" });
+  });
+});
+
+describe("built-in check: GR-L2-007 (BoundedContext conformist to CORE context)", () => {
+  it("passes when conformist-to edge targets a non-CORE classification", async () => {
+    const v = await mkReg("GR-L2-007").evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: { outgoingEdges: [{ type: "conformist-to", targetClassification: "SUPPORTING" }] } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires WARN when conformist-to edge targets a CORE context", async () => {
+    const v = await mkReg("GR-L2-007").evaluate("t1", makeNodeRow({ type: "BoundedContext", layer: "L2", attributes: { outgoingEdges: [{ type: "conformist-to", targetClassification: "CORE" }] } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L2-007", severity: "WARN" });
+  });
+});
+
+describe("built-in check: GR-L2-008 (LanguageTerm diverging definitions)", () => {
+  it("passes when hasDefinitionDivergence is false", async () => {
+    const v = await mkReg("GR-L2-008").evaluate("t1", makeNodeRow({ type: "LanguageTerm", layer: "L2", attributes: { hasDefinitionDivergence: false } }));
+    expect(v).toHaveLength(0);
+  });
+  it("fires INFO when hasDefinitionDivergence=true", async () => {
+    const v = await mkReg("GR-L2-008").evaluate("t1", makeNodeRow({ type: "LanguageTerm", layer: "L2", name: "Order", attributes: { hasDefinitionDivergence: true } }));
+    expect(v[0]).toMatchObject({ ruleKey: "GR-L2-008", severity: "INFO" });
+    expect(v[0]?.message).toContain("Order");
+  });
+});
+

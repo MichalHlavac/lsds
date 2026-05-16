@@ -826,6 +826,99 @@ const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
       };
     },
   ],
+  // ── L1 + L2 built-in checks ──────────────────────────────────────────────────
+  // Relationship checks read denormalized outgoingEdges / incomingEdges arrays
+  // stored in node.attributes by the API edge-write path.
+  // Periodic-scan checks (GR-L2-006, GR-L2-008) read boolean flags that the
+  // background scanner sets after full-graph analysis.
+  ["GR-L1-001", (subject) => {
+    const node = nodeOfType(subject, "BusinessCapability");
+    if (!node) return null;
+    const out = (nodeAttrs(subject)?.["outgoingEdges"] as Array<{type:string;targetType?:string}>|undefined) ?? [];
+    return out.some((e) => e.type === "traces-to" && e.targetType === "BusinessGoal") ? null
+      : { ruleKey: "GR-L1-001", severity: "ERROR", message: `BusinessCapability '${node.name}' has no traces-to relationship to a BusinessGoal`, nodeId: node.id };
+  }],
+  ["GR-L1-005", (subject) => {
+    const node = nodeOfType(subject, "Requirement");
+    if (!node) return null;
+    const out = (nodeAttrs(subject)?.["outgoingEdges"] as Array<{type:string;targetType?:string}>|undefined) ?? [];
+    return out.some((e) => e.type === "part-of" && e.targetType === "BusinessCapability") ? null
+      : { ruleKey: "GR-L1-005", severity: "ERROR", message: `Requirement '${node.name}' has no part-of relationship to a BusinessCapability`, nodeId: node.id };
+  }],
+  ["GR-L1-006", (subject) => {
+    const node = nodeOfType(subject, "BusinessGoal");
+    if (!node) return null;
+    const inc = (nodeAttrs(subject)?.["incomingEdges"] as Array<{type:string;sourceType?:string}>|undefined) ?? [];
+    return inc.some((e) => e.type === "traces-to" && e.sourceType === "BusinessCapability") ? null
+      : { ruleKey: "GR-L1-006", severity: "WARN", message: `BusinessGoal '${node.name}' has no BusinessCapability tracing to it`, nodeId: node.id };
+  }],
+  ["GR-L1-007", (subject) => {
+    const node = nodeOfType(subject, "BusinessGoal");
+    if (!node || node.lifecycleStatus !== "ACTIVE") return null;
+    const dateStr = nodeAttrs(subject)?.["lastReviewDate"];
+    if (!dateStr) return null;
+    const ageDays = (Date.now() - new Date(String(dateStr)).getTime()) / 86400000;
+    return isNaN(ageDays) || ageDays <= 180 ? null
+      : { ruleKey: "GR-L1-007", severity: "WARN", message: `BusinessGoal '${node.name}' has not been reviewed in ${Math.floor(ageDays)} days (max: 180)`, nodeId: node.id };
+  }],
+  // impactTargetsModified flag is set true by the API when any declared impact target is updated post-IMPLEMENTED.
+  ["GR-L1-008", (subject) => {
+    const node = nodeOfType(subject, "Requirement");
+    if (!node) return null;
+    const attrs = nodeAttrs(subject);
+    if (!attrs || attrs["status"] !== "IMPLEMENTED" || attrs["impactTargetsModified"] === true) return null;
+    return { ruleKey: "GR-L1-008", severity: "WARN", message: `Requirement '${node.name}' is IMPLEMENTED but its declared impact targets were not modified`, nodeId: node.id };
+  }],
+  ["GR-L1-009", (subject) => {
+    const node = nodeOfType(subject, "Requirement");
+    if (!node) return null;
+    const attrs = nodeAttrs(subject);
+    if (!attrs || attrs["status"] !== "APPROVED") return null;
+    const impacts = attrs["impacts"] as unknown[]|undefined;
+    return impacts && impacts.length > 0 ? null
+      : { ruleKey: "GR-L1-009", severity: "INFO", message: `Requirement '${node.name}' is APPROVED but has no declared impacts`, nodeId: node.id };
+  }],
+  ["GR-L2-001", (subject, config) => {
+    const node = nodeOfType(subject, "BoundedContext");
+    if (!node) return null;
+    const attrs = nodeAttrs(subject);
+    if (!attrs) return null;
+    const min = Number((config["l2"] as Record<string,unknown>|undefined)?.["min_terms_per_context"] ?? 3);
+    const terms = attrs["ubiquitousLanguage"] as unknown[]|undefined;
+    return terms && terms.length >= min ? null
+      : { ruleKey: "GR-L2-001", severity: "ERROR", message: `BoundedContext '${node.name}' has ${(terms??[]).length} ubiquitous language term(s) (minimum: ${min})`, nodeId: node.id };
+  }],
+  ["GR-L2-002", (subject) => {
+    const node = nodeOfType(subject, "BoundedContext");
+    if (!node) return null;
+    const out = (nodeAttrs(subject)?.["outgoingEdges"] as Array<{type:string;targetType?:string}>|undefined) ?? [];
+    return out.some((e) => e.type === "traces-to" && e.targetType === "BusinessCapability") ? null
+      : { ruleKey: "GR-L2-002", severity: "ERROR", message: `BoundedContext '${node.name}' has no traces-to relationship to a BusinessCapability`, nodeId: node.id };
+  }],
+  // Heuristic: past-tense DDD event names end with "ed" ('OrderPlaced', 'PaymentProcessed').
+  ["GR-L2-005", (subject) => {
+    const node = nodeOfType(subject, "DomainEvent");
+    if (!node || node.name.endsWith("ed")) return null;
+    return { ruleKey: "GR-L2-005", severity: "WARN", message: `DomainEvent '${node.name}' does not appear to use past-tense naming (expected e.g. 'OrderPlaced')`, nodeId: node.id };
+  }],
+  ["GR-L2-006", (subject) => {
+    const node = nodeOfType(subject, "BoundedContext");
+    if (!node || !nodeAttrs(subject)?.["hasCyclicContextIntegration"]) return null;
+    return { ruleKey: "GR-L2-006", severity: "ERROR", message: `BoundedContext '${node.name}' participates in a cyclic context-integration relationship`, nodeId: node.id };
+  }],
+  ["GR-L2-007", (subject) => {
+    const node = nodeOfType(subject, "BoundedContext");
+    if (!node) return null;
+    const out = (nodeAttrs(subject)?.["outgoingEdges"] as Array<{type:string;targetClassification?:string}>|undefined) ?? [];
+    return out.some((e) => e.type === "conformist-to" && e.targetClassification === "CORE")
+      ? { ruleKey: "GR-L2-007", severity: "WARN", message: `BoundedContext '${node.name}' uses a conformist pattern targeting a CORE context — consider an Anti-Corruption Layer`, nodeId: node.id }
+      : null;
+  }],
+  ["GR-L2-008", (subject) => {
+    const node = nodeOfType(subject, "LanguageTerm");
+    if (!node || !nodeAttrs(subject)?.["hasDefinitionDivergence"]) return null;
+    return { ruleKey: "GR-L2-008", severity: "INFO", message: `LanguageTerm '${node.name}' has diverging definitions across bounded contexts`, nodeId: node.id };
+  }],
 ]);
 
 export class GuardrailsRegistry {
