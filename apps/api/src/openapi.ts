@@ -1566,6 +1566,19 @@ export const openApiSpec = {
           "404": r404,
         },
       },
+      delete: {
+        operationId: "deleteTenantApiKey",
+        tags: ["Tenant"],
+        summary: "Revoke an API key",
+        description: "Revokes a single active API key belonging to the authenticated tenant. Returns 204 on success.",
+        security: tenantSecurity,
+        parameters: [{ name: "keyId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "204": { description: "Revoked" },
+          "401": r401,
+          "404": r404,
+        },
+      },
     },
 
     // ── Tenant diagnostics ───────────────────────────────────────────────────
