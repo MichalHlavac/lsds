@@ -477,6 +477,54 @@ describe("POST /api/admin/partners", () => {
     expect(entry).toBeDefined();
     expect(entry!.operation).toBe("partner.create");
   });
+
+  it("returns 400 when name is absent", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ contactEmail: "ok@example.com", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues: Array<{ path: string[] }> };
+    expect(body.error).toBe("validation error");
+    expect(body.issues.some((i) => i.path.includes("name"))).toBe(true);
+  });
+
+  it("returns 400 when name is empty string (min-length constraint)", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: "", contactEmail: "ok@example.com", tier: "design_partner" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues: Array<{ path: string[] }> };
+    expect(body.error).toBe("validation error");
+    expect(body.issues.some((i) => i.path.includes("name"))).toBe(true);
+  });
+
+  it("returns 400 when contactEmail is absent", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: uniqueName(), tier: "design_partner" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues: Array<{ path: string[] }> };
+    expect(body.error).toBe("validation error");
+    expect(body.issues.some((i) => i.path.includes("contactEmail"))).toBe(true);
+  });
+
+  it("returns 400 when tier is absent", async () => {
+    const res = await app.request("/api/admin/partners", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ name: uniqueName(), contactEmail: "ok@example.com" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; issues: Array<{ path: string[] }> };
+    expect(body.error).toBe("validation error");
+    expect(body.issues.some((i) => i.path.includes("tier"))).toBe(true);
+  });
 });
 
 // ── GET /api/admin/partners/:tenantId/usage ───────────────────────────────────
