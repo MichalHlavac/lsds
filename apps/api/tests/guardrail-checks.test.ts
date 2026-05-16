@@ -1175,3 +1175,372 @@ describe("built-in check: GR-L6-007 (Environment PRODUCTION/DR promotion_gate)",
   });
 });
 
+// ── GR-XL-002: Relationship targets a non-existent object ────────────────────
+
+describe("built-in check: GR-XL-002 (edge targets non-existent object)", () => {
+  it("fires when edge attributes.targetExists is false", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-002", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "depends-on", attributes: { targetExists: false } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-002");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.edgeId).toBe(edge.id);
+    expect(violations[0]?.sourceNodeId).toBe(edge.sourceId);
+    expect(violations[0]?.targetNodeId).toBe(edge.targetId);
+  });
+
+  it("fires when snake_case target_exists is false", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-002", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: { target_exists: false } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-002");
+  });
+
+  it("does not fire when targetExists is true", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-002", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: { targetExists: true } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire when targetExists is absent (conservative — no flag means no violation)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-002", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: {} });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for node rows", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-002", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ attributes: { targetExists: false } }));
+    expect(violations).toHaveLength(0);
+  });
+
+  it("violation message includes source and target ids", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-002", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ sourceId: "node-a", targetId: "node-b", attributes: { targetExists: false } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations[0]?.message).toContain("node-b");
+  });
+});
+
+// ── GR-XL-003: Relationship violates layer rules ──────────────────────────────
+
+describe("built-in check: GR-XL-003 (edge violates layer rules)", () => {
+  it("fires when layer distance exceeds default max of 2 (L1 → L5, distance 4)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: { sourceLayer: "L1", targetLayer: "L5" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-003");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.edgeId).toBe(edge.id);
+    expect(violations[0]?.sourceNodeId).toBe(edge.sourceId);
+    expect(violations[0]?.targetNodeId).toBe(edge.targetId);
+  });
+
+  it("fires for snake_case source_layer / target_layer attributes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: { source_layer: "L1", target_layer: "L6" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire when layer distance is within default max (L2 → L4, distance 2)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: { sourceLayer: "L2", targetLayer: "L4" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for adjacent layers (L3 → L4, distance 1)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: { sourceLayer: "L3", targetLayer: "L4" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("respects custom maxLayerDistance config", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-003", config: { maxLayerDistance: 1 } })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: { sourceLayer: "L1", targetLayer: "L3" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message).toContain("L1");
+    expect(violations[0]?.message).toContain("L3");
+  });
+
+  it("does not fire when layer attributes are absent", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ attributes: {} });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for node rows", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ attributes: { sourceLayer: "L1", targetLayer: "L6" } }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-XL-004: Archiving an object with ACTIVE incoming dependents ────────────
+
+describe("built-in check: GR-XL-004 (archiving node with active incoming dependents)", () => {
+  it("fires for ARCHIVED node with activeIncomingCount > 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED", attributes: { activeIncomingCount: 3 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-004");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("fires for snake_case active_incoming_count attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED", attributes: { active_incoming_count: 1 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for ARCHIVED node with activeIncomingCount of 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED", attributes: { activeIncomingCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for ACTIVE node even with activeIncomingCount > 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ACTIVE", attributes: { activeIncomingCount: 5 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for DEPRECATED node with activeIncomingCount > 0 (different rule)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "DEPRECATED", attributes: { activeIncomingCount: 2 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for edge rows", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeEdgeRow({ attributes: { activeIncomingCount: 3 } }));
+    expect(violations).toHaveLength(0);
+  });
+
+  it("violation message includes node name and count", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ name: "legacy-svc", lifecycleStatus: "ARCHIVED", attributes: { activeIncomingCount: 2 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations[0]?.message).toContain("legacy-svc");
+    expect(violations[0]?.message).toContain("2");
+  });
+});
+
+// ── GR-XL-006: DEPRECATED object still has active depends-on dependents ───────
+
+describe("built-in check: GR-XL-006 (deprecated node with active depends-on dependents)", () => {
+  it("fires for DEPRECATED node with activeDependsOnCount > 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "DEPRECATED", attributes: { activeDependsOnCount: 4 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-006");
+    expect(violations[0]?.severity).toBe("WARN");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("fires for snake_case active_depends_on_count attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "DEPRECATED", attributes: { active_depends_on_count: 2 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for DEPRECATED node with activeDependsOnCount of 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "DEPRECATED", attributes: { activeDependsOnCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for ACTIVE node with activeDependsOnCount > 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ACTIVE", attributes: { activeDependsOnCount: 3 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for edge rows", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeEdgeRow({ attributes: { activeDependsOnCount: 2 } }));
+    expect(violations).toHaveLength(0);
+  });
+
+  it("violation message includes node name and count", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ name: "old-payments-api", lifecycleStatus: "DEPRECATED", attributes: { activeDependsOnCount: 5 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations[0]?.message).toContain("old-payments-api");
+    expect(violations[0]?.message).toContain("5");
+  });
+});
+
+// ── GR-XL-010: ARCHIVED object has non-archived contains children ─────────────
+
+describe("built-in check: GR-XL-010 (archived node with non-archived contains children)", () => {
+  it("fires for ARCHIVED node with nonArchivedContainsCount > 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-010", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED", attributes: { nonArchivedContainsCount: 2 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-010");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("fires for snake_case non_archived_contains_count attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-010", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED", attributes: { non_archived_contains_count: 1 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for ARCHIVED node with nonArchivedContainsCount of 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-010", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ARCHIVED", attributes: { nonArchivedContainsCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for ACTIVE node (lifecycle gate)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-010", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ lifecycleStatus: "ACTIVE", attributes: { nonArchivedContainsCount: 3 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for edge rows", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-010", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeEdgeRow({ attributes: { nonArchivedContainsCount: 2 } }));
+    expect(violations).toHaveLength(0);
+  });
+
+  it("violation message includes node name and count", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-010", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ name: "bounded-context-payments", lifecycleStatus: "ARCHIVED", attributes: { nonArchivedContainsCount: 3 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations[0]?.message).toContain("bounded-context-payments");
+    expect(violations[0]?.message).toContain("3");
+  });
+});
+
+// ── GR-L5-003: DOMAIN CodeModule depends-on INFRASTRUCTURE module ─────────────
+
+describe("built-in check: GR-L5-003 (DOMAIN CodeModule depends-on INFRASTRUCTURE)", () => {
+  it("fires for depends-on edge with sourceModuleType=DOMAIN and targetModuleType=INFRASTRUCTURE", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "depends-on", attributes: { sourceModuleType: "DOMAIN", targetModuleType: "INFRASTRUCTURE" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L5-003");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.edgeId).toBe(edge.id);
+    expect(violations[0]?.sourceNodeId).toBe(edge.sourceId);
+    expect(violations[0]?.targetNodeId).toBe(edge.targetId);
+  });
+
+  it("fires for snake_case source_module_type / target_module_type attributes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "depends-on", attributes: { source_module_type: "DOMAIN", target_module_type: "INFRASTRUCTURE" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for depends-on edge where source is APPLICATION (not DOMAIN)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "depends-on", attributes: { sourceModuleType: "APPLICATION", targetModuleType: "INFRASTRUCTURE" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for depends-on edge where target is APPLICATION (not INFRASTRUCTURE)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "depends-on", attributes: { sourceModuleType: "DOMAIN", targetModuleType: "APPLICATION" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for a different edge type (calls, not depends-on)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "calls", attributes: { sourceModuleType: "DOMAIN", targetModuleType: "INFRASTRUCTURE" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire when module type attributes are absent", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "depends-on", attributes: {} });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for node rows", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ attributes: { sourceModuleType: "DOMAIN", targetModuleType: "INFRASTRUCTURE" } }));
+    expect(violations).toHaveLength(0);
+  });
+
+  it("violation message mentions DOMAIN and INFRASTRUCTURE", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const edge = makeEdgeRow({ type: "depends-on", attributes: { sourceModuleType: "DOMAIN", targetModuleType: "INFRASTRUCTURE" } });
+    const violations = await registry.evaluate("t1", edge);
+    expect(violations[0]?.message).toContain("DOMAIN");
+    expect(violations[0]?.message).toContain("INFRASTRUCTURE");
+  });
+});
+
