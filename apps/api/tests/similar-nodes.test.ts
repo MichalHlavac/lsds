@@ -72,6 +72,8 @@ describe("POST /v1/nodes/similar", () => {
 
   it("returns 422 when node has no embedding", async () => {
     const node = await createNode("Service", "L4", "no-embedding");
+    // Clear any embedding the stub provider may have auto-populated when the node was created.
+    await sql`UPDATE nodes SET embedding = NULL WHERE id = ${node.id} AND tenant_id = ${tid}`;
     const res = await app.request("/v1/nodes/similar", {
       method: "POST",
       headers: h(),
