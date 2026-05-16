@@ -1544,3 +1544,209 @@ describe("built-in check: GR-L5-003 (DOMAIN CodeModule depends-on INFRASTRUCTURE
   });
 });
 
+
+
+// ── GR-L3-003: SUPERSEDED ADR without supersedes relationship ─────────────────
+
+describe("built-in check: GR-L3-003 (SUPERSEDED ADR without supersedes)", () => {
+  it("fires for ADR with status=SUPERSEDED and no supersedes attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ADR", layer: "L3", attributes: { status: "SUPERSEDED" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-003");
+    expect(violations[0]?.severity).toBe("ERROR");
+  });
+
+  it("does not fire for SUPERSEDED ADR with supersedes set, or non-ADR nodes", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L3-003", config: {} });
+    const withLink = makeNodeRow({ type: "ADR", attributes: { status: "SUPERSEDED", supersedes: "ADR-042" } });
+    const wrongType = makeNodeRow({ type: "Service", attributes: { status: "SUPERSEDED" } });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    expect(await r.evaluate("t1", withLink)).toHaveLength(0);
+    expect(await r.evaluate("t1", wrongType)).toHaveLength(0);
+  });
+});
+
+// ── GR-L3-006: ArchitectureComponent without traces-to BoundedContext ────────
+
+describe("built-in check: GR-L3-006 (ArchitectureComponent without traces-to BoundedContext)", () => {
+  it("fires for ArchitectureComponent with no tracesBoundedContext", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L3-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "ArchitectureComponent", layer: "L3", attributes: {} });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-006");
+    expect(violations[0]?.severity).toBe("WARN");
+  });
+
+  it("does not fire when tracesBoundedContext or snake_case traces_bounded_context is set", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L3-006", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    expect(await r.evaluate("t1", makeNodeRow({ type: "ArchitectureComponent", attributes: { tracesBoundedContext: "payments-bc" } }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "ArchitectureComponent", attributes: { traces_bounded_context: "payments-bc" } }))).toHaveLength(0);
+  });
+});
+
+// ── GR-L3-007: ArchitectureComponent participating in cyclic depends-on ───────
+
+describe("built-in check: GR-L3-007 (ArchitectureComponent cyclic depends-on)", () => {
+  it("fires for ArchitectureComponent with cycleDetected=true or cycle_detected=true", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L3-007", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    const camel = makeNodeRow({ type: "ArchitectureComponent", layer: "L3", attributes: { cycleDetected: true } });
+    const snake = makeNodeRow({ type: "ArchitectureComponent", layer: "L3", attributes: { cycle_detected: true } });
+    const violations = await r.evaluate("t1", camel);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-007");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(await r.evaluate("t1", snake)).toHaveLength(1);
+  });
+
+  it("does not fire when cycleDetected is absent or false", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L3-007", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    expect(await r.evaluate("t1", makeNodeRow({ type: "ArchitectureComponent", attributes: {} }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "ArchitectureComponent", attributes: { cycleDetected: false } }))).toHaveLength(0);
+  });
+});
+
+// ── GR-L3-008: ArchitectureSystem without QualityAttribute ───────────────────
+
+describe("built-in check: GR-L3-008 (ArchitectureSystem without QualityAttribute)", () => {
+  it("fires for ArchitectureSystem with absent or empty qualityAttributes", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L3-008", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    const absent = makeNodeRow({ type: "ArchitectureSystem", layer: "L3", attributes: {} });
+    const empty = makeNodeRow({ type: "ArchitectureSystem", layer: "L3", attributes: { qualityAttributes: [] } });
+    const violations = await r.evaluate("t1", absent);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L3-008");
+    expect(violations[0]?.severity).toBe("WARN");
+    expect(await r.evaluate("t1", empty)).toHaveLength(1);
+  });
+
+  it("does not fire for ArchitectureSystem with qualityAttributes populated", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L3-008", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    const node = makeNodeRow({ type: "ArchitectureSystem", layer: "L3", attributes: { qualityAttributes: ["availability"] } });
+    expect(await r.evaluate("t1", node)).toHaveLength(0);
+  });
+});
+
+// ── GR-L4-005: Service without realizes link to ArchitectureComponent ─────────
+
+describe("built-in check: GR-L4-005 (Service without realizes ArchitectureComponent)", () => {
+  it("fires for Service with no realizes attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L4-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: {} });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L4-005");
+    expect(violations[0]?.severity).toBe("WARN");
+  });
+
+  it("does not fire when realizes or realizes_component is set, or for non-Service nodes", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L4-005", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    expect(await r.evaluate("t1", makeNodeRow({ type: "Service", attributes: { realizes: "auth-component" } }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "Service", attributes: { realizes_component: "auth-component" } }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "APIEndpoint", attributes: {} }))).toHaveLength(0);
+  });
+});
+
+// ── GR-L4-006: DEPRECATED APIEndpoint without sunset_at ──────────────────────
+
+describe("built-in check: GR-L4-006 (DEPRECATED APIEndpoint without sunset_at)", () => {
+  it("fires for DEPRECATED APIEndpoint with no sunset_at", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L4-006", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "APIEndpoint", layer: "L4", lifecycleStatus: "DEPRECATED", attributes: {} });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L4-006");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("does not fire for DEPRECATED endpoint with sunsetAt set, or for non-DEPRECATED endpoints", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L4-006", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    expect(await r.evaluate("t1", makeNodeRow({ type: "APIEndpoint", lifecycleStatus: "DEPRECATED", attributes: { sunsetAt: "2026-12-31" } }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "APIEndpoint", lifecycleStatus: "ACTIVE", attributes: {} }))).toHaveLength(0);
+  });
+});
+
+// ── GR-L4-007: Service with too many direct depends-on (god service) ──────────
+
+describe("built-in check: GR-L4-007 (Service god-service dependency count)", () => {
+  it("fires when dependsOn count exceeds maxDependencies (default 10)", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L4-007", config: { maxDependencies: 3 } });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { dependsOn: ["a", "b", "c", "d"] } });
+    const violations = await r.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L4-007");
+    expect(violations[0]?.message).toContain("4");
+    // default threshold
+    const r2 = new GuardrailsRegistry(makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L4-007", config: {} })]));
+    expect(await r2.evaluate("t1", makeNodeRow({ type: "Service", attributes: { dependsOn: new Array(11).fill("s") } }))).toHaveLength(1);
+  });
+
+  it("does not fire when dependsOn is within limit", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L4-007", config: { maxDependencies: 5 } });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    expect(await r.evaluate("t1", makeNodeRow({ type: "Service", attributes: { dependsOn: ["a", "b"] } }))).toHaveLength(0);
+  });
+});
+
+// ── GR-L5-005: TechnicalDebt HIGH interest OPEN > 90 days ────────────────────
+
+describe("built-in check: GR-L5-005 (TechnicalDebt HIGH interest stale)", () => {
+  it("fires for HIGH interest OPEN TechnicalDebt older than 90 days", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L5-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const stale = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
+    const node = makeNodeRow({ type: "TechnicalDebt", layer: "L5", createdAt: stale, attributes: { interestRate: "HIGH", status: "OPEN" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L5-005");
+    expect(violations[0]?.severity).toBe("WARN");
+  });
+
+  it("does not fire when within 90 days, MEDIUM interest, or CLOSED status", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L5-005", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    const stale = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000);
+    const recent = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "TechnicalDebt", createdAt: recent, attributes: { interestRate: "HIGH", status: "OPEN" } }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "TechnicalDebt", createdAt: stale, attributes: { interestRate: "MEDIUM", status: "OPEN" } }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "TechnicalDebt", createdAt: stale, attributes: { interestRate: "HIGH", status: "CLOSED" } }))).toHaveLength(0);
+  });
+});
+
+// ── GR-L5-006: CodeModule without validated-by Test ──────────────────────────
+
+describe("built-in check: GR-L5-006 (CodeModule without validated-by Test)", () => {
+  it("fires for CodeModule with no validatedBy attribute or testCount=0", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L5-006", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    const absent = makeNodeRow({ type: "CodeModule", layer: "L5", attributes: {} });
+    const zero = makeNodeRow({ type: "CodeModule", layer: "L5", attributes: { testCount: 0 } });
+    const violations = await r.evaluate("t1", absent);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L5-006");
+    expect(violations[0]?.severity).toBe("WARN");
+    expect(await r.evaluate("t1", zero)).toHaveLength(1);
+  });
+
+  it("does not fire when validatedBy is set or testCount > 0", async () => {
+    const row = makeGuardrailRow({ ruleKey: "GR-L5-006", config: {} });
+    const r = new GuardrailsRegistry(makeSqlWith([row]));
+    expect(await r.evaluate("t1", makeNodeRow({ type: "CodeModule", attributes: { validatedBy: ["unit-tests"] } }))).toHaveLength(0);
+    expect(await r.evaluate("t1", makeNodeRow({ type: "CodeModule", attributes: { testCount: 5 } }))).toHaveLength(0);
+  });
+});
+
