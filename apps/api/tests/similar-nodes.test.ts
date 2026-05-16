@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Michal Hlavac. All rights reserved.
 //
 // Integration tests for POST /v1/nodes/similar.
-// Embeddings are injected directly into node_embeddings (no EmbeddingService).
+// Embeddings are injected directly into nodes.embedding (no EmbeddingService).
 // Uses singleton unit vectors so cosine similarity is deterministic:
 //   vec(i) · vec(i) = 1.0  (identical direction)
 //   vec(i) · vec(j) = 0.0  (orthogonal, i ≠ j)
@@ -35,11 +35,10 @@ async function createNode(type: string, layer: string, name: string) {
   return (await res.json() as { data: { id: string } }).data;
 }
 
-async function insertEmbedding(nodeId: string, vec: string, model = "test"): Promise<void> {
+async function insertEmbedding(nodeId: string, vec: string): Promise<void> {
   await sql`
-    INSERT INTO node_embeddings (node_id, tenant_id, model, embedding)
-    VALUES (${nodeId}, ${tid}, ${model}, ${vec}::vector)
-    ON CONFLICT (node_id, model) DO UPDATE SET embedding = EXCLUDED.embedding
+    UPDATE nodes SET embedding = ${vec}::vector
+    WHERE id = ${nodeId} AND tenant_id = ${tid}
   `;
 }
 
@@ -73,6 +72,8 @@ describe("POST /v1/nodes/similar", () => {
 
   it("returns 422 when node has no embedding", async () => {
     const node = await createNode("Service", "L4", "no-embedding");
+    // Clear any embedding the stub provider may have auto-populated when the node was created.
+    await sql`UPDATE nodes SET embedding = NULL WHERE id = ${node.id} AND tenant_id = ${tid}`;
     const res = await app.request("/v1/nodes/similar", {
       method: "POST",
       headers: h(),
@@ -191,8 +192,8 @@ describe("POST /v1/nodes/similar", () => {
     expect(r2.status).toBe(201);
     const otherNode = (await r2.json() as { data: { id: string } }).data;
     await sql`
-      INSERT INTO node_embeddings (node_id, tenant_id, model, embedding)
-      VALUES (${otherNode.id}, ${tid2}, 'test', ${singletonVec(0)}::vector)
+      UPDATE nodes SET embedding = ${singletonVec(0)}::vector
+      WHERE id = ${otherNode.id} AND tenant_id = ${tid2}
     `;
 
     const res = await app.request("/v1/nodes/similar", {
