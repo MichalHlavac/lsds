@@ -22,6 +22,38 @@ describe("catalog field-name alignment with kap. 4", () => {
     expect(rule.condition).not.toContain("requirement.created_at");
   });
 
+  it("GR-L1-008 is SEMANTIC+DESCRIPTIVE+WARNING with UPDATE+PERIODIC triggers (stale-implementation advisory)", () => {
+    const rule = getGuardrailOrThrow("GR-L1-008");
+    expect(rule.origin).toBe("SEMANTIC");
+    expect(rule.evaluation).toBe("DESCRIPTIVE");
+    expect(rule.severity).toBe("WARNING");
+    expect(rule.scope.object_type).toBe("Requirement");
+    expect(rule.scope.triggers).toContain("UPDATE");
+    expect(rule.scope.triggers).toContain("PERIODIC");
+    expect(rule.propagation).toBe("NONE");
+    // Positive: condition reads the canonical status and impacts fields.
+    expect(rule.condition).toContain("object.status == 'IMPLEMENTED'");
+    expect(rule.condition).toContain("object.impacts");
+  });
+
+  it("GR-L1-008 does not drift to wrong status value, alt age-anchor, or renamed impact fields", () => {
+    const rule = getGuardrailOrThrow("GR-L1-008");
+    // Non-canonical status values for completed requirements (drift risk from task-tracker vocabulary).
+    expect(rule.condition).not.toContain("object.status == 'DONE'");
+    expect(rule.condition).not.toContain("object.status == 'COMPLETED'");
+    expect(rule.condition).not.toContain("object.status == 'CLOSED'");
+    // Staleness is anchored to approved_at; updated_at and submitted_at are wrong timestamps.
+    expect(rule.condition).not.toContain("requirement.updated_at");
+    expect(rule.condition).not.toContain("requirement.submitted_at");
+    // Impact tracking must use object.impacts — synonyms break propagation analysis.
+    expect(rule.condition).not.toContain("object.impacted_objects");
+    expect(rule.condition).not.toContain("object.impact_targets");
+    expect(rule.condition).not.toContain("object.changes");
+    // Rule is advisory; blocking IMPLEMENTED writes would prevent issue resolution.
+    expect(rule.evaluation).not.toBe("PRESCRIPTIVE");
+    expect(rule.severity).not.toBe("ERROR");
+  });
+
   it("GR-L1-001 walks BusinessCapability `traces-to` BusinessGoal (canonical strategic-alignment edge)", () => {
     // Positive: capability→goal alignment is the canonical traces-to edge
     // (kap. 2.2). Rule blocks creation of orphan capabilities (PRESCRIPTIVE+ERROR)
@@ -1395,7 +1427,7 @@ describe("GR-L4 contract-layer guardrail drift guards (GR-L4-001..005, 007)", ()
   });
 });
 
-describe("GR-L5 implementation-layer guardrail drift guards (GR-L5-001..002, 004, 006..007)", () => {
+describe("GR-L5 implementation-layer guardrail drift guards (GR-L5-001..007)", () => {
   describe("GR-L5-001 TechnicalDebt must declare rationale", () => {
     it("scope targets TechnicalDebt on CREATE/UPDATE", () => {
       const rule = getGuardrailOrThrow("GR-L5-001");
@@ -1607,6 +1639,68 @@ describe("GR-L5 implementation-layer guardrail drift guards (GR-L5-001..002, 004
         license: "MIT",
       });
       expect(parsed.license).toBe("MIT");
+    });
+  });
+
+  describe("GR-L5-003 DOMAIN CodeModule depends on INFRASTRUCTURE module", () => {
+    it("scope targets CodeModule with relationship_type='depends-on' on UPDATE/PERIODIC", () => {
+      const rule = getGuardrailOrThrow("GR-L5-003");
+      expect(rule.scope.object_type).toBe("CodeModule");
+      expect(rule.scope.relationship_type).toBe("depends-on");
+      expect(rule.scope.triggers).toContain("UPDATE");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+
+    it("condition distinguishes DOMAIN→INFRASTRUCTURE via module_type (not classification or layer_type)", () => {
+      const rule = getGuardrailOrThrow("GR-L5-003");
+      expect(rule.condition).toContain("object.module_type == 'DOMAIN'");
+      expect(rule.condition).toContain("target.module_type == 'INFRASTRUCTURE'");
+      // Negative: drift guards — earlier drafts used 'classification' (from ArchitectureComponent)
+      // or abbreviated 'INFRA' instead of the canonical CodeModule module_type values.
+      expect(rule.condition).not.toContain("classification");
+      expect(rule.condition).not.toContain("object.layer_type");
+      expect(rule.condition).not.toContain("target.layer_type");
+      expect(rule.condition).not.toMatch(/module_type == 'INFRA\b/);
+      expect(rule.condition).not.toContain("target.module_type == 'FRAMEWORK'");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+ERROR with propagation LATERAL", () => {
+      const rule = getGuardrailOrThrow("GR-L5-003");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("ERROR");
+      expect(rule.propagation).toBe("LATERAL");
+    });
+  });
+
+  describe("GR-L5-005 TechnicalDebt HIGH interest OPEN > 90 days", () => {
+    it("scope targets TechnicalDebt on PERIODIC trigger", () => {
+      const rule = getGuardrailOrThrow("GR-L5-005");
+      expect(rule.scope.object_type).toBe("TechnicalDebt");
+      expect(rule.scope.triggers).toContain("PERIODIC");
+    });
+
+    it("condition reads interest_rate=='HIGH', status=='OPEN', 90-day threshold from created_at", () => {
+      const rule = getGuardrailOrThrow("GR-L5-005");
+      expect(rule.condition).toContain("object.interest_rate == 'HIGH'");
+      expect(rule.condition).toContain("object.status == 'OPEN'");
+      expect(rule.condition).toContain("now - object.created_at");
+      expect(rule.condition).toContain("90 days");
+      // Negative: drift guards — wrong field names or status values would silently disable the rule.
+      expect(rule.condition).not.toContain("object.opened_at");
+      expect(rule.condition).not.toMatch(/object\.interest [^_]/);
+      expect(rule.condition).not.toContain("object.status == 'ACTIVE'");
+      expect(rule.condition).not.toContain("object.status == 'IN_PROGRESS'");
+      // 'priority' is a different attribute; interest_rate is the canonical debt-compounding field.
+      expect(rule.condition).not.toContain("object.priority == 'HIGH'");
+    });
+
+    it("classification is SEMANTIC+DESCRIPTIVE+WARNING with propagation NONE", () => {
+      const rule = getGuardrailOrThrow("GR-L5-005");
+      expect(rule.origin).toBe("SEMANTIC");
+      expect(rule.evaluation).toBe("DESCRIPTIVE");
+      expect(rule.severity).toBe("WARNING");
+      expect(rule.propagation).toBe("NONE");
     });
   });
 });
