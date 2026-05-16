@@ -497,6 +497,149 @@ const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
       };
     },
   ],
+
+  // ── Phase 2: Relationship-traversal rules ────────────────────────────────────
+
+  // ── GR-XL-002: Relationship targets a non-existent object ────────────────────
+  // Callers pre-populate attributes.targetExists = false when the target cannot
+  // be resolved; the check fires on that signal.
+  [
+    "GR-XL-002",
+    (subject) => {
+      if (!("sourceId" in subject)) return null;
+      const edge = subject as EdgeRow;
+      const attrs = edge.attributes as Record<string, unknown>;
+      const exists = attrs?.["targetExists"] ?? attrs?.["target_exists"];
+      if (exists !== false) return null;
+      return {
+        ruleKey: "GR-XL-002",
+        severity: "ERROR",
+        message: `Relationship '${edge.type}' from '${edge.sourceId}' targets non-existent object '${edge.targetId}'`,
+        edgeId: edge.id,
+        sourceNodeId: edge.sourceId,
+        targetNodeId: edge.targetId,
+      };
+    },
+  ],
+
+  // ── GR-XL-003: Relationship violates layer rules ──────────────────────────────
+  // Checks that the numeric distance between source and target layers does not
+  // exceed config.maxLayerDistance (default 2). Requires attributes.sourceLayer
+  // and attributes.targetLayer (or snake_case variants) to be pre-populated.
+  [
+    "GR-XL-003",
+    (subject, config) => {
+      if (!("sourceId" in subject)) return null;
+      const edge = subject as EdgeRow;
+      const attrs = edge.attributes as Record<string, unknown>;
+      const srcStr = String(attrs?.["sourceLayer"] ?? attrs?.["source_layer"] ?? "");
+      const tgtStr = String(attrs?.["targetLayer"] ?? attrs?.["target_layer"] ?? "");
+      if (!srcStr.startsWith("L") || !tgtStr.startsWith("L")) return null;
+      const srcNum = parseInt(srcStr.slice(1), 10);
+      const tgtNum = parseInt(tgtStr.slice(1), 10);
+      if (isNaN(srcNum) || isNaN(tgtNum)) return null;
+      const maxDist = Number(config["maxLayerDistance"] ?? 2);
+      const dist = Math.abs(srcNum - tgtNum);
+      if (dist <= maxDist) return null;
+      return {
+        ruleKey: "GR-XL-003",
+        severity: "ERROR",
+        message: `Relationship '${edge.type}' crosses from ${srcStr} to ${tgtStr} (distance ${dist}, max allowed ${maxDist})`,
+        edgeId: edge.id,
+        sourceNodeId: edge.sourceId,
+        targetNodeId: edge.targetId,
+      };
+    },
+  ],
+
+  // ── GR-XL-004: Archiving an object with ACTIVE incoming dependents ────────────
+  // Callers pre-populate attributes.activeIncomingCount with the count of ACTIVE
+  // nodes that have an incoming relationship targeting this node.
+  // Uses "name" in subject (NodeRow-only field) to discriminate nodes from edges,
+  // since EdgeRow also carries lifecycleStatus in the production schema.
+  [
+    "GR-XL-004",
+    (subject) => {
+      if (!("name" in subject)) return null;
+      const node = subject as NodeRow;
+      if (node.lifecycleStatus !== "ARCHIVED") return null;
+      const attrs = node.attributes as Record<string, unknown>;
+      const count = Number(attrs?.["activeIncomingCount"] ?? attrs?.["active_incoming_count"] ?? 0);
+      if (count === 0) return null;
+      return {
+        ruleKey: "GR-XL-004",
+        severity: "ERROR",
+        message: `Node '${node.name}' is ARCHIVED but has ${count} ACTIVE incoming dependent(s); archive or migrate dependents first`,
+        nodeId: node.id,
+      };
+    },
+  ],
+
+  // ── GR-XL-006: DEPRECATED object still has active depends-on dependents ───────
+  // Callers pre-populate attributes.activeDependsOnCount with the count of ACTIVE
+  // nodes that depend-on this node.
+  [
+    "GR-XL-006",
+    (subject) => {
+      if (!("name" in subject)) return null;
+      const node = subject as NodeRow;
+      if (node.lifecycleStatus !== "DEPRECATED") return null;
+      const attrs = node.attributes as Record<string, unknown>;
+      const count = Number(attrs?.["activeDependsOnCount"] ?? attrs?.["active_depends_on_count"] ?? 0);
+      if (count === 0) return null;
+      return {
+        ruleKey: "GR-XL-006",
+        severity: "WARN",
+        message: `Node '${node.name}' is DEPRECATED but has ${count} ACTIVE depends-on dependent(s); open migration tasks for each`,
+        nodeId: node.id,
+      };
+    },
+  ],
+
+  // ── GR-XL-010: ARCHIVED object has non-archived contains children ─────────────
+  // Callers pre-populate attributes.nonArchivedContainsCount with the count of
+  // contains-children that are not yet ARCHIVED or PURGE.
+  [
+    "GR-XL-010",
+    (subject) => {
+      if (!("name" in subject)) return null;
+      const node = subject as NodeRow;
+      if (node.lifecycleStatus !== "ARCHIVED") return null;
+      const attrs = node.attributes as Record<string, unknown>;
+      const count = Number(attrs?.["nonArchivedContainsCount"] ?? attrs?.["non_archived_contains_count"] ?? 0);
+      if (count === 0) return null;
+      return {
+        ruleKey: "GR-XL-010",
+        severity: "ERROR",
+        message: `Node '${node.name}' is ARCHIVED but has ${count} non-archived contained child(ren); archive children before the parent`,
+        nodeId: node.id,
+      };
+    },
+  ],
+
+  // ── GR-L5-003: DOMAIN CodeModule depends-on INFRASTRUCTURE module ─────────────
+  // Edge-based check. Requires attributes.sourceModuleType and
+  // attributes.targetModuleType (or snake_case variants) to be pre-populated.
+  [
+    "GR-L5-003",
+    (subject) => {
+      if (!("sourceId" in subject)) return null;
+      const edge = subject as EdgeRow;
+      if (edge.type !== "depends-on") return null;
+      const attrs = edge.attributes as Record<string, unknown>;
+      const srcType = attrs?.["sourceModuleType"] ?? attrs?.["source_module_type"];
+      const tgtType = attrs?.["targetModuleType"] ?? attrs?.["target_module_type"];
+      if (srcType !== "DOMAIN" || tgtType !== "INFRASTRUCTURE") return null;
+      return {
+        ruleKey: "GR-L5-003",
+        severity: "ERROR",
+        message: `DOMAIN CodeModule (edge '${edge.id}') depends-on INFRASTRUCTURE module; invert the dependency using a port/adapter pattern`,
+        edgeId: edge.id,
+        sourceNodeId: edge.sourceId,
+        targetNodeId: edge.targetId,
+      };
+    },
+  ],
 ]);
 
 export class GuardrailsRegistry {
