@@ -157,6 +157,192 @@ const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
       };
     },
   ],
+  // ── GR-L3-003: SUPERSEDED ADR without supersedes relationship ────────────────
+  [
+    "GR-L3-003",
+    (subject) => {
+      const node = nodeOfType(subject, "ADR");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const status = (attrs["status"] as string | undefined) ?? node.lifecycleStatus;
+      if (status !== "SUPERSEDED") return null;
+      const supersedes = attrs["supersedes"] ?? attrs["supersedes_id"] ?? attrs["supersedes_adr"];
+      if (supersedes) return null;
+      return {
+        ruleKey: "GR-L3-003",
+        severity: "ERROR",
+        message: `ADR '${node.name}' has status=SUPERSEDED but declares no supersedes relationship`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L3-006: ArchitectureComponent without traces-to BoundedContext ─────────
+  [
+    "GR-L3-006",
+    (subject) => {
+      const node = nodeOfType(subject, "ArchitectureComponent");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const tracesTo =
+        attrs["tracesBoundedContext"] ??
+        attrs["traces_bounded_context"] ??
+        attrs["boundedContextId"] ??
+        attrs["bounded_context_id"];
+      if (tracesTo) return null;
+      return {
+        ruleKey: "GR-L3-006",
+        severity: "WARN",
+        message: `ArchitectureComponent '${node.name}' has no traces-to relationship to a BoundedContext`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L3-007: ArchitectureComponent participating in cyclic depends-on ───────
+  // Cycle flag is set by the periodic graph scan and stored in node attributes.
+  [
+    "GR-L3-007",
+    (subject) => {
+      const node = nodeOfType(subject, "ArchitectureComponent");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const cycleDetected = attrs["cycleDetected"] ?? attrs["cycle_detected"];
+      if (!cycleDetected) return null;
+      return {
+        ruleKey: "GR-L3-007",
+        severity: "ERROR",
+        message: `ArchitectureComponent '${node.name}' participates in a cyclic depends-on dependency`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L3-008: ArchitectureSystem without QualityAttribute ───────────────────
+  [
+    "GR-L3-008",
+    (subject) => {
+      const node = nodeOfType(subject, "ArchitectureSystem");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const qa = attrs["qualityAttributes"] ?? attrs["quality_attributes"];
+      if (Array.isArray(qa) && qa.length > 0) return null;
+      if (typeof qa === "string" && qa.length > 0) return null;
+      return {
+        ruleKey: "GR-L3-008",
+        severity: "WARN",
+        message: `ArchitectureSystem '${node.name}' declares no quality attributes`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L4-005: Service without realizes link to ArchitectureComponent ─────────
+  [
+    "GR-L4-005",
+    (subject) => {
+      const node = nodeOfType(subject, "Service");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const realizes =
+        attrs["realizes"] ?? attrs["realizesComponent"] ?? attrs["realizes_component"];
+      if (realizes) return null;
+      return {
+        ruleKey: "GR-L4-005",
+        severity: "WARN",
+        message: `Service '${node.name}' has no realizes relationship to an ArchitectureComponent`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L4-006: DEPRECATED APIEndpoint without sunset_at ──────────────────────
+  [
+    "GR-L4-006",
+    (subject) => {
+      const node = nodeOfType(subject, "APIEndpoint");
+      if (!node) return null;
+      if (node.lifecycleStatus !== "DEPRECATED") return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const sunsetAt = attrs["sunsetAt"] ?? attrs["sunset_at"];
+      if (sunsetAt) return null;
+      return {
+        ruleKey: "GR-L4-006",
+        severity: "WARN",
+        message: `APIEndpoint '${node.name}' is DEPRECATED but has no sunset_at date`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L4-007: Service with too many direct depends-on (god service) ──────────
+  [
+    "GR-L4-007",
+    (subject, config) => {
+      const node = nodeOfType(subject, "Service");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const maxDeps = Number(config["maxDependencies"] ?? 10);
+      const dependsOn = attrs["dependsOn"] ?? attrs["depends_on"];
+      const depCount = Array.isArray(dependsOn)
+        ? dependsOn.length
+        : typeof dependsOn === "number"
+          ? dependsOn
+          : 0;
+      if (depCount <= maxDeps) return null;
+      return {
+        ruleKey: "GR-L4-007",
+        severity: "WARN",
+        message: `Service '${node.name}' has ${depCount} direct depends-on relationships (max: ${maxDeps})`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L5-005: TechnicalDebt HIGH interest OPEN > 90 days ────────────────────
+  [
+    "GR-L5-005",
+    (subject, config) => {
+      const node = nodeOfType(subject, "TechnicalDebt");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const interestRate = attrs["interestRate"] ?? attrs["interest_rate"];
+      if (interestRate !== "HIGH") return null;
+      const status = attrs["status"];
+      if (status !== "OPEN") return null;
+      const maxAgeDays = Number(config["maxAgeDays"] ?? 90);
+      const ageDays = (Date.now() - node.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (ageDays <= maxAgeDays) return null;
+      return {
+        ruleKey: "GR-L5-005",
+        severity: "WARN",
+        message: `TechnicalDebt '${node.name}' has HIGH interest and has been OPEN for ${Math.floor(ageDays)} days (max: ${maxAgeDays})`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L5-006: CodeModule without validated-by Test ──────────────────────────
+  [
+    "GR-L5-006",
+    (subject) => {
+      const node = nodeOfType(subject, "CodeModule");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const validated = attrs["validatedBy"] ?? attrs["validated_by"];
+      const testCount = attrs["testCount"] ?? attrs["test_count"];
+      if (Array.isArray(validated) && validated.length > 0) return null;
+      if (typeof validated === "string" && validated.length > 0) return null;
+      if (typeof testCount === "number" && testCount > 0) return null;
+      return {
+        ruleKey: "GR-L5-006",
+        severity: "WARN",
+        message: `CodeModule '${node.name}' has no validated-by Test relationship`,
+        nodeId: node.id,
+      };
+    },
+  ],
   // ── GR-L5-007: ExternalDependency with GPL-family license in COMMERCIAL context
   // Catalog condition: !(object.license matches 'GPL*' && config.distribution.context == 'COMMERCIAL')
   // Only flags GPL when the tenant has configured distribution.context = 'COMMERCIAL';
