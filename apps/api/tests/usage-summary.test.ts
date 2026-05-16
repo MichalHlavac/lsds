@@ -71,7 +71,7 @@ describe("GET /v1/usage/summary", () => {
 
   it("since filter scopes the window correctly", async () => {
     await postEvent(tid, "NODE_CREATED");
-
+    await new Promise((r) => setTimeout(r, 20)); // push boundary past NODE_CREATED's created_at
     const boundary = new Date().toISOString();
     await new Promise((r) => setTimeout(r, 5));
     await postEvent(tid, "EDGE_CREATED");

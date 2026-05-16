@@ -31,7 +31,9 @@ export function usageSummaryRouter(sql: Sql): Hono {
       ORDER BY event_type
     `;
 
-    const byEventType = rows.map((r) => ({ eventType: r.eventType, count: r.count }));
+    const byEventType = rows
+      .map((r) => ({ eventType: r.eventType, count: r.count }))
+      .sort((a, b) => a.eventType.localeCompare(b.eventType));
     const total = byEventType.reduce((sum, r) => sum + r.count, 0);
 
     return c.json({
