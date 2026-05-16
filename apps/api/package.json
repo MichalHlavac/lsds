@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p ../../packages/framework && tsc -p ../../packages/shared && tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
+    "test:perf": "vitest run --config vitest.perf.config.ts --passWithNoTests",
     "migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {

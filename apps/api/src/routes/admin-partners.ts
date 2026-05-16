@@ -33,6 +33,38 @@ interface PartnerRow {
   nodeCount: number;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const USAGE_EVENT_TYPES = [
+  "NODE_CREATED",
+  "EDGE_CREATED",
+  "REQUIREMENT_ADDED",
+  "VIOLATION_CHECKED",
+  "GRAPH_TRAVERSED",
+  "MCP_QUERY",
+] as const;
+
+type UsageEventType = (typeof USAGE_EVENT_TYPES)[number];
+
+const EVENT_KEY: Record<UsageEventType, string> = {
+  NODE_CREATED: "nodeCreated",
+  EDGE_CREATED: "edgeCreated",
+  REQUIREMENT_ADDED: "requirementAdded",
+  VIOLATION_CHECKED: "violationChecked",
+  GRAPH_TRAVERSED: "graphTraversed",
+  MCP_QUERY: "mcpQuery",
+};
+
+function zeroTotals(): Record<string, number> {
+  const t: Record<string, number> = { events: 0 };
+  for (const et of USAGE_EVENT_TYPES) t[EVENT_KEY[et]] = 0;
+  return t;
+}
+
+function utcDateString(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 export function adminPartnersRouter(sql: Sql): Hono {
   const app = new Hono();
 
@@ -46,32 +78,30 @@ export function adminPartnersRouter(sql: Sql): Hono {
     const limit = parsePaginationLimit(query.limit, 20, 100);
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
 
-    const rows = await sql<PartnerRow[]>`
-      SELECT
-        t.id,
-        t.name,
-        t.partner_status,
-        t.created_at,
-        (
-          SELECT MAX(ue.created_at) FROM usage_events ue WHERE ue.tenant_id = t.id
-        ) AS last_active_at,
-        (
-          SELECT COUNT(*)::int FROM nodes n WHERE n.tenant_id = t.id
-        ) AS node_count
-      FROM tenants t
-      WHERE t.plan = 'partner'
-        ${query.status ? sql`AND t.partner_status = ${query.status}` : sql``}
+    // CTE computes COUNT(*) OVER() before cursor so total reflects the full filter.
+    // Correlated subqueries (last_active_at, node_count) run only for the page rows.
+    const rows = await sql<(PartnerRow & { total: number })[]>`
+      WITH base AS (
+        SELECT t.id, t.name, t.partner_status, t.created_at,
+               COUNT(*) OVER()::int AS total
+        FROM tenants t
+        WHERE t.plan = 'partner'
+          ${query.status ? sql`AND t.partner_status = ${query.status}` : sql``}
+      ),
+      paged AS (
+        SELECT * FROM base
         ${cursor
-          ? sql`AND (t.created_at < ${cursor.v}::timestamptz OR (t.created_at = ${cursor.v}::timestamptz AND t.id < ${cursor.id}::uuid))`
+          ? sql`WHERE (created_at < ${cursor.v}::timestamptz OR (created_at = ${cursor.v}::timestamptz AND id < ${cursor.id}::uuid))`
           : sql``}
-      ORDER BY t.created_at DESC, t.id DESC
-      LIMIT ${limit + 1}
-    `;
-
-    const [{ total }] = await sql<[{ total: number }]>`
-      SELECT COUNT(*)::int AS total FROM tenants
-      WHERE plan = 'partner'
-        ${query.status ? sql`AND partner_status = ${query.status}` : sql``}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ${limit + 1}
+      )
+      SELECT
+        p.*,
+        (SELECT MAX(ue.created_at) FROM usage_events ue WHERE ue.tenant_id = p.id) AS last_active_at,
+        (SELECT COUNT(*)::int FROM nodes n WHERE n.tenant_id = p.id) AS node_count
+      FROM paged p
+      ORDER BY p.created_at DESC, p.id DESC
     `;
 
     const hasMore = rows.length > limit;
@@ -83,7 +113,7 @@ export function adminPartnersRouter(sql: Sql): Hono {
         : null;
 
     return c.json({
-      partners: items.map((r) => ({
+      partners: items.map(({ total: _t, ...r }) => ({
         tenantId: r.id,
         name: r.name,
         status: r.partnerStatus,
@@ -92,7 +122,7 @@ export function adminPartnersRouter(sql: Sql): Hono {
         nodeCount: r.nodeCount,
       })),
       nextCursor,
-      total,
+      total: rows[0]?.total ?? 0,
     });
   });
 
@@ -151,6 +181,103 @@ export function adminPartnersRouter(sql: Sql): Hono {
       },
       201
     );
+  });
+
+  app.get("/:tenantId/usage", async (c) => {
+    const { tenantId } = c.req.param();
+
+    if (!UUID_RE.test(tenantId)) {
+      return c.json({ error: "invalid tenantId" }, 400);
+    }
+
+    const [tenant] = await sql<[{ id: string }?]>`
+      SELECT id FROM tenants WHERE id = ${tenantId} AND plan = 'partner'
+    `;
+    if (!tenant) {
+      return c.json({ error: "partner tenant not found" }, 404);
+    }
+
+    const now = new Date();
+    const defaultFrom = new Date(now);
+    defaultFrom.setDate(defaultFrom.getDate() - 30);
+
+    const fromParam = c.req.query("from");
+    const toParam = c.req.query("to");
+
+    let fromDate = defaultFrom;
+    let toDate = now;
+
+    if (fromParam) {
+      const d = new Date(fromParam);
+      if (isNaN(d.getTime())) return c.json({ error: "invalid 'from' date" }, 400);
+      fromDate = d;
+    }
+    if (toParam) {
+      const d = new Date(toParam);
+      if (isNaN(d.getTime())) return c.json({ error: "invalid 'to' date" }, 400);
+      toDate = d;
+    }
+
+    const [totalsRows, dailyRows] = await Promise.all([
+      sql<Array<{ eventType: UsageEventType; count: number }>>`
+        SELECT event_type, COUNT(*)::int AS count
+        FROM usage_events
+        WHERE tenant_id = ${tenantId}
+          AND created_at >= ${fromDate}
+          AND created_at <= ${toDate}
+        GROUP BY event_type
+      `,
+      sql<Array<{ date: string; eventType: UsageEventType; count: number }>>`
+        SELECT DATE(created_at)::text AS date, event_type, COUNT(*)::int AS count
+        FROM usage_events
+        WHERE tenant_id = ${tenantId}
+          AND created_at >= ${fromDate}
+          AND created_at <= ${toDate}
+        GROUP BY DATE(created_at), event_type
+        ORDER BY DATE(created_at) ASC
+      `,
+    ]);
+
+    const totals = zeroTotals();
+    for (const row of totalsRows) {
+      const key = EVENT_KEY[row.eventType];
+      if (key) {
+        totals[key] = row.count;
+        totals.events += row.count;
+      }
+    }
+
+    // Build date map with zero-fill for every calendar day in [from, to]
+    const dailyMap = new Map<string, Record<string, number>>();
+    const cur = new Date(Date.UTC(fromDate.getUTCFullYear(), fromDate.getUTCMonth(), fromDate.getUTCDate()));
+    const endDay = new Date(Date.UTC(toDate.getUTCFullYear(), toDate.getUTCMonth(), toDate.getUTCDate()));
+    while (cur <= endDay) {
+      dailyMap.set(utcDateString(cur), zeroTotals());
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+
+    for (const row of dailyRows) {
+      const day = dailyMap.get(row.date);
+      if (day) {
+        const key = EVENT_KEY[row.eventType];
+        if (key) {
+          day[key] = row.count;
+          day.events += row.count;
+        }
+      }
+    }
+
+    const dailyBreakdown = Array.from(dailyMap.entries()).map(([date, counts]) => ({
+      date,
+      ...counts,
+    }));
+
+    return c.json({
+      tenantId,
+      period: { from: fromDate.toISOString(), to: toDate.toISOString() },
+      totals,
+      dailyBreakdown,
+    });
   });
 
   return app;

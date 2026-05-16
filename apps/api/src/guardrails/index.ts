@@ -29,6 +29,8 @@ export type GuardrailCheck = (
   config: Record<string, unknown>
 ) => ViolationCandidate | null;
 
+const SEMVER_RE = /^\d+\.\d+\.\d+/;
+
 function nodeAttrs(subject: NodeRow | EdgeRow): Record<string, unknown> | null {
   if (!("type" in subject) || !("attributes" in subject)) return null;
   return (subject as NodeRow).attributes as Record<string, unknown>;
@@ -174,6 +176,323 @@ const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
         ruleKey: "GR-L5-007",
         severity: "WARN",
         message: `ExternalDependency '${node.name}' uses GPL-family license '${license}' which may impose copyleft obligations in commercial distribution`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L1-002: BusinessGoal must have at least one success_metric ─────────────
+  [
+    "GR-L1-002",
+    (subject) => {
+      const node = nodeOfType(subject, "BusinessGoal");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const metrics = attrs["success_metrics"] ?? attrs["successMetrics"];
+      if (Array.isArray(metrics) && metrics.length >= 1) return null;
+      return {
+        ruleKey: "GR-L1-002",
+        severity: "ERROR",
+        message: `BusinessGoal '${node.name}' has no success_metrics (at least 1 required)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L1-003: Requirement.motivation non-null/non-empty ─────────────────────
+  [
+    "GR-L1-003",
+    (subject) => {
+      const node = nodeOfType(subject, "Requirement");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const motivation = attrs["motivation"];
+      if (motivation && String(motivation).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L1-003",
+        severity: "ERROR",
+        message: `Requirement '${node.name}' has no motivation`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L1-004: Requirement must have at least one acceptance_criterion ────────
+  [
+    "GR-L1-004",
+    (subject) => {
+      const node = nodeOfType(subject, "Requirement");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const criteria = attrs["acceptance_criteria"] ?? attrs["acceptanceCriteria"];
+      if (Array.isArray(criteria) && criteria.length >= 1) return null;
+      return {
+        ruleKey: "GR-L1-004",
+        severity: "ERROR",
+        message: `Requirement '${node.name}' has no acceptance_criteria (at least 1 required)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L2-003: DomainEntity must have at least one invariant ─────────────────
+  [
+    "GR-L2-003",
+    (subject) => {
+      const node = nodeOfType(subject, "DomainEntity");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const invariants = attrs["invariants"];
+      if (Array.isArray(invariants) && invariants.length >= 1) return null;
+      return {
+        ruleKey: "GR-L2-003",
+        severity: "ERROR",
+        message: `DomainEntity '${node.name}' has no invariants (at least 1 required)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L2-004: Aggregate.transaction_boundary non-null ───────────────────────
+  [
+    "GR-L2-004",
+    (subject) => {
+      const node = nodeOfType(subject, "Aggregate");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const boundary = attrs["transaction_boundary"] ?? attrs["transactionBoundary"];
+      if (boundary != null && String(boundary).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L2-004",
+        severity: "ERROR",
+        message: `Aggregate '${node.name}' has no transaction_boundary defined`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L3-001: ArchitectureComponent.technology non-null/non-empty ────────────
+  [
+    "GR-L3-001",
+    (subject) => {
+      const node = nodeOfType(subject, "ArchitectureComponent");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const technology = attrs["technology"];
+      if (technology && String(technology).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L3-001",
+        severity: "ERROR",
+        message: `ArchitectureComponent '${node.name}' has no technology specified`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L3-002: ADR must have at least one alternative considered ──────────────
+  [
+    "GR-L3-002",
+    (subject) => {
+      const node = nodeOfType(subject, "ADR");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const alternatives = attrs["alternatives_considered"] ?? attrs["alternativesConsidered"];
+      if (Array.isArray(alternatives) && alternatives.length >= 1) return null;
+      return {
+        ruleKey: "GR-L3-002",
+        severity: "ERROR",
+        message: `ADR '${node.name}' has no alternatives_considered (at least 1 required)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L4-001: APIEndpoint must have at least one error_response ──────────────
+  [
+    "GR-L4-001",
+    (subject) => {
+      const node = nodeOfType(subject, "APIEndpoint");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const errorResponses = attrs["error_responses"] ?? attrs["errorResponses"];
+      if (Array.isArray(errorResponses) && errorResponses.length >= 1) return null;
+      return {
+        ruleKey: "GR-L4-001",
+        severity: "ERROR",
+        message: `APIEndpoint '${node.name}' has no error_responses defined (at least 1 required)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L4-002: APIEndpoint.response_schema non-null ──────────────────────────
+  [
+    "GR-L4-002",
+    (subject) => {
+      const node = nodeOfType(subject, "APIEndpoint");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const responseSchema = attrs["response_schema"] ?? attrs["responseSchema"];
+      if (responseSchema != null) return null;
+      return {
+        ruleKey: "GR-L4-002",
+        severity: "ERROR",
+        message: `APIEndpoint '${node.name}' has no response_schema defined`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L4-003: EventContract ordering_guarantee AND delivery_guarantee non-null
+  [
+    "GR-L4-003",
+    (subject) => {
+      const node = nodeOfType(subject, "EventContract");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const ordering = attrs["ordering_guarantee"] ?? attrs["orderingGuarantee"];
+      const delivery = attrs["delivery_guarantee"] ?? attrs["deliveryGuarantee"];
+      if (ordering != null && delivery != null) return null;
+      const missing = [
+        ordering == null ? "ordering_guarantee" : null,
+        delivery == null ? "delivery_guarantee" : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      return {
+        ruleKey: "GR-L4-003",
+        severity: "ERROR",
+        message: `EventContract '${node.name}' is missing required attributes: ${missing}`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L4-004: APIContract.version non-null AND valid semver ─────────────────
+  [
+    "GR-L4-004",
+    (subject) => {
+      const node = nodeOfType(subject, "APIContract");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const version = attrs["version"];
+      if (typeof version === "string" && SEMVER_RE.test(version)) return null;
+      return {
+        ruleKey: "GR-L4-004",
+        severity: "ERROR",
+        message: `APIContract '${node.name}' has no valid semver version (got: ${String(version ?? "null")})`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L5-001: TechnicalDebt.rationale non-null/non-empty ────────────────────
+  [
+    "GR-L5-001",
+    (subject) => {
+      const node = nodeOfType(subject, "TechnicalDebt");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const rationale = attrs["rationale"];
+      if (rationale && String(rationale).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L5-001",
+        severity: "ERROR",
+        message: `TechnicalDebt '${node.name}' has no rationale`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L5-002: CodeModule.repository_reference non-null ──────────────────────
+  [
+    "GR-L5-002",
+    (subject) => {
+      const node = nodeOfType(subject, "CodeModule");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const repoRef = attrs["repository_reference"] ?? attrs["repositoryReference"];
+      if (repoRef != null && String(repoRef).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L5-002",
+        severity: "ERROR",
+        message: `CodeModule '${node.name}' has no repository_reference`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-001: InfrastructureComponent.iac_reference non-null ────────────────
+  [
+    "GR-L6-001",
+    (subject) => {
+      const node = nodeOfType(subject, "InfrastructureComponent");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const iacRef = attrs["iac_reference"] ?? attrs["iacReference"];
+      if (iacRef != null && String(iacRef).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L6-001",
+        severity: "ERROR",
+        message: `InfrastructureComponent '${node.name}' has no iac_reference`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-002: Alert.runbook_reference non-null ───────────────────────────────
+  [
+    "GR-L6-002",
+    (subject) => {
+      const node = nodeOfType(subject, "Alert");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const runbookRef = attrs["runbook_reference"] ?? attrs["runbookReference"];
+      if (runbookRef != null && String(runbookRef).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L6-002",
+        severity: "ERROR",
+        message: `Alert '${node.name}' has no runbook_reference`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-006: Environment (PRODUCTION/DR) must have iac_reference ────────────
+  [
+    "GR-L6-006",
+    (subject) => {
+      const node = nodeOfType(subject, "Environment");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const envType = attrs["environment_type"] ?? attrs["environmentType"];
+      if (envType !== "PRODUCTION" && envType !== "DR") return null;
+      const iacRef = attrs["iac_reference"] ?? attrs["iacReference"];
+      if (iacRef != null && String(iacRef).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L6-006",
+        severity: "ERROR",
+        message: `Environment '${node.name}' (${String(envType)}) has no iac_reference (required for PRODUCTION/DR)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-007: Environment (PRODUCTION/DR) must have promotion_gate ──────────
+  [
+    "GR-L6-007",
+    (subject) => {
+      const node = nodeOfType(subject, "Environment");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const envType = attrs["environment_type"] ?? attrs["environmentType"];
+      if (envType !== "PRODUCTION" && envType !== "DR") return null;
+      const promotionGate = attrs["promotion_gate"] ?? attrs["promotionGate"];
+      if (promotionGate != null && String(promotionGate).trim().length > 0) return null;
+      return {
+        ruleKey: "GR-L6-007",
+        severity: "ERROR",
+        message: `Environment '${node.name}' (${String(envType)}) has no promotion_gate (required for PRODUCTION/DR)`,
         nodeId: node.id,
       };
     },

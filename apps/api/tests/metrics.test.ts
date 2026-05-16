@@ -245,4 +245,60 @@ describe("GET /api/metrics", () => {
     expect(typeof liveRoute!.latencyMs.p95).toBe("number");
     expect(typeof liveRoute!.latencyMs.p99).toBe("number");
   });
+
+  it("returns 200 with empty routes array when no prior events are recorded", async () => {
+    // beforeEach resets metrics; the middleware records THIS request only after
+    // the handler returns (post-next), so the snapshot is genuinely empty here.
+    const res = await app.request("/api/metrics", { headers: adminHeaders() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { uptime: number; routes: unknown[] };
+    expect(typeof body.uptime).toBe("number");
+    expect(body.uptime).toBeGreaterThanOrEqual(0);
+    expect(body.routes).toEqual([]);
+  });
+
+  it("route items expose the full RouteMetricsSnapshot shape with correct field types", async () => {
+    resetMetrics();
+    // Seed traffic so the snapshot has at least one entry.
+    await app.request("/health/live");
+    await app.request("/health/live");
+
+    const res = await app.request("/api/metrics", { headers: adminHeaders() });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      uptime: number;
+      routes: Array<{
+        method: string;
+        path: string;
+        requests: number;
+        errors4xx: number;
+        errors5xx: number;
+        latencyMs: { p50: number; p95: number; p99: number };
+      }>;
+    };
+
+    expect(body.routes.length).toBeGreaterThan(0);
+    for (const route of body.routes) {
+      // String fields — non-empty
+      expect(typeof route.method).toBe("string");
+      expect(route.method.length).toBeGreaterThan(0);
+      expect(typeof route.path).toBe("string");
+      expect(route.path.length).toBeGreaterThan(0);
+      // Counter fields — non-negative numbers
+      expect(typeof route.requests).toBe("number");
+      expect(route.requests).toBeGreaterThanOrEqual(1);
+      expect(typeof route.errors4xx).toBe("number");
+      expect(route.errors4xx).toBeGreaterThanOrEqual(0);
+      expect(typeof route.errors5xx).toBe("number");
+      expect(route.errors5xx).toBeGreaterThanOrEqual(0);
+      // latencyMs object — all three percentile fields present and ordered
+      expect(route.latencyMs).toBeDefined();
+      expect(typeof route.latencyMs.p50).toBe("number");
+      expect(route.latencyMs.p50).toBeGreaterThanOrEqual(0);
+      expect(typeof route.latencyMs.p95).toBe("number");
+      expect(route.latencyMs.p95).toBeGreaterThanOrEqual(route.latencyMs.p50);
+      expect(typeof route.latencyMs.p99).toBe("number");
+      expect(route.latencyMs.p99).toBeGreaterThanOrEqual(route.latencyMs.p95);
+    }
+  });
 });

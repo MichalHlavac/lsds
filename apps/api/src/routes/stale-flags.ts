@@ -102,28 +102,25 @@ export function staleFlagsRouter(sql: Sql): Hono {
       if (!cursor) return c.json({ error: "invalid cursor" }, 400);
     }
 
-    const [rows, [countRow]] = await Promise.all([
-      sql<StaleFlagRow[]>`
+    // CTE computes COUNT(*) OVER() before cursor is applied so totalCount reflects
+    // the full filter result, not just the remaining pages.
+    const rows = await sql<(StaleFlagRow & { totalCount: number })[]>`
+      WITH base AS (
         SELECT id, tenant_id, source_change_id, object_id, object_type, severity,
-               raised_at, message, via_relationship_type, depth, created_at
+               raised_at, message, via_relationship_type, depth, created_at,
+               COUNT(*) OVER()::int AS total_count
         FROM stale_flags
         WHERE tenant_id = ${tenantId}
           ${objectTypeParam ? sql`AND object_type = ${objectTypeParam}` : sql``}
           ${severityParam ? sql`AND severity = ${severityParam}` : sql``}
-          ${cursor
-            ? sql`AND (raised_at < ${cursor.v} OR (raised_at = ${cursor.v} AND id < ${cursor.id}))`
-            : sql``}
-        ORDER BY raised_at DESC, id DESC
-        LIMIT ${limit + 1}
-      `,
-      sql<[{ total: number }]>`
-        SELECT count(*)::int AS total
-        FROM stale_flags
-        WHERE tenant_id = ${tenantId}
-          ${objectTypeParam ? sql`AND object_type = ${objectTypeParam}` : sql``}
-          ${severityParam ? sql`AND severity = ${severityParam}` : sql``}
-      `,
-    ]);
+      )
+      SELECT * FROM base
+      ${cursor
+        ? sql`WHERE (raised_at < ${cursor.v} OR (raised_at = ${cursor.v} AND id < ${cursor.id}))`
+        : sql``}
+      ORDER BY raised_at DESC, id DESC
+      LIMIT ${limit + 1}
+    `;
 
     const hasMore = rows.length > limit;
     const items = hasMore ? rows.slice(0, limit) : rows;
@@ -131,9 +128,9 @@ export function staleFlagsRouter(sql: Sql): Hono {
     const nextCursor = hasMore && last ? encodeCursor(last.raisedAt.toISOString(), last.id) : null;
 
     return c.json({
-      items: items.map(toEntry),
+      items: items.map(({ totalCount: _tc, ...r }) => toEntry(r as StaleFlagRow)),
       nextCursor,
-      totalCount: countRow?.total ?? 0,
+      totalCount: rows[0]?.totalCount ?? 0,
     });
   });
 

@@ -103,20 +103,26 @@ export function edgesRouter(sql: Sql, cache: LsdsCache, lifecycle: LifecycleServ
         ${cursorClause}
     `;
 
+    if (countOpt) {
+      const rows = await sql<(EdgeRow & { totalCount: string })[]>`
+        SELECT *, COUNT(*) OVER()::text AS total_count FROM edges ${whereClause}
+        ORDER BY ${sortCol} ${sortDirSql}, id ASC
+        LIMIT ${limit}
+      `;
+      const nextCursor = rows.length === limit
+        ? encodeCursor(colSpec.getValue(rows[rows.length - 1]), rows[rows.length - 1].id)
+        : null;
+      return c.json({ data: rows.map(({ totalCount: _tc, ...r }) => r), nextCursor, totalCount: Number(rows[0]?.totalCount ?? 0) });
+    }
+
     const rows = await sql<EdgeRow[]>`
       SELECT * FROM edges ${whereClause}
       ORDER BY ${sortCol} ${sortDirSql}, id ASC
       LIMIT ${limit}
     `;
-
     const nextCursor = rows.length === limit
       ? encodeCursor(colSpec.getValue(rows[rows.length - 1]), rows[rows.length - 1].id)
       : null;
-
-    if (countOpt) {
-      const [{ count }] = await sql<[{ count: string }]>`SELECT COUNT(*)::text AS count FROM edges ${whereClause}`;
-      return c.json({ data: rows, nextCursor, totalCount: Number(count) });
-    }
     return c.json({ data: rows, nextCursor });
   });
 

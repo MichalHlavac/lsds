@@ -9,7 +9,8 @@
     "build": "pnpm -r run build",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test"
+    "test": "pnpm -r run test",
+    "test:perf": "pnpm --filter @lsds/api run test:perf"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
