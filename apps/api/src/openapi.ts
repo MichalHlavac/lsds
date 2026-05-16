@@ -1972,6 +1972,65 @@ export const openApiSpec = {
       },
     },
 
+    // ── Usage Summary ─────────────────────────────────────────────────────────
+
+    "/v1/usage/summary": {
+      get: {
+        operationId: "getUsageSummary",
+        tags: ["Usage Events"],
+        summary: "Usage aggregate summary",
+        description: "Returns aggregate event counts grouped by event type for the authenticated tenant. Defaults to the last 30 days; use `since` to narrow the window.",
+        security: tenantSecurity,
+        parameters: [
+          {
+            name: "since",
+            in: "query",
+            schema: { type: "string", format: "date-time" },
+            description: "Start of the reporting window (ISO 8601). Defaults to 30 days ago.",
+          },
+        ],
+        responses: {
+          ...jsonOk({
+            type: "object",
+            required: ["data"],
+            properties: {
+              data: {
+                type: "object",
+                required: ["period", "byEventType", "total"],
+                properties: {
+                  period: {
+                    type: "object",
+                    required: ["from", "to"],
+                    properties: {
+                      from: { type: "string", format: "date-time" },
+                      to:   { type: "string", format: "date-time" },
+                    },
+                  },
+                  byEventType: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      required: ["eventType", "count"],
+                      properties: {
+                        eventType: {
+                          type: "string",
+                          enum: ["NODE_CREATED", "EDGE_CREATED", "REQUIREMENT_ADDED", "VIOLATION_CHECKED", "GRAPH_TRAVERSED", "MCP_QUERY"],
+                        },
+                        count: { type: "integer", minimum: 0 },
+                      },
+                    },
+                  },
+                  total: { type: "integer", minimum: 0, description: "Sum of all event counts in the period." },
+                },
+              },
+            },
+          }),
+          "400": r400,
+          "401": r401,
+        },
+      },
+    },
+
     // ── Stale Flags ───────────────────────────────────────────────────────────
 
     "/v1/stale-flags/summary": {
