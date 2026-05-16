@@ -172,6 +172,11 @@ export interface GraphRepository {
   getIncomingEdges(nodeId: string): Promise<RelationshipEdge[]>;
   /** Violations for the supplied node ids. May include inherited ones. */
   getViolations(nodeIds: ReadonlyArray<string>): Promise<ViolationRecord[]>;
+  /**
+   * Optional: returns LanguageTerm nodes whose context.id is in bcIds.
+   * If omitted, the engine falls back to embedded ubiquitousLanguage[] only.
+   */
+  getLanguageTermsByContext?(bcIds: ReadonlyArray<string>): Promise<TknBase[]>;
 }
 
 // --- Engine implementation -------------------------------------------------
@@ -233,7 +238,7 @@ export class DefaultTraversalEngine implements TraversalEngine {
     let debt: NodeCard[] | undefined;
     let glossary: NodeCard[] | undefined;
     if (spec.includeAnalytical) {
-      const analytical = await this.collectAnalytical(root, spec, visited);
+      const analytical = await this.collectAnalytical(root, spec, visited, upward);
       decisions = analytical.decisions;
       requirements = analytical.requirements;
       debt = analytical.debt;
@@ -356,6 +361,7 @@ export class DefaultTraversalEngine implements TraversalEngine {
     root: TknBase,
     spec: ProfileSpec,
     visited: Set<string>,
+    upward: NodeCard[],
   ): Promise<{
     decisions: NodeCard[];
     requirements: NodeCard[];
@@ -383,11 +389,65 @@ export class DefaultTraversalEngine implements TraversalEngine {
       this.repo.getNodes(debtIds),
     ]);
 
-    // Glossary: pick LanguageTerm nodes attached (via contains / part-of) to
-    // any BoundedContext that we already know about (root or upward chain).
-    // Glossary collection deferred — LanguageTerm registry not yet seeded
-    // (LSDS-10 introduces LanguageTerm + BoundedContext; wire up after merge).
-    const glossary: NodeCard[] = [];
+    // Glossary: collect from BoundedContexts visible at root or in the upward chain.
+    // Two sources in priority order (kap. 6.1):
+    //   1. Embedded ubiquitousLanguage[] on each BC — zero extra repo calls.
+    //   2. Standalone LanguageTerm nodes via optional adapter hook — replaces the
+    //      synthetic embedded entry for the same term so real ids are used.
+    const allBcIds: string[] = [
+      ...(root.type === "BoundedContext" ? [root.id] : []),
+      ...upward.filter((c) => c.type === "BoundedContext").map((c) => c.id),
+    ];
+    const glossaryMap = new Map<string, NodeCard>();
+
+    if (allBcIds.length > 0) {
+      const bcNodes = await this.repo.getNodes(allBcIds);
+      const visibleBcs = bcNodes.filter((n) => spec.lifecycles.includes(n.lifecycle));
+
+      for (const bc of visibleBcs) {
+        const bcFull = bc as TknBase & { ubiquitousLanguage?: Array<{ term: string; definition: string }> };
+        for (const entry of bcFull.ubiquitousLanguage ?? []) {
+          const syntheticId = `${bc.id}::ul::${entry.term}`;
+          if (!glossaryMap.has(syntheticId)) {
+            glossaryMap.set(syntheticId, {
+              id: syntheticId,
+              type: "LanguageTerm",
+              layer: "L2",
+              name: entry.term,
+              lifecycle: bc.lifecycle,
+              distance: 0,
+              via: "contains",
+            });
+          }
+        }
+      }
+
+      if (this.repo.getLanguageTermsByContext) {
+        const visibleBcIds = visibleBcs.map((bc) => bc.id);
+        if (visibleBcIds.length > 0) {
+          const standaloneTerms = await this.repo.getLanguageTermsByContext(visibleBcIds);
+          for (const lt of standaloneTerms) {
+            if (!spec.lifecycles.includes(lt.lifecycle) || visited.has(lt.id)) continue;
+            const ltFull = lt as TknBase & { context?: { id: string }; term?: string };
+            if (ltFull.context?.id && ltFull.term) {
+              glossaryMap.delete(`${ltFull.context.id}::ul::${ltFull.term}`);
+            }
+            visited.add(lt.id);
+            glossaryMap.set(lt.id, {
+              id: lt.id,
+              type: lt.type,
+              layer: lt.layer,
+              name: lt.name,
+              lifecycle: lt.lifecycle,
+              distance: 0,
+              via: "contains",
+            });
+          }
+        }
+      }
+    }
+
+    const glossary: NodeCard[] = [...glossaryMap.values()];
 
     const filterVisible = (nodes: TknBase[], fallbackVia: RelationshipType): NodeCard[] =>
       nodes
