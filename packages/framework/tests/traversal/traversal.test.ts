@@ -11,8 +11,56 @@ import {
   type ContextPackage,
 } from "../../src/traversal.js";
 import { InMemoryGraphRepository } from "../../src/persistence/in-memory-graph.js";
+import type { TknBase } from "../../src/shared/base.js";
+import type { Lifecycle } from "../../src/lifecycle.js";
 
 import { makeEdge, makeNode, resetCounter } from "./fixtures.js";
+
+// Builds a BoundedContext TknBase (with ubiquitousLanguage embedded).
+function makeBoundedContext(
+  id: string,
+  name: string,
+  terms: Array<{ term: string; definition: string }>,
+  lifecycle: Lifecycle = "ACTIVE",
+): TknBase & { ubiquitousLanguage: Array<{ term: string; definition: string }> } {
+  return {
+    id,
+    type: "BoundedContext",
+    layer: "L2",
+    name,
+    version: "1.0.0",
+    lifecycle,
+    owner: { kind: "team", id: "team-test", name: "Test Team" },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ubiquitousLanguage: terms,
+  } as TknBase & { ubiquitousLanguage: Array<{ term: string; definition: string }> };
+}
+
+// Builds a standalone LanguageTerm node for addLanguageTerm.
+function makeLanguageTerm(
+  id: string,
+  term: string,
+  bcId: string,
+  lifecycle: Lifecycle = "ACTIVE",
+): TknBase & { context: { id: string }; term: string } {
+  return {
+    id,
+    type: "LanguageTerm",
+    layer: "L2",
+    name: term,
+    version: "1.0.0",
+    lifecycle,
+    owner: { kind: "team", id: "team-test", name: "Test Team" },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    term,
+    definition: `Standalone definition for ${term} with enough text to meet the schema minimum.`,
+    examples: [],
+    antiPatterns: [],
+    context: { kind: "bounded-context", id: bcId },
+  } as TknBase & { context: { id: string }; term: string };
+}
 
 beforeEach(() => resetCounter());
 
@@ -359,5 +407,119 @@ describe("token-aware truncation", () => {
     truncateToBudget(pkg, 1_000_000);
     expect(pkg.truncation.truncated).toBe(false);
     expect(pkg.upward.length).toBe(1);
+  });
+});
+
+describe("glossary collection (kap. 6.1)", () => {
+  // Common graph: Service contained by a BoundedContext.
+  // bc → contains → service (service sees incoming `contains` → follows upward to bc).
+  function buildGlossaryGraph(
+    terms: Array<{ term: string; definition: string }>,
+    bcLifecycle: Lifecycle = "ACTIVE",
+  ) {
+    const bc = makeBoundedContext("bc-1", "Order Context", terms, bcLifecycle);
+    const service = makeNode({ id: "svc-1", type: "Service", layer: "L4", name: "OrderService" });
+    const graph = new InMemoryGraphRepository();
+    graph.addNode(bc as unknown as TknBase);
+    graph.addNode(service);
+    graph.addEdge(makeEdge(bc as unknown as TknBase, service, "contains"));
+    return { graph, service, bc };
+  }
+
+  const MIN_TERMS = [
+    { term: "Order", definition: "A customer's intent to purchase one or more products from the catalogue." },
+    { term: "Customer", definition: "An entity registered in the system that is allowed to place orders." },
+    { term: "Fulfillment", definition: "The end-to-end process of picking, packing, and shipping an order." },
+  ];
+
+  // (a) Embedded-only path
+  it("(a) populates glossary from BoundedContext.ubiquitousLanguage in ANALYTICAL profile", async () => {
+    const { graph, service } = buildGlossaryGraph(MIN_TERMS);
+    const engine = new DefaultTraversalEngine(graph);
+
+    const pkg = await engine.traverse(service.id, { profile: "ANALYTICAL" });
+
+    expect(pkg.glossary).toBeDefined();
+    const names = pkg.glossary!.map((g) => g.name);
+    expect(names).toContain("Order");
+    expect(names).toContain("Customer");
+    expect(names).toContain("Fulfillment");
+    expect(pkg.glossary!.every((g) => g.type === "LanguageTerm" && g.layer === "L2")).toBe(true);
+  });
+
+  // (b) Standalone LanguageTerm path via addLanguageTerm
+  it("(b) includes standalone LanguageTerm nodes and replaces synthetic entry for same term", async () => {
+    const { graph, service } = buildGlossaryGraph(MIN_TERMS);
+    // Standalone term that shares a name with an embedded one ("Order") → replaces synthetic.
+    const standaloneOrder = makeLanguageTerm("lt-order-real", "Order", "bc-1");
+    // Standalone term with a new name not in embedded list.
+    const standaloneShipment = makeLanguageTerm("lt-shipment", "Shipment", "bc-1");
+    graph.addLanguageTerm(standaloneOrder);
+    graph.addLanguageTerm(standaloneShipment);
+
+    const engine = new DefaultTraversalEngine(graph);
+    const pkg = await engine.traverse(service.id, { profile: "ANALYTICAL" });
+
+    expect(pkg.glossary).toBeDefined();
+    const names = pkg.glossary!.map((g) => g.name);
+    // "Shipment" comes from standalone only.
+    expect(names).toContain("Shipment");
+    // "Order" replaced by real node — id must be the real one, not synthetic.
+    const orderCard = pkg.glossary!.find((g) => g.name === "Order");
+    expect(orderCard).toBeDefined();
+    expect(orderCard!.id).toBe("lt-order-real");
+    // Embedded-only "Customer" and "Fulfillment" are still present.
+    expect(names).toContain("Customer");
+    expect(names).toContain("Fulfillment");
+    // No duplicate for "Order".
+    expect(names.filter((n) => n === "Order").length).toBe(1);
+  });
+
+  // (c) Lifecycle filtering — standalone LT with PURGE lifecycle is excluded
+  it("(c) excludes standalone LanguageTerm nodes with non-visible lifecycle", async () => {
+    const { graph, service } = buildGlossaryGraph(MIN_TERMS);
+    const purgeLt = makeLanguageTerm("lt-purged", "ObsoleteTerm", "bc-1", "PURGE");
+    graph.addLanguageTerm(purgeLt);
+
+    const engine = new DefaultTraversalEngine(graph);
+    const pkg = await engine.traverse(service.id, { profile: "ANALYTICAL" });
+
+    const names = pkg.glossary!.map((g) => g.name);
+    expect(names).not.toContain("ObsoleteTerm");
+    // Embedded terms from the ACTIVE BC are still present.
+    expect(names).toContain("Order");
+  });
+
+  // (d) Truncation under budget — glossary entries are dropped before decisions
+  it("(d) drops glossary entries under tight token budget and records omission count", async () => {
+    // Build 40 UL terms so the glossary dominates the payload.
+    const manyTerms: Array<{ term: string; definition: string }> = [];
+    for (let i = 0; i < 40; i++) {
+      manyTerms.push({
+        term: `GlossaryTerm${i}`,
+        definition: `Detailed definition number ${i} with enough text to consume meaningful tokens in the context package.`,
+      });
+    }
+    const { graph, service } = buildGlossaryGraph(manyTerms);
+
+    const engine = new DefaultTraversalEngine(graph);
+    const pkg = await engine.traverse(service.id, {
+      profile: "ANALYTICAL",
+      tokenBudget: 400,
+    });
+
+    expect(pkg.truncation.truncated).toBe(true);
+    expect(pkg.truncation.omitted.glossary).toBeGreaterThan(0);
+    expect(pkg.truncation.notes[0]).toMatch(/glossary/);
+  });
+
+  // (e) OPERATIONAL profile — glossary is undefined
+  it("(e) OPERATIONAL profile returns glossary as undefined (no behavioral regression)", async () => {
+    const { graph, service } = buildGlossaryGraph(MIN_TERMS);
+    const engine = new DefaultTraversalEngine(graph);
+
+    const pkg = await engine.traverse(service.id, { profile: "OPERATIONAL" });
+
+    expect(pkg.glossary).toBeUndefined();
   });
 });

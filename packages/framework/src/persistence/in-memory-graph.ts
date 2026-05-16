@@ -29,6 +29,7 @@ export class InMemoryGraphRepository implements GraphRepository {
   readonly #outgoing = new Map<string, RelationshipEdge[]>();
   readonly #incoming = new Map<string, RelationshipEdge[]>();
   readonly #violations: ViolationRecord[] = [];
+  readonly #byContext = new Map<string, Array<TknBase & { context: { id: string } }>>();
 
   /**
    * Insert or replace a node by id. Replacing reuses the supplied reference;
@@ -57,12 +58,29 @@ export class InMemoryGraphRepository implements GraphRepository {
     return this;
   }
 
+  /**
+   * Register a LanguageTerm node indexed by its BoundedContext id so that
+   * getLanguageTermsByContext can resolve it without an edge traversal.
+   * Also registers the node via addNode (idempotent by id).
+   */
+  addLanguageTerm(lt: TknBase & { context: { id: string } }): this {
+    this.addNode(lt);
+    const arr = this.#byContext.get(lt.context.id);
+    if (!arr) {
+      this.#byContext.set(lt.context.id, [lt]);
+    } else if (!arr.some((t) => t.id === lt.id)) {
+      arr.push(lt);
+    }
+    return this;
+  }
+
   /** Empty all storage. */
   clear(): this {
     this.#nodes.clear();
     this.#outgoing.clear();
     this.#incoming.clear();
     this.#violations.length = 0;
+    this.#byContext.clear();
     return this;
   }
 
@@ -83,6 +101,9 @@ export class InMemoryGraphRepository implements GraphRepository {
     }
     for (const v of this.#violations) {
       copy.addViolation(cloneViolation(v));
+    }
+    for (const terms of this.#byContext.values()) {
+      for (const lt of terms) copy.addLanguageTerm({ ...lt });
     }
     return copy;
   }
@@ -133,6 +154,16 @@ export class InMemoryGraphRepository implements GraphRepository {
     if (nodeIds.length === 0) return [];
     const set = new Set(nodeIds);
     return this.#violations.filter((v) => set.has(v.object_id));
+  }
+
+  async getLanguageTermsByContext(bcIds: ReadonlyArray<string>): Promise<TknBase[]> {
+    if (bcIds.length === 0) return [];
+    const out: TknBase[] = [];
+    for (const id of bcIds) {
+      const terms = this.#byContext.get(id);
+      if (terms) out.push(...terms);
+    }
+    return out;
   }
 }
 
