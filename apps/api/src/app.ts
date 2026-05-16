@@ -31,6 +31,7 @@ import { auditLogRouter } from "./routes/audit-log.js";
 import { staleFlagsRouter } from "./routes/stale-flags.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import { usageEventsRouter } from "./routes/usage-events.js";
+import { usageSummaryRouter } from "./routes/usage-summary.js";
 import { adminTenantsRouter } from "./routes/admin-tenants.js";
 import { adminPartnersRouter } from "./routes/admin-partners.js";
 import { adminWebhooksRouter } from "./routes/admin-webhooks.js";
@@ -127,6 +128,7 @@ v1.route("/tenant", tenantRouter(sql));
 v1.route("/stale-flags", staleFlagsRouter(sql));
 v1.route("/feedback", feedbackRouter(sql));
 v1.route("/usage/events", usageEventsRouter(sql));
+v1.route("/usage/summary", usageSummaryRouter(sql));
 
 app.route("/v1", v1);
 app.route("/agent/v1", agentRouter(sql, cache, guardrails, lifecycle, embeddingService));

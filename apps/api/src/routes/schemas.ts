@@ -293,6 +293,11 @@ export const GetUsageEventsQuerySchema = z.object({
 });
 export type GetUsageEventsQuery = z.infer<typeof GetUsageEventsQuerySchema>;
 
+export const GetUsageSummaryQuerySchema = z.object({
+  since: z.string().datetime({ offset: true }).optional(),
+});
+export type GetUsageSummaryQuery = z.infer<typeof GetUsageSummaryQuerySchema>;
+
 export const NODE_SORT_FIELDS = ["name", "createdAt", "updatedAt", "type", "layer", "lifecycleStatus"] as const;
 export type NodeSortField = (typeof NODE_SORT_FIELDS)[number];
 
