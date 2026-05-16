@@ -461,3 +461,458 @@ describe("built-in check: GR-L5-007 (ExternalDependency GPL license)", () => {
   });
 });
 
+// ── GR-L6-003: P1 Runbook last_tested > 90 days ──────────────────────────────
+
+describe("built-in check: GR-L6-003 (P1 Runbook stale last_tested)", () => {
+  it("fires for P1 Runbook with no last_tested date", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Runbook", layer: "L6", attributes: { severity: "P1" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L6-003");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("fires for P1 Runbook last_tested more than 90 days ago", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const staleDate = new Date(Date.now() - 100 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ type: "Runbook", layer: "L6", attributes: { severity: "P1", lastTested: staleDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L6-003");
+    expect(violations[0]?.message).toContain("max: 90");
+  });
+
+  it("does not fire for P1 Runbook last_tested within 90 days", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const recentDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ type: "Runbook", layer: "L6", attributes: { severity: "P1", lastTested: recentDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for P2 Runbook with no last_tested (only P1 is in scope)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Runbook", layer: "L6", attributes: { severity: "P2" } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case last_tested attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const staleDate = new Date(Date.now() - 95 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ type: "Runbook", layer: "L6", attributes: { severity: "P1", last_tested: staleDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for non-Runbook nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-003", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "Alert", attributes: { severity: "P1" } }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-L6-004: Production Service without SLO ────────────────────────────────
+
+describe("built-in check: GR-L6-004 (Production Service without SLO)", () => {
+  it("fires for a Service in production with sloCount=0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { inProductionEnvironment: true, sloCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L6-004");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("does not fire for a Service in production with sloCount > 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { inProductionEnvironment: true, sloCount: 2 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for a Service NOT in production (no inProductionEnvironment flag)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { sloCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case slo_count and in_production_environment", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { in_production_environment: true, slo_count: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for non-Service nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-004", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "InfrastructureComponent", attributes: { inProductionEnvironment: true, sloCount: 0 } }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-L6-005: SLO without traces-to QualityAttribute ────────────────────────
+
+describe("built-in check: GR-L6-005 (SLO without traces-to QualityAttribute)", () => {
+  it("fires for SLO with no qualityAttributeCount", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "SLO", layer: "L6", attributes: {} });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L6-005");
+    expect(violations[0]?.severity).toBe("WARN");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("fires for SLO with qualityAttributeCount=0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "SLO", layer: "L6", attributes: { qualityAttributeCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for SLO with qualityAttributeCount >= 1", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "SLO", layer: "L6", attributes: { qualityAttributeCount: 1 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case quality_attribute_count", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "SLO", layer: "L6", attributes: { quality_attribute_count: 2 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for non-SLO nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "Alert", attributes: {} }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-L6-008: OnCallPolicy must cover ≥ 1 target and declare p1 SLA ─────────
+
+describe("built-in check: GR-L6-008 (OnCallPolicy coverage and p1 SLA)", () => {
+  it("fires for OnCallPolicy with coversCount=0 and no p1 SLA", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "OnCallPolicy", layer: "L6", attributes: { coversCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L6-008");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.message).toContain("coversCount=0");
+    expect(violations[0]?.message).toContain("responseTimeSla.p1 absent");
+  });
+
+  it("fires for OnCallPolicy with covers ≥ 1 but missing p1 SLA", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "OnCallPolicy", layer: "L6", attributes: { coversCount: 1, responseTimeSla: { p2: "PT30M" } } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message).toContain("responseTimeSla.p1 absent");
+  });
+
+  it("fires for OnCallPolicy with p1 SLA but coversCount=0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "OnCallPolicy", layer: "L6", attributes: { coversCount: 0, responseTimeSla: { p1: "PT15M" } } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message).toContain("coversCount=0");
+  });
+
+  it("does not fire for OnCallPolicy with coversCount >= 1 and p1 SLA set", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "OnCallPolicy", layer: "L6", attributes: { coversCount: 2, responseTimeSla: { p1: "PT15M", p2: "PT30M" } } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case covers_count and response_time_sla", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "OnCallPolicy", layer: "L6", attributes: { covers_count: 1, response_time_sla: { p1: "PT15M" } } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for non-OnCallPolicy nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "Service", attributes: { coversCount: 0 } }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-L6-009: Production Service without OnCallPolicy ───────────────────────
+
+describe("built-in check: GR-L6-009 (Production Service without OnCallPolicy)", () => {
+  it("fires for a Service in production with onCallPolicyCount=0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { inProductionEnvironment: true, onCallPolicyCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-L6-009");
+    expect(violations[0]?.severity).toBe("WARN");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("does not fire for a Service in production with onCallPolicyCount >= 1", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { inProductionEnvironment: true, onCallPolicyCount: 1 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for a Service NOT in production", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { onCallPolicyCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case on_call_policy_count", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Service", layer: "L4", attributes: { inProductionEnvironment: true, on_call_policy_count: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for non-Service nodes", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-L6-009", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeNodeRow({ type: "DeploymentUnit", attributes: { inProductionEnvironment: true, onCallPolicyCount: 0 } }));
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-XL-001: Object without owner ──────────────────────────────────────────
+
+describe("built-in check: GR-XL-001 (Object without owner)", () => {
+  it("fires for a node with no ownerId (empty string)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-001", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ ownerId: "" });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-001");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.nodeId).toBe(node.id);
+    expect(violations[0]?.message).toContain("no owner");
+  });
+
+  it("fires for a node with undefined ownerId", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-001", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const node = makeNodeRow({ ownerId: undefined as any });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for a node with a valid ownerId", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-001", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ ownerId: "team-platform-uuid" });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire for edge subjects (edges are not ownership-checked)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-001", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeEdgeRow());
+    expect(violations).toHaveLength(0);
+  });
+
+  it("violation message includes node type", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-001", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ type: "Runbook", ownerId: "" });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations[0]?.message).toContain("Runbook");
+  });
+});
+
+// ── GR-XL-005: Hard delete with incoming relationships ───────────────────────
+
+describe("built-in check: GR-XL-005 (Hard delete with incoming relationships)", () => {
+  it("fires when incomingRelCount > 0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: { incomingRelCount: 3 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-005");
+    expect(violations[0]?.severity).toBe("ERROR");
+    expect(violations[0]?.message).toContain("3");
+  });
+
+  it("does not fire when incomingRelCount=0", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: { incomingRelCount: 0 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire when incomingRelCount attribute is absent (defaults to 0)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: {} });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case incoming_rel_count", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: { incoming_rel_count: 5 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message).toContain("5");
+  });
+
+  it("does not fire for edge subjects", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-005", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeEdgeRow());
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-XL-007: Object without revision for > threshold ───────────────────────
+
+describe("built-in check: GR-XL-007 (Object without revision for > threshold)", () => {
+  it("fires when last_review_date is absent (treat as never reviewed)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: {} });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-007");
+    expect(violations[0]?.severity).toBe("INFO");
+  });
+
+  it("fires when lastReviewDate is older than the threshold", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-007", config: { governance: { review_threshold_days: 90 } } })]);
+    const registry = new GuardrailsRegistry(sql);
+    const staleDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ attributes: { lastReviewDate: staleDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-007");
+    expect(violations[0]?.message).toContain("90"); // threshold always appears in message
+  });
+
+  it("does not fire when lastReviewDate is within the threshold", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-007", config: { governance: { review_threshold_days: 180 } } })]);
+    const registry = new GuardrailsRegistry(sql);
+    const recentDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ attributes: { lastReviewDate: recentDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("uses default threshold of 180 days when config is absent", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const recentDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ attributes: { lastReviewDate: recentDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case last_review_date attribute", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-007", config: { governance: { review_threshold_days: 90 } } })]);
+    const registry = new GuardrailsRegistry(sql);
+    const staleDate = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const node = makeNodeRow({ attributes: { last_review_date: staleDate } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for edge subjects", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-007", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeEdgeRow());
+    expect(violations).toHaveLength(0);
+  });
+});
+
+// ── GR-XL-008: God object with > 20 direct relationships ─────────────────────
+
+describe("built-in check: GR-XL-008 (God object with > 20 direct relationships)", () => {
+  it("fires when directRelationshipCount exceeds 20", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: { directRelationshipCount: 25 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.ruleKey).toBe("GR-XL-008");
+    expect(violations[0]?.severity).toBe("INFO");
+    expect(violations[0]?.message).toContain("25");
+    expect(violations[0]?.nodeId).toBe(node.id);
+  });
+
+  it("does not fire when directRelationshipCount is exactly 20", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: { directRelationshipCount: 20 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("does not fire when directRelationshipCount is absent (defaults to 0)", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: {} });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(0);
+  });
+
+  it("also accepts snake_case direct_relationship_count", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const node = makeNodeRow({ attributes: { direct_relationship_count: 21 } });
+    const violations = await registry.evaluate("t1", node);
+    expect(violations).toHaveLength(1);
+  });
+
+  it("does not fire for edge subjects", async () => {
+    const sql = makeSqlWith([makeGuardrailRow({ ruleKey: "GR-XL-008", config: {} })]);
+    const registry = new GuardrailsRegistry(sql);
+    const violations = await registry.evaluate("t1", makeEdgeRow());
+    expect(violations).toHaveLength(0);
+  });
+});
+

@@ -178,6 +178,209 @@ const BUILT_IN_CHECKS = new Map<string, GuardrailCheck>([
       };
     },
   ],
+  // ── GR-L6-003: P1 Runbook last_tested > 90 days ──────────────────────────────
+  [
+    "GR-L6-003",
+    (subject) => {
+      const node = nodeOfType(subject, "Runbook");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs || attrs["severity"] !== "P1") return null;
+      const testedStr = attrs["lastTested"] ?? attrs["last_tested"];
+      if (!testedStr) {
+        return {
+          ruleKey: "GR-L6-003",
+          severity: "ERROR",
+          message: `Runbook '${node.name}' has severity=P1 but has never been tested (last_tested is absent)`,
+          nodeId: node.id,
+        };
+      }
+      const testedDate = new Date(String(testedStr));
+      if (isNaN(testedDate.getTime())) return null;
+      const ageDays = (Date.now() - testedDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (ageDays <= 90) return null;
+      return {
+        ruleKey: "GR-L6-003",
+        severity: "ERROR",
+        message: `Runbook '${node.name}' has severity=P1 and was last tested ${Math.floor(ageDays)} days ago (max: 90)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-004: Production Service without SLO ────────────────────────────────
+  // Production status is inferred from the pre-materialized inProductionEnvironment
+  // attribute (computed from deploys-to → DeploymentUnit.environment edges).
+  // sloCount reflects incoming `validates` edges from SLO nodes.
+  [
+    "GR-L6-004",
+    (subject) => {
+      const node = nodeOfType(subject, "Service");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const inProduction = attrs["inProductionEnvironment"] ?? attrs["in_production_environment"];
+      if (!inProduction) return null;
+      const sloCount = Number(attrs["sloCount"] ?? attrs["slo_count"] ?? 0);
+      if (sloCount > 0) return null;
+      return {
+        ruleKey: "GR-L6-004",
+        severity: "ERROR",
+        message: `Service '${node.name}' is deployed to PRODUCTION but has no linked SLO (sloCount=0)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-005: SLO without traces-to QualityAttribute ────────────────────────
+  // qualityAttributeCount reflects outgoing `traces-to` edges to QualityAttribute nodes.
+  [
+    "GR-L6-005",
+    (subject) => {
+      const node = nodeOfType(subject, "SLO");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const qaCount = Number(attrs["qualityAttributeCount"] ?? attrs["quality_attribute_count"] ?? 0);
+      if (qaCount > 0) return null;
+      return {
+        ruleKey: "GR-L6-005",
+        severity: "WARN",
+        message: `SLO '${node.name}' has no traces-to relationship to a QualityAttribute (qualityAttributeCount=0)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-008: OnCallPolicy must cover ≥ 1 target and declare p1 SLA ─────────
+  // coversCount reflects outgoing `covers` edges to Service/DeploymentUnit.
+  // responseTimeSla is stored directly in node attributes.
+  [
+    "GR-L6-008",
+    (subject) => {
+      const node = nodeOfType(subject, "OnCallPolicy");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const coversCount = Number(attrs["coversCount"] ?? attrs["covers_count"] ?? 0);
+      const sla = (attrs["responseTimeSla"] ?? attrs["response_time_sla"]) as Record<string, unknown> | undefined;
+      const hasP1Sla = sla?.["p1"] != null && String(sla["p1"]).length > 0;
+      if (coversCount >= 1 && hasP1Sla) return null;
+      const reasons: string[] = [];
+      if (coversCount === 0) reasons.push("no covers relationships (coversCount=0)");
+      if (!hasP1Sla) reasons.push("no p1 SLA declared (responseTimeSla.p1 absent)");
+      return {
+        ruleKey: "GR-L6-008",
+        severity: "ERROR",
+        message: `OnCallPolicy '${node.name}' failed: ${reasons.join("; ")}`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-L6-009: Production Service without OnCallPolicy ───────────────────────
+  // onCallPolicyCount reflects incoming `covers` edges from OnCallPolicy nodes.
+  [
+    "GR-L6-009",
+    (subject) => {
+      const node = nodeOfType(subject, "Service");
+      if (!node) return null;
+      const attrs = nodeAttrs(subject);
+      if (!attrs) return null;
+      const inProduction = attrs["inProductionEnvironment"] ?? attrs["in_production_environment"];
+      if (!inProduction) return null;
+      const policyCount = Number(attrs["onCallPolicyCount"] ?? attrs["on_call_policy_count"] ?? 0);
+      if (policyCount > 0) return null;
+      return {
+        ruleKey: "GR-L6-009",
+        severity: "WARN",
+        message: `Service '${node.name}' is deployed to PRODUCTION but has no covering OnCallPolicy (onCallPolicyCount=0)`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-XL-001: Object without owner ──────────────────────────────────────────
+  // Checks ownerId which is denormalized from the TknBase owner TeamRef on NodeRow.
+  [
+    "GR-XL-001",
+    (subject) => {
+      if (!("ownerId" in subject)) return null;
+      const node = subject as NodeRow;
+      if (node.ownerId && node.ownerId.length > 0) return null;
+      return {
+        ruleKey: "GR-XL-001",
+        severity: "ERROR",
+        message: `Node '${node.name}' (type=${node.type}) has no owner; set owner to a TeamRef`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-XL-005: Hard delete with incoming relationships ───────────────────────
+  // incomingRelCount is pre-materialized by the API before triggering DELETE guardrails.
+  [
+    "GR-XL-005",
+    (subject) => {
+      if (!("name" in subject)) return null; // edges have no name — skip
+      const node = subject as NodeRow;
+      const attrs = node.attributes as Record<string, unknown>;
+      const incomingCount = Number(attrs["incomingRelCount"] ?? attrs["incoming_rel_count"] ?? 0);
+      if (incomingCount === 0) return null;
+      return {
+        ruleKey: "GR-XL-005",
+        severity: "ERROR",
+        message: `Node '${node.name}' cannot be hard-deleted: has ${incomingCount} incoming relationship(s); archive or migrate dependents first`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-XL-007: Object without revision for > threshold ───────────────────────
+  // Fires when last_review_date is absent (never reviewed) or older than the
+  // configured governance.review_threshold_days (default: 180 days).
+  [
+    "GR-XL-007",
+    (subject, config) => {
+      if (!("name" in subject)) return null; // edges have no name — skip
+      const node = subject as NodeRow;
+      const attrs = node.attributes as Record<string, unknown>;
+      const governance = config["governance"] as Record<string, unknown> | undefined;
+      const thresholdDays = Number(
+        governance?.["review_threshold_days"] ?? governance?.["reviewThresholdDays"] ?? 180
+      );
+      const dateStr = attrs["lastReviewDate"] ?? attrs["last_review_date"];
+      if (!dateStr) {
+        return {
+          ruleKey: "GR-XL-007",
+          severity: "INFO",
+          message: `Node '${node.name}' has no last_review_date recorded (treat as overdue)`,
+          nodeId: node.id,
+        };
+      }
+      const reviewDate = new Date(String(dateStr));
+      if (isNaN(reviewDate.getTime())) return null;
+      const ageDays = (Date.now() - reviewDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (ageDays <= thresholdDays) return null;
+      return {
+        ruleKey: "GR-XL-007",
+        severity: "INFO",
+        message: `Node '${node.name}' was last reviewed ${Math.floor(ageDays)} days ago (threshold: ${thresholdDays})`,
+        nodeId: node.id,
+      };
+    },
+  ],
+  // ── GR-XL-008: God object with > 20 direct relationships ─────────────────────
+  // directRelationshipCount is pre-materialized by the API during periodic scans.
+  [
+    "GR-XL-008",
+    (subject) => {
+      if (!("name" in subject)) return null; // edges have no name — skip
+      const node = subject as NodeRow;
+      const attrs = node.attributes as Record<string, unknown>;
+      const relCount = Number(attrs["directRelationshipCount"] ?? attrs["direct_relationship_count"] ?? 0);
+      if (relCount <= 20) return null;
+      return {
+        ruleKey: "GR-XL-008",
+        severity: "INFO",
+        message: `Node '${node.name}' has ${relCount} direct relationships (max: 20); consider decomposing`,
+        nodeId: node.id,
+      };
+    },
+  ],
 ]);
 
 export class GuardrailsRegistry {
